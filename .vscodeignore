@@ -1,0 +1,10 @@
+.git/**
+.vscode/**
+.gitignore
+.gitattributes
+node_modules/**
+test/**
+scripts/**
+.agent/**
+package-lock.json
+*.log

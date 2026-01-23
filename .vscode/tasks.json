@@ -1,0 +1,141 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "npm: test",
+            "type": "npm",
+            "script": "test",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            }
+        },
+        {
+            "label": "VSCE Publish",
+            "type": "shell",
+            "command": "node scripts/publish.js vsce",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OVSX Publish",
+            "type": "shell",
+            "command": "node scripts/publish.js ovsx",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Publish to Marketplaces",
+            "dependsOn": [
+                "OVSX Publish",
+                "VSCE Publish"
+            ],
+            "dependsOrder": "parallel",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "VSCE Publish (Pre-Release)",
+            "type": "shell",
+            "command": "node scripts/publish.js vsce --pre-release",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OVSX Publish (Pre-Release)",
+            "type": "shell",
+            "command": "node scripts/publish.js ovsx --pre-release",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Publish to Marketplaces (Pre-Release)",
+            "dependsOn": [
+                "OVSX Publish (Pre-Release)",
+                "VSCE Publish (Pre-Release)"
+            ],
+            "dependsOrder": "parallel",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Lint Code",
+            "type": "shell",
+            "command": "npx eslint . --ext .js",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Generate MQL5 Stubs",
+            "type": "shell",
+            "command": "node",
+            "args": [
+                "tools/stub-generator/index.js",
+                "-i",
+                "${input:mql5IncludePath}",
+                "-d",
+                "Trade,Controls,Arrays",
+                "-o",
+                "files/mql5_stdlib_stubs.h",
+                "--forward-only",
+                "-v"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "mql5IncludePath",
+            "type": "promptString",
+            "description": "Path to MQL5 Include directory",
+            "default": "C:/Users/User/AppData/Roaming/MetaQuotes/Terminal/870072DB5DBAB61841BAE146AFAAFB8A/MQL5/Include"
+        }
+    ]
+}
