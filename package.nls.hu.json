@@ -2,6 +2,8 @@
     "mql_tools.configuration.DeleteLog.description": "Naplófájl törlése ellenőrzés/fordítás után",
     "mql_tools.configuration.Metaeditor4Dir.description": "\"metaeditor.exe\" elérési útja: MQL4",
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" elérési útja: MQL5",
+    "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" elérési útja: MQL4",
+    "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" elérési útja: MQL5",
     "mql_tools.configuration.Include4Dir.description": "\"Include\" mappa elérési útja: MQL4 (opcionális)",
     "mql_tools.configuration.Include5Dir.description": "\"Include\" mappa elérési útja: MQL5 (opcionális)",
     "mql_tools.configuration.LogDir.description": "Naplófájl neve. Ha nincs kitöltve, automatikusan létrejön",
@@ -31,5 +33,7 @@
     "mql_tools.commands.InsTime.title": "Dátum és idő beszúrása ÉÉÉÉ.HH.NN óó:pp:mm formátumban",
     "mql_tools.commands.InsIcon.title": "Ikon beszúrása #property-ként",
     "mql_tools.commands.openInME.title": "Megnyitás a 'MetaEditor'-ban",
-    "mql_tools.commands.createCommentary.title": "Függvény megjegyzés létrehozása"
+    "mql_tools.commands.openTradingTerminal.title": "Kereskedési terminál megnyitása",
+    "mql_tools.commands.createCommentary.title": "Függvény megjegyzés létrehozása",
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Zajos clangd diagnosztika jelentése"
 }

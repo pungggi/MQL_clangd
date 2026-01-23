@@ -2,6 +2,8 @@
     "mql_tools.configuration.DeleteLog.description": "Usuń plik dziennika po sprawdzeniu/kompilacji",
     "mql_tools.configuration.Metaeditor4Dir.description": "Ścieżka do \"metaeditor.exe\": MQL4",
     "mql_tools.configuration.Metaeditor5Dir.description": "Ścieżka do \"metaeditor.exe\": MQL5",
+    "mql_tools.configuration.Terminal4Dir.description": "Ścieżka do \"terminal.exe\": MQL4",
+    "mql_tools.configuration.Terminal5Dir.description": "Ścieżka do \"terminal64.exe\": MQL5",
     "mql_tools.configuration.Include4Dir.description": "Ścieżka do folderu \"Include\": MQL4 (opcjonalnie)",
     "mql_tools.configuration.Include5Dir.description": "Ścieżka do folderu \"Include\": MQL5 (opcjonalnie)",
     "mql_tools.configuration.Portable4.description": "Włącz tryb przenośny dla MetaTrader 4 (używa przełącznika /portable)",
@@ -33,5 +35,7 @@
     "mql_tools.commands.InsTime.title": "Wstaw datę i czas jako RRRR.MM.DD gg:mm:ss",
     "mql_tools.commands.InsIcon.title": "Wstaw ikonę jako #property",
     "mql_tools.commands.openInME.title": "Otwórz w 'MetaEditor'",
-    "mql_tools.commands.createCommentary.title": "Utwórz komentarz funkcji"
+    "mql_tools.commands.openTradingTerminal.title": "Otwórz terminal handlowy",
+    "mql_tools.commands.createCommentary.title": "Utwórz komentarz funkcji",
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Zgłoś głośną diagnostykę clangd"
 }

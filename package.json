@@ -54,6 +54,16 @@
                     "default": "C:\\MT5_Install\\MetaTrader\\metaeditor.exe",
                     "description": "%mql_tools.configuration.Metaeditor5Dir.description%"
                 },
+                "mql_tools.Terminal.Terminal4Dir": {
+                    "type": "string",
+                    "default": "C:\\MT4_Install\\MetaTrader\\terminal.exe",
+                    "description": "%mql_tools.configuration.Terminal4Dir.description%"
+                },
+                "mql_tools.Terminal.Terminal5Dir": {
+                    "type": "string",
+                    "default": "C:\\MT5_Install\\MetaTrader\\terminal64.exe",
+                    "description": "%mql_tools.configuration.Terminal5Dir.description%"
+                },
                 "mql_tools.Metaeditor.Include4Dir": {
                     "type": "string",
                     "default": "",
@@ -330,6 +340,11 @@
                 "title": "%mql_tools.commands.openInME.title%"
             },
             {
+                "command": "mql_tools.openTradingTerminal",
+                "title": "%mql_tools.commands.openTradingTerminal.title%",
+                "category": "MQL"
+            },
+            {
                 "command": "mql_tools.reportNoisyDiagnostic",
                 "title": "%mql_tools.commands.reportNoisyDiagnostic.title%",
                 "category": "MQL"
@@ -481,6 +496,11 @@
                 "command": "mql_tools.InsMQH",
                 "key": "ctrl+alt+i",
                 "when": "editorTextFocus && resourceExtname == .mq4 || editorTextFocus && resourceExtname == .mq5 || editorTextFocus && resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.openTradingTerminal",
+                "key": "F4",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             }
         ]
     },

@@ -2,7 +2,7 @@
 const vscode = require('vscode');
 const pathModule = require('path');
 const fs = require('fs');
-const ext = require('./extension');
+const lg = require('./language');
 const { resolvePathRelativeToWorkspace } = require('./createProperties');
 const err_codes = require('../data/error-codes.json');
 const obj_items = require('../data/items.json');
@@ -219,24 +219,27 @@ function Hover_log() {
     return {
         provideHover(document, position) {
             const word = document.lineAt(position.line).text;
+            // Access obj_hover dynamically from extension module
+            const ext = require('./extension');
+            const obj_hover = ext.obj_hover || {};
 
-            if (!(word in ext.obj_hover)) return undefined;
+            if (!(word in obj_hover)) return undefined;
 
-            const link = (typeof ext.obj_hover[word].link == 'undefined') ? '' : ext.obj_hover[word].link,
+            const link = (typeof obj_hover[word].link == 'undefined') ? '' : obj_hover[word].link,
                 loclang = language === 'zh-tw' ? 'zh-cn' : language;
 
             if (loclang in err_codes)
-                var local = err_codes[loclang][ext.obj_hover[word].number];
+                var local = err_codes[loclang][obj_hover[word].number];
 
             if (!local && !link)
                 return undefined;
 
-            const contents = new vscode.MarkdownString(`${local ? local : `[${ext.lg['hover_log']}](${link})`}`);
+            const contents = new vscode.MarkdownString(`${local ? local : `[${lg['hover_log']}](${link})`}`);
 
             if (local) {
                 if (link) {
                     contents.supportHtml = true;
-                    contents.appendMarkdown(`<hr>\n\n[${ext.lg['hover_log']}](${link})`);
+                    contents.appendMarkdown(`<hr>\n\n[${lg['hover_log']}](${link})`);
                 }
             }
             return new vscode.Hover(contents);
@@ -248,10 +251,13 @@ function DefinitionProvider() {
     return {
         provideDefinition(document, position) {
             const word = document.lineAt(position.line).text;
+            // Access obj_hover dynamically from extension module
+            const ext = require('./extension');
+            const obj_hover = ext.obj_hover || {};
 
-            if (!(word in ext.obj_hover)) return undefined;
+            if (!(word in obj_hover)) return undefined;
 
-            const link = (typeof ext.obj_hover[word].link == 'undefined') ? '' : ext.obj_hover[word].link;
+            const link = (typeof obj_hover[word].link == 'undefined') ? '' : obj_hover[word].link;
 
             if (!link) return undefined;
             const fileLink = link.match(/.+(?=#)/g) !== null ? link.match(/.+(?=#)/g)[0] : link,

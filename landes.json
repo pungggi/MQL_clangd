@@ -4,6 +4,8 @@
     "comp_usi_script": "Compiling (script)",
     "path_editor4": "Invalid path to \"metaeditor.exe\": MQL4",
     "path_editor5": "Invalid path to \"metaeditor.exe\": MQL5",
+    "path_terminal4": "Invalid path to \"terminal.exe\": MQL4",
+    "path_terminal5": "Invalid path to \"terminal64.exe\": MQL5",
     "path_include_4": "Invalid path to 'Include': MQL4",
     "path_include_5": "Invalid path to 'Include': MQL5",
     "mqh": "To compilation, you need to write in the first line \"mqh\" of the document, the name of the \"mql\" file. Example: //###<Experts/Examples/MACD Sample.mq5>",
@@ -12,7 +14,7 @@
     "err_read_log": "Error reading log file.",
     "err_start_script": "Error starting script!!!",
     "err_remove_log": "Error occurred while trying to remove log file",
-    "info_log_compile": "\n[Info] This log displays the syntax check, the final compilation log can be viewed in MetaEditor.",       
+    "info_log_compile": "\n[Info] This log displays the syntax check, the final compilation log can be viewed in MetaEditor.",
     "help_Lo": "The MQL help is loading...",
     "help_er_save": "Failed to load help file. Error saving the file!",
     "help_er_statusCode": "Failed to load help file. Server response code - ",
@@ -26,5 +28,6 @@
     "comm_func": "This function fulfills the will of the developer",
     "comm_arg": "Argument",
     "err_open_in_me": "Failed to open in MetaEditor",
+    "err_open_terminal": "Failed to open Trading Terminal",
     "hover_log": "Follow link"
 }

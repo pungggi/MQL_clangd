@@ -3,7 +3,8 @@ const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
 const pathModule = require('path');
-const ext = require("./extension");
+const lg = require("./language");
+const { tf } = require("./extension");
 const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require("./createProperties");
 const { toWineWindowsPath, isWineEnabled, getWineBinary } = require("./wineHelper");
 
@@ -147,7 +148,7 @@ function InsertImport() {
 
 function InsertTime() {
     const { selection, edit } = vscode.window.activeTextEditor, { start, end } = selection, date = new Date(),
-        time = `D'${ext.tf(date, 'Y')}.${ext.tf(date, 'M')}.${ext.tf(date, 'D')} ${ext.tf(date, 'h')}:${ext.tf(date, 'm')}:${ext.tf(date, 's')}'`,
+        time = `D'${tf(date, 'Y')}.${tf(date, 'M')}.${tf(date, 'D')} ${tf(date, 'h')}:${tf(date, 'm')}:${tf(date, 's')}'`,
         pos = new vscode.Position(start.line, start.character);
 
     (end.line !== start.line || end.character !== start.character) ? edit(edit => edit.replace(selection, time)) : edit(edit => edit.insert(pos, time));
@@ -168,10 +169,10 @@ function CreateComment() {
     if (args) {
         const space = ''.padEnd(wordAtCursorRange.start.character, ' ');
         let comment = space + '/**\n', type;
-        comment += space + ' * ' + ext.lg['comm_func'] + '\n';
+        comment += space + ' * ' + lg['comm_func'] + '\n';
         args[1].replace(/\s+/g, ' ').trim().split(',').forEach((item, index) => {
             a = item.match(/(?<= )(?:[\w&[\]=]+)$/, 'g');
-            if (a) comment += `${space} * @param  ${a[0]}: ${ext.lg['comm_arg']} ${index + 1}\n`;
+            if (a) comment += `${space} * @param  ${a[0]}: ${lg['comm_arg']} ${index + 1}\n`;
         });
         if ((type = snip.match(reg)[1]) != 'void') comment += `${space} * @return ( ${type} )\n`;
         comment += space + ' */\n';
@@ -182,17 +183,19 @@ function CreateComment() {
 
 async function OpenFileInMetaEditor(uri) {
     const extension = pathModule.extname(uri.fsPath).toLowerCase(), config = vscode.workspace.getConfiguration('mql_tools'), wn = vscode.workspace.name.includes('MQL4'), fileName = pathModule.basename(uri.fsPath);
-    let MetaDir, CommM, portableMode;
+    let MetaDir, CommM, portableMode, settingName;
 
     if (['.mq4', '.mqh'].includes(extension) && wn) {
         MetaDir = config.Metaeditor.Metaeditor4Dir;
         portableMode = config.Metaeditor.Portable4;
-        CommM = ext.lg['path_editor4'];
+        CommM = lg['path_editor4'];
+        settingName = 'mql_tools.Metaeditor.Metaeditor4Dir';
     }
     else if (['.mq5', '.mqh'].includes(extension) && !wn) {
         MetaDir = config.Metaeditor.Metaeditor5Dir;
         portableMode = config.Metaeditor.Portable5;
-        CommM = ext.lg['path_editor5'];
+        CommM = lg['path_editor5'];
+        settingName = 'mql_tools.Metaeditor.Metaeditor5Dir';
     }
     else
         return undefined;
@@ -203,14 +206,24 @@ async function OpenFileInMetaEditor(uri) {
     MetaDir = resolvePathRelativeToWorkspace(MetaDir, workspaceFolderPath);
 
     if (typeof MetaDir !== 'string' || !MetaDir.length) {
-        return vscode.window.showErrorMessage(`${CommM} [${MetaDir || ''}]`);
+        return vscode.window.showErrorMessage(`${CommM} [${MetaDir || ''}]`, 'Configure')
+            .then(selection => {
+                if (selection === 'Configure') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', settingName);
+                }
+            });
     }
 
     const Nm = pathModule.basename(MetaDir), Pm = pathModule.dirname(MetaDir),
         lowNm = Nm.toLowerCase();
 
     if (!(fs.existsSync(Pm) && (lowNm === 'metaeditor.exe' || lowNm === 'metaeditor64.exe'))) {
-        return vscode.window.showErrorMessage(`${CommM} [${MetaDir}]`);
+        return vscode.window.showErrorMessage(`${CommM} [${MetaDir}]`, 'Configure')
+            .then(selection => {
+                if (selection === 'Configure') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', settingName);
+                }
+            });
     }
 
     const portableSwitch = generatePortableSwitch(portableMode);
@@ -226,22 +239,112 @@ async function OpenFileInMetaEditor(uri) {
             const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore' });
             proc.on('error', (err) => {
                 console.error('Wine process error:', err);
-                vscode.window.showErrorMessage(`${ext.lg['err_open_in_me']} - ${fileName}`);
+                vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
             });
             proc.unref();
         } else {
             const args = [uri.fsPath];
             if (portableSwitch) args.push(portableSwitch);
-            const proc = childProcess.spawn(MetaDir, args, {detached: true, stdio: 'ignore'});
+            const proc = childProcess.spawn(MetaDir, args, { detached: true, stdio: 'ignore' });
             proc.on('error', (err) => {
                 console.error('MetaEditor launch error:', err);
-                vscode.window.showErrorMessage(`${ext.lg['err_open_in_me']} - ${fileName}`);
+                vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
             });
             proc.unref();
         }
     }
     catch (e) {
-        return vscode.window.showErrorMessage(`${ext.lg['err_open_in_me']} - ${fileName}`);
+        return vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
+    }
+}
+
+async function OpenTradingTerminal() {
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    const editor = vscode.window.activeTextEditor;
+
+    // Determine MQL version from active file or workspace name
+    let isMql4 = false;
+    if (editor) {
+        const fileName = editor.document.fileName.toLowerCase();
+        if (fileName.includes('mql4')) {
+            isMql4 = true;
+        } else if (fileName.includes('mql5')) {
+            isMql4 = false;
+        } else if (vscode.workspace.name && vscode.workspace.name.includes('MQL4')) {
+            isMql4 = true;
+        }
+    } else if (vscode.workspace.name && vscode.workspace.name.includes('MQL4')) {
+        isMql4 = true;
+    }
+
+    let TerminalDir, CommT, portableMode, settingName;
+
+    if (isMql4) {
+        TerminalDir = config.Terminal.Terminal4Dir;
+        portableMode = config.Metaeditor.Portable4;
+        CommT = lg['path_terminal4'];
+        settingName = 'mql_tools.Terminal.Terminal4Dir';
+    } else {
+        TerminalDir = config.Terminal.Terminal5Dir;
+        portableMode = config.Metaeditor.Portable5;
+        CommT = lg['path_terminal5'];
+        settingName = 'mql_tools.Terminal.Terminal5Dir';
+    }
+
+    // Allow ${workspaceFolder} and relative paths in settings.
+    const wsFolder = (editor && vscode.workspace.getWorkspaceFolder(editor.document.uri)) ||
+        (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
+    const workspaceFolderPath = wsFolder && wsFolder.uri ? wsFolder.uri.fsPath : '';
+    TerminalDir = resolvePathRelativeToWorkspace(TerminalDir, workspaceFolderPath);
+
+    if (typeof TerminalDir !== 'string' || !TerminalDir.length) {
+        return vscode.window.showErrorMessage(`${CommT} [${TerminalDir || ''}]`, 'Configure')
+            .then(selection => {
+                if (selection === 'Configure') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', settingName);
+                }
+            });
+    }
+
+    const Nm = pathModule.basename(TerminalDir), Pm = pathModule.dirname(TerminalDir),
+        lowNm = Nm.toLowerCase();
+
+    if (!(fs.existsSync(Pm) && (lowNm === 'terminal.exe' || lowNm === 'terminal64.exe'))) {
+        return vscode.window.showErrorMessage(`${CommT} [${TerminalDir}]`, 'Configure')
+            .then(selection => {
+                if (selection === 'Configure') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', settingName);
+                }
+            });
+    }
+
+    const portableSwitch = generatePortableSwitch(portableMode);
+    const useWine = isWineEnabled(config);
+
+    try {
+        if (useWine) {
+            const wineBinary = getWineBinary(config);
+            const args = [TerminalDir];
+            if (portableSwitch) args.push(portableSwitch);
+            const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore' });
+            proc.on('error', (err) => {
+                console.error('Wine process error:', err);
+                vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
+            });
+            proc.unref();
+        } else {
+            const args = [];
+            if (portableSwitch) args.push(portableSwitch);
+            const proc = childProcess.spawn(TerminalDir, args, { detached: true, stdio: 'ignore' });
+            proc.on('error', (err) => {
+                console.error('Terminal launch error:', err);
+                vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
+            });
+            proc.unref();
+        }
+    }
+    catch (e) {
+        return vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
     }
 }
 
@@ -257,5 +360,6 @@ module.exports = {
     InsertTime,
     InsertIcon,
     CreateComment,
-    OpenFileInMetaEditor
+    OpenFileInMetaEditor,
+    OpenTradingTerminal
 }

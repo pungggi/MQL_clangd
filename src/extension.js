@@ -19,7 +19,6 @@ const REG_ERROR_CODE = /(?<=error |warning )\d+/;
 const REG_FULL_PATH = /[a-z]:\\.+/gi;
 const REG_LINE_POS = /\((?:\d+,\d+)\)$/gm;
 const REG_LINE_FRAGMENT = /\((?=(\d+,\d+).$)/gm;
-const language = vscode.env.language;
 
 const diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
 let autoCheckTimer = null;
@@ -27,8 +26,9 @@ let isAutoCheckRunning = false;
 let autoCheckDocVersions = new Map(); // Track document versions to ignore our own edits
 // Guard to prevent CheckOnSave from re-triggering itself when Compile() saves files.
 let internalSaveDepth = 0;
+const lg = require("./language");
 const { Help, OfflineHelp } = require("./help");
-const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, CreateComment } = require("./contextMenu");
+const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require("./contextMenu");
 const { IconsInstallation } = require("./addIcon");
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, obj_items } = require("./provider");
 const { registerLightweightDiagnostics } = require("./lightweightDiagnostics");
@@ -37,14 +37,6 @@ const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndex
 const { toWineWindowsPath, isWineEnabled, getWineBinary } = require("./wineHelper");
 const logTailer = require("./logTailer");
 const outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
-
-
-try {
-    var lg = require(`../landes.${language}.json`);
-}
-catch (error) {
-    lg = require('../landes.json');
-}
 
 // =============================================================================
 // SPELLCHECK INDEX - Lazy-loaded dictionary for typo detection
@@ -722,7 +714,8 @@ function replaceLog(str, f) {
         }
     }
 
-    exports.obj_hover = obj_hover;
+    // Store obj_hover in module-level variable for access by provider
+    module.exports.obj_hover = obj_hover;
     return {
         text: text,
         error: ye,
@@ -2017,6 +2010,7 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsTime', () => InsertTime()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsIcon', () => InsertIcon()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => OpenFileInMetaEditor(uri)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', () => OpenTradingTerminal()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));
 
@@ -2154,6 +2148,5 @@ module.exports = {
     activate,
     deactivate,
     replaceLog,
-    lg,
     tf
 }

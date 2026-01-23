@@ -2,6 +2,8 @@
     "mql_tools.configuration.DeleteLog.description": "Protokolldatei nach Prüfung/Kompilierung löschen",
     "mql_tools.configuration.Metaeditor4Dir.description": "Pfad zu \"metaeditor.exe\": MQL4",
     "mql_tools.configuration.Metaeditor5Dir.description": "Pfad zu \"metaeditor.exe\": MQL5",
+    "mql_tools.configuration.Terminal4Dir.description": "Pfad zu \"terminal.exe\": MQL4",
+    "mql_tools.configuration.Terminal5Dir.description": "Pfad zu \"terminal64.exe\": MQL5",
     "mql_tools.configuration.Include4Dir.description": "Pfad zum \"Include\"-Ordner: MQL4 (optional)",
     "mql_tools.configuration.Include5Dir.description": "Pfad zum \"Include\"-Ordner: MQL5 (optional)",
     "mql_tools.configuration.Portable4.description": "Portablen Modus für MetaTrader 4 aktivieren (verwendet /portable-Schalter)",
@@ -33,5 +35,7 @@
     "mql_tools.commands.InsTime.title": "Datum und Uhrzeit als JJJJ.MM.TT hh:mm:ss einfügen",
     "mql_tools.commands.InsIcon.title": "Symbol als #property einfügen",
     "mql_tools.commands.openInME.title": "In 'MetaEditor' öffnen",
-    "mql_tools.commands.createCommentary.title": "Funktionskommentar erstellen"
+    "mql_tools.commands.openTradingTerminal.title": "Handelsterminal öffnen",
+    "mql_tools.commands.createCommentary.title": "Funktionskommentar erstellen",
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Störende clangd-Diagnose melden"
 }

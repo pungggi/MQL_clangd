@@ -2,6 +2,8 @@
     "mql_tools.configuration.DeleteLog.description": "檢查/編譯後刪除日誌檔案",
     "mql_tools.configuration.Metaeditor4Dir.description": "\"metaeditor.exe\" 路徑：MQL4",
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" 路徑：MQL5",
+    "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" 路徑：MQL4",
+    "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" 路徑：MQL5",
     "mql_tools.configuration.Include4Dir.description": "\"Include\" 資料夾路徑：MQL4（可選）",
     "mql_tools.configuration.Include5Dir.description": "\"Include\" 資料夾路徑：MQL5（可選）",
     "mql_tools.configuration.Portable4.description": "啟用 MetaTrader 4 可攜模式（使用 /portable 開關）",
@@ -33,5 +35,7 @@
     "mql_tools.commands.InsTime.title": "以 YYYY.MM.DD hh:mm:ss 格式插入日期時間",
     "mql_tools.commands.InsIcon.title": "以 #property 形式插入圖示",
     "mql_tools.commands.openInME.title": "在 'MetaEditor' 中開啟",
-    "mql_tools.commands.createCommentary.title": "建立函數註解"
+    "mql_tools.commands.openTradingTerminal.title": "開啟交易終端",
+    "mql_tools.commands.createCommentary.title": "建立函數註解",
+    "mql_tools.commands.reportNoisyDiagnostic.title": "報告嘈雜的 clangd 診斷"
 }

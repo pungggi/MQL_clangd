@@ -13,9 +13,8 @@
 | Diagnostics in Problems tab | ❌ | ✅ |
 | Multi-root workspace support | ❌ | ✅ |
 | Direct MQL5 doc links | ❌ | ✅ |
-| Clean compilation not necessary to open MetaEditor | ❌ | ✅ |
+| Compilation - not necessary to open MetaEditor | ❌ | ✅ |
 | Smart Compile Target for Headers | ❌ | ✅ |
-| Wine Support (macOS/Linux) | Limited | **Full** |
 | Document Symbols (Outline, Breadcrumbs) | ❌ | ✅ |
 
 ---

@@ -4,6 +4,8 @@
     "comp_usi_script": "Компиляция (скрипт)",
     "path_editor4": "Неверный путь к \"metaeditor.exe\": MQL4",
     "path_editor5": "Неверный путь к \"metaeditor.exe\": MQL5",
+    "path_terminal4": "Неверный путь к \"terminal.exe\": MQL4",
+    "path_terminal5": "Неверный путь к \"terminal64.exe\": MQL5",
     "path_include_4": "Неверный путь к 'Include': MQL4",
     "path_include_5": "Неверный путь к 'Include': MQL5",
     "mqh": "Для компиляции, нужно прописать в первой строке \"mqh\" документа, имя \"mql\" файла. Пример: //###<Experts/Examples/MACD Sample.mq5>",
@@ -26,5 +28,6 @@
     "comm_func": "Данная функция выполняет волю разработчика",
     "comm_arg": "Аргумент",
     "err_open_in_me": "Не удалось открыть в MetaEditor",
+    "err_open_terminal": "Не удалось открыть торговый терминал",
     "hover_log": "Перейти по ссылке"
 }

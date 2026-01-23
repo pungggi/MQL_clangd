@@ -2,6 +2,8 @@
     "mql_tools.configuration.DeleteLog.description": "검사/컴파일 후 로그 파일 삭제",
     "mql_tools.configuration.Metaeditor4Dir.description": "\"metaeditor.exe\" 경로: MQL4",
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" 경로: MQL5",
+    "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" 경로: MQL4",
+    "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" 경로: MQL5",
     "mql_tools.configuration.Include4Dir.description": "\"Include\" 폴더 경로: MQL4 (선택사항)",
     "mql_tools.configuration.Include5Dir.description": "\"Include\" 폴더 경로: MQL5 (선택사항)",
     "mql_tools.configuration.Portable4.description": "MetaTrader 4 휴대용 모드 활성화 (/portable 스위치 사용)",
@@ -33,5 +35,7 @@
     "mql_tools.commands.InsTime.title": "날짜 및 시간을 YYYY.MM.DD hh:mm:ss 형식으로 삽입",
     "mql_tools.commands.InsIcon.title": "아이콘을 #property로 삽입",
     "mql_tools.commands.openInME.title": "'MetaEditor'에서 열기",
-    "mql_tools.commands.createCommentary.title": "함수 주석 생성"
+    "mql_tools.commands.openTradingTerminal.title": "트레이딩 터미널 열기",
+    "mql_tools.commands.createCommentary.title": "함수 주석 생성",
+    "mql_tools.commands.reportNoisyDiagnostic.title": "시끄러운 clangd 진단 보고"
 }

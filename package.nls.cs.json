@@ -2,6 +2,8 @@
     "mql_tools.configuration.DeleteLog.description": "Smazat soubor protokolu po kontrole/kompilaci",
     "mql_tools.configuration.Metaeditor4Dir.description": "Cesta k \"metaeditor.exe\": MQL4",
     "mql_tools.configuration.Metaeditor5Dir.description": "Cesta k \"metaeditor.exe\": MQL5",
+    "mql_tools.configuration.Terminal4Dir.description": "Cesta k \"terminal.exe\": MQL4",
+    "mql_tools.configuration.Terminal5Dir.description": "Cesta k \"terminal64.exe\": MQL5",
     "mql_tools.configuration.Include4Dir.description": "Cesta ke složce \"Include\": MQL4 (volitelné)",
     "mql_tools.configuration.Include5Dir.description": "Cesta ke složce \"Include\": MQL5 (volitelné)",
     "mql_tools.configuration.LogDir.description": "Název souboru protokolu. Pokud není vyplněn, bude vytvořen automaticky",
@@ -31,5 +33,7 @@
     "mql_tools.commands.InsTime.title": "Vložit datum a čas jako RRRR.MM.DD hh:mm:ss",
     "mql_tools.commands.InsIcon.title": "Vložit ikonu jako #property",
     "mql_tools.commands.openInME.title": "Otevřít v 'MetaEditor'",
-    "mql_tools.commands.createCommentary.title": "Vytvořit komentář funkce"
+    "mql_tools.commands.openTradingTerminal.title": "Otevřít obchodní terminál",
+    "mql_tools.commands.createCommentary.title": "Vytvořit komentář funkce",
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Nahlásit hlučnou diagnostiku clangd"
 }

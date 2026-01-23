@@ -4,7 +4,7 @@ const fs = require('fs');
 const fsPromises = fs.promises;
 const pathModule = require('path');
 const sleep = require('util').promisify(setTimeout);
-const ext = require('./extension');
+const lg = require('./language');
 
 async function AddIcon(
     NameExt,
@@ -36,13 +36,13 @@ async function AddIcon(
     }
     catch (e) {
         return NameDir === '' ?
-            vscode.window.showInformationMessage(`${ext.lg['s_i_m']} '${NameExt}'`, ext.lg['but_text_i'])
+            vscode.window.showInformationMessage(`${lg['s_i_m']} '${NameExt}'`, lg['but_text_i'])
                 .then((selection) => {
-                    if (selection === ext.lg['but_text_i']) {
+                    if (selection === lg['but_text_i']) {
                         vscode.window.withProgress(
                             {
                                 location: vscode.ProgressLocation.Notification,
-                                title: `${ext.lg['s_i_m_1']} '${NameExt}'`,
+                                title: `${lg['s_i_m_1']} '${NameExt}'`,
                             },
                             async () => {
                                 await vscode.commands.executeCommand('workbench.extensions.installExtension', FullNameExt);
@@ -52,7 +52,7 @@ async function AddIcon(
                         );
                     }
                 })
-            : vscode.window.showWarningMessage(`'${NameExt}' ${ext.lg['s_i_m_4']}`);
+            : vscode.window.showWarningMessage(`'${NameExt}' ${lg['s_i_m_4']}`);
     }
 
     if (NameExt === 'Material Icon Theme') {
@@ -114,7 +114,7 @@ async function add(dirName, fileExt, dirJsonName, JsonFileName, PartPath, NameDi
         await fsPromises.writeFile(jsonPath, json, 'utf8');
     }
 
-    vscode.window.showInformationMessage(`${ext.lg['s_i_m_2']} '${NameExt}'`);
+    vscode.window.showInformationMessage(`${lg['s_i_m_2']} '${NameExt}'`);
 }
 
 async function add_material(NameExt, extenPath) {
@@ -144,7 +144,7 @@ async function add_material(NameExt, extenPath) {
 
     config.update('material-icon-theme.files.associations', obj, true);
 
-    vscode.window.showInformationMessage(`${ext.lg['s_i_m_2']} '${NameExt}'`);
+    vscode.window.showInformationMessage(`${lg['s_i_m_2']} '${NameExt}'`);
 }
 
 async function add_vsicons(NameExt, extenPath) {
@@ -173,7 +173,7 @@ async function add_vsicons(NameExt, extenPath) {
     config.update('vsicons.customIconFolderPath', pathModule.join(extenPath, 'mql-tools-icons'), true);
     config.update('vsicons.associations.files', obj, true);
 
-    vscode.window.showInformationMessage(`${ext.lg['s_i_m_2']} '${NameExt}'`);
+    vscode.window.showInformationMessage(`${lg['s_i_m_2']} '${NameExt}'`);
 }
 
 function IconsInstallation() {
@@ -196,7 +196,7 @@ function IconsInstallation() {
         },
     ];
 
-    vscode.window.showQuickPick(options, { placeHolder: ext.lg['s_i_t'] }).then((item) => {
+    vscode.window.showQuickPick(options, { placeHolder: lg['s_i_t'] }).then((item) => {
         if (!item)
             return undefined;
 
