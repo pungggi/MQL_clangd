@@ -1,12 +1,20 @@
 # Changelog
 
-## 1.0.18 (Unpublished)
+## 1.0.18  (2026-01-24)
+
+### Features
+- **Live Runtime Log**:
+  - New command `MQL: Toggle Live Runtime Log` to start/stop log monitoring
+  - Status bar indicator showing tailing state with toggle functionality
+  - Displays logs in dedicated output channel with real-time updates
+  - Configuration via `mql_tools.Metaeditor.Include4Dir` and `mql_tools.Metaeditor.Include5Dir` settings
 
 ### Improvements
 - **Reduced hover verbosity**:
   - Documentation tooltips now strip redundant return type prefixes (e.g., `(int)`) when providing descriptions for standard MQL functions.
   - Added `Hover: ShowAKA: No` to the generated `.clangd` configuration to suppress verbose type alias information in tooltips.
   - Improved regex for return type stripping to be more robust across different MQL data types.
+- **Enhanced configuration descriptions**: Updated `Include4Dir` and `Include5Dir` settings to use markdown descriptions highlighting their importance for the Live Runtime Log feature
 
 ## 1.0.17 (2026-01-23)
 

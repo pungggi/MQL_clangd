@@ -35,6 +35,7 @@ const { registerLightweightDiagnostics } = require("./lightweightDiagnostics");
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require("./createProperties");
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require("./compileTargetResolver");
 const { toWineWindowsPath, isWineEnabled, getWineBinary } = require("./wineHelper");
+const logTailer = require("./logTailer");
 const outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
 
 
@@ -2017,6 +2018,9 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsIcon', () => InsertIcon()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => OpenFileInMetaEditor(uri)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));
+
+    logTailer.initStatusBar();
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider('mql-output', DefinitionProvider()));
@@ -2142,6 +2146,7 @@ function activate(context) {
 }
 
 function deactivate() {
+    logTailer.stop();
 }
 
 

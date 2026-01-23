@@ -57,12 +57,12 @@
                 "mql_tools.Metaeditor.Include4Dir": {
                     "type": "string",
                     "default": "",
-                    "description": "%mql_tools.configuration.Include4Dir.description%"
+                    "markdownDescription": "Path to the **MQL4 Data Folder** (the one containing `Include`, `Logs`, `Experts`, etc.). This is critical for finding library headers and for the **Live Runtime Log** feature to locate your terminal logs. Supports `${workspaceFolder}`."
                 },
                 "mql_tools.Metaeditor.Include5Dir": {
                     "type": "string",
                     "default": "",
-                    "description": "%mql_tools.configuration.Include5Dir.description%"
+                    "markdownDescription": "Path to the **MQL5 Data Folder** (the one containing `Include`, `Logs`, `Experts`, etc.). This is critical for finding library headers and for the **Live Runtime Log** feature to locate your terminal logs. Supports `${workspaceFolder}`."
                 },
                 "mql_tools.Metaeditor.Portable4": {
                     "type": "boolean",
@@ -348,6 +348,11 @@
             {
                 "command": "mql_tools.resetAllCompileTargets",
                 "title": "Reset All Compile Target Mappings",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.toggleTerminalLog",
+                "title": "Toggle Live Runtime Log",
                 "category": "MQL"
             }
         ],

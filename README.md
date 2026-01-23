@@ -131,6 +131,22 @@ When `mql_tools.Wine.Enabled` is `true` on macOS/Linux:
 
 ---
 
+### Live Runtime Log
+
+Monitor your MQL4/MQL5 terminal logs in real-time directly within VS Code—no need to switch to MetaTrader or open external log files.
+
+**Features:**
+- **Real-time log tailing**: See `Print()` statements and terminal messages as they happen
+- **Status bar integration**: Click the status bar item to toggle log monitoring on/off
+
+**Notes:**
+- The extension automatically detects MQL version from your active file, workspace folder name, or configured settings
+- If the data folder path is not configured, the extension will attempt to infer it from your workspace structure
+- Only new log entries are shown (historical logs are not dumped on start)
+- The log file path follows MetaTrader's naming convention: `YYYYMMDD.log`
+
+---
+
 ### Troubleshooting clangd diagnostics (MQL-specific)
 
 If you open built-in examples like `MQL5/Experts/Examples/MACD/MACD Sample.mq5` and see a large number of clangd errors, work through the steps below.
