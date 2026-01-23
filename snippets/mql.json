@@ -1,0 +1,407 @@
+{
+    "OnInit Handler": {
+        "prefix": [
+            "oninit",
+            "OnInit"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Expert initialization function                                   |",
+            "//+------------------------------------------------------------------+",
+            "int OnInit()",
+            "{",
+            "    $0",
+            "    return INIT_SUCCEEDED;",
+            "}"
+        ],
+        "description": "OnInit event handler for EA/Indicator initialization"
+    },
+    "OnDeinit Handler": {
+        "prefix": [
+            "ondeinit",
+            "OnDeinit"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Expert deinitialization function                                 |",
+            "//+------------------------------------------------------------------+",
+            "void OnDeinit(const int reason)",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "OnDeinit event handler for cleanup"
+    },
+    "OnTick Handler": {
+        "prefix": [
+            "ontick",
+            "OnTick"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Expert tick function                                             |",
+            "//+------------------------------------------------------------------+",
+            "void OnTick()",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "OnTick event handler for EA"
+    },
+    "OnCalculate Handler (Simple)": {
+        "prefix": [
+            "oncalculate",
+            "OnCalculate"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Custom indicator iteration function                              |",
+            "//+------------------------------------------------------------------+",
+            "int OnCalculate(const int rates_total,",
+            "                const int prev_calculated,",
+            "                const int begin,",
+            "                const double &price[])",
+            "{",
+            "    $0",
+            "    return rates_total;",
+            "}"
+        ],
+        "description": "OnCalculate event handler for indicators (simple form)"
+    },
+    "OnCalculate Handler (Full)": {
+        "prefix": [
+            "oncalculatefull",
+            "OnCalculateFull"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Custom indicator iteration function                              |",
+            "//+------------------------------------------------------------------+",
+            "int OnCalculate(const int rates_total,",
+            "                const int prev_calculated,",
+            "                const datetime &time[],",
+            "                const double &open[],",
+            "                const double &high[],",
+            "                const double &low[],",
+            "                const double &close[],",
+            "                const long &tick_volume[],",
+            "                const long &volume[],",
+            "                const int &spread[])",
+            "{",
+            "    $0",
+            "    return rates_total;",
+            "}"
+        ],
+        "description": "OnCalculate event handler for indicators (full form with OHLC)"
+    },
+    "OnStart Handler": {
+        "prefix": [
+            "onstart",
+            "OnStart"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Script program start function                                    |",
+            "//+------------------------------------------------------------------+",
+            "void OnStart()",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "OnStart event handler for scripts"
+    },
+    "OnTimer Handler": {
+        "prefix": [
+            "ontimer",
+            "OnTimer"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Timer function                                                   |",
+            "//+------------------------------------------------------------------+",
+            "void OnTimer()",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "OnTimer event handler"
+    },
+    "OnChartEvent Handler": {
+        "prefix": [
+            "onchartevent",
+            "OnChartEvent"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| ChartEvent function                                              |",
+            "//+------------------------------------------------------------------+",
+            "void OnChartEvent(const int id,",
+            "                  const long &lparam,",
+            "                  const double &dparam,",
+            "                  const string &sparam)",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "OnChartEvent handler for chart events"
+    },
+    "OnTrade Handler": {
+        "prefix": [
+            "ontrade",
+            "OnTrade"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| Trade function                                                   |",
+            "//+------------------------------------------------------------------+",
+            "void OnTrade()",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "OnTrade event handler"
+    },
+    "OnTradeTransaction Handler": {
+        "prefix": [
+            "ontradetransaction",
+            "OnTradeTransaction"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| TradeTransaction function                                        |",
+            "//+------------------------------------------------------------------+",
+            "void OnTradeTransaction(const MqlTradeTransaction &trans,",
+            "                        const MqlTradeRequest &request,",
+            "                        const MqlTradeResult &result)",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "OnTradeTransaction event handler"
+    },
+    "Input Parameter": {
+        "prefix": [
+            "input",
+            "inp"
+        ],
+        "body": [
+            "input ${1:int} ${2:InpParameter} = ${3:0};  // ${4:Parameter description}"
+        ],
+        "description": "Input parameter declaration"
+    },
+    "Input Group": {
+        "prefix": [
+            "inputgroup",
+            "inpgroup"
+        ],
+        "body": [
+            "//--- ${1:Group Name}",
+            "input ${2:int}    ${3:InpParam1} = ${4:0};     // ${5:Description 1}",
+            "input ${6:double} ${7:InpParam2} = ${8:0.0};   // ${9:Description 2}",
+            "$0"
+        ],
+        "description": "Group of input parameters"
+    },
+    "Property Indicator": {
+        "prefix": [
+            "propindicator",
+            "indicator_property"
+        ],
+        "body": [
+            "#property indicator_chart_window",
+            "#property indicator_buffers ${1:1}",
+            "#property indicator_plots   ${2:1}",
+            "",
+            "#property indicator_label1  \"${3:Label}\"",
+            "#property indicator_type1   DRAW_LINE",
+            "#property indicator_color1  clr${4:Blue}",
+            "#property indicator_style1  STYLE_SOLID",
+            "#property indicator_width1  1",
+            "$0"
+        ],
+        "description": "Indicator property declarations"
+    },
+    "Property EA": {
+        "prefix": [
+            "propea",
+            "ea_property"
+        ],
+        "body": [
+            "#property copyright \"${1:Copyright}\"",
+            "#property link      \"${2:https://}\"",
+            "#property version   \"${3:1.00}\"",
+            "$0"
+        ],
+        "description": "EA property declarations"
+    },
+    "MQL Header Comment": {
+        "prefix": [
+            "header",
+            "mqlheader"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//|                                              ${1:filename}.mq5 |",
+            "//|                                  Copyright ${2:2024}, ${3:Author} |",
+            "//|                                             ${4:https://} |",
+            "//+------------------------------------------------------------------+",
+            "$0"
+        ],
+        "description": "MQL file header comment"
+    },
+    "Function Comment": {
+        "prefix": [
+            "funccomment",
+            "functionheader"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| ${1:Function description}                                        |",
+            "//+------------------------------------------------------------------+"
+        ],
+        "description": "Function header comment"
+    },
+    "For Loop": {
+        "prefix": [
+            "fori",
+            "forloop"
+        ],
+        "body": [
+            "for(int ${1:i} = ${2:0}; ${1:i} < ${3:count}; ${1:i}++)",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "For loop with int counter"
+    },
+    "For Loop Reverse": {
+        "prefix": [
+            "forr",
+            "forrev"
+        ],
+        "body": [
+            "for(int ${1:i} = ${2:rates_total} - 1; ${1:i} >= ${3:0}; ${1:i}--)",
+            "{",
+            "    $0",
+            "}"
+        ],
+        "description": "Reverse for loop"
+    },
+    "OrderSend MQL5": {
+        "prefix": [
+            "ordersend",
+            "trade"
+        ],
+        "body": [
+            "MqlTradeRequest request = {};",
+            "MqlTradeResult  result = {};",
+            "",
+            "request.action    = TRADE_ACTION_DEAL;",
+            "request.symbol    = ${1:_Symbol};",
+            "request.volume    = ${2:0.1};",
+            "request.type      = ${3:ORDER_TYPE_BUY};",
+            "request.price     = ${4:SymbolInfoDouble(_Symbol, SYMBOL_ASK)};",
+            "request.sl        = ${5:0};",
+            "request.tp        = ${6:0};",
+            "request.deviation = ${7:10};",
+            "request.magic     = ${8:123456};",
+            "request.comment   = \"${9:Comment}\";",
+            "",
+            "if(!OrderSend(request, result))",
+            "{",
+            "    Print(\"OrderSend error: \", GetLastError());",
+            "}",
+            "$0"
+        ],
+        "description": "MQL5 OrderSend with MqlTradeRequest"
+    },
+    "CopyRates Pattern": {
+        "prefix": [
+            "copyrates",
+            "rates"
+        ],
+        "body": [
+            "MqlRates ${1:rates}[];",
+            "ArraySetAsSeries(${1:rates}, true);",
+            "int copied = CopyRates(${2:_Symbol}, ${3:PERIOD_CURRENT}, ${4:0}, ${5:100}, ${1:rates});",
+            "if(copied <= 0)",
+            "{",
+            "    Print(\"CopyRates failed: \", GetLastError());",
+            "    return;",
+            "}",
+            "$0"
+        ],
+        "description": "CopyRates with error handling"
+    },
+    "Indicator Handle Pattern": {
+        "prefix": [
+            "indicatorhandle",
+            "ihandle"
+        ],
+        "body": [
+            "int ${1:handle} = ${2:iMA}(${3:_Symbol}, ${4:PERIOD_CURRENT}, ${5:14}, ${6:0}, ${7:MODE_SMA}, ${8:PRICE_CLOSE});",
+            "if(${1:handle} == INVALID_HANDLE)",
+            "{",
+            "    Print(\"Failed to create indicator handle: \", GetLastError());",
+            "    return INIT_FAILED;",
+            "}",
+            "$0"
+        ],
+        "description": "Create indicator handle with error check"
+    },
+    "CopyBuffer Pattern": {
+        "prefix": [
+            "copybuffer",
+            "buffer"
+        ],
+        "body": [
+            "double ${1:buffer}[];",
+            "ArraySetAsSeries(${1:buffer}, true);",
+            "if(CopyBuffer(${2:handle}, ${3:0}, ${4:0}, ${5:100}, ${1:buffer}) <= 0)",
+            "{",
+            "    Print(\"CopyBuffer failed: \", GetLastError());",
+            "    return;",
+            "}",
+            "$0"
+        ],
+        "description": "CopyBuffer with error handling"
+    },
+    "Class Definition": {
+        "prefix": [
+            "class",
+            "mqlclass"
+        ],
+        "body": [
+            "//+------------------------------------------------------------------+",
+            "//| ${1:ClassName} class                                             |",
+            "//+------------------------------------------------------------------+",
+            "class ${1:ClassName}",
+            "{",
+            "private:",
+            "    ${2:// Private members}",
+            "",
+            "public:",
+            "    ${1:ClassName}()  { }",
+            "    ~${1:ClassName}() { }",
+            "    ",
+            "    $0",
+            "};"
+        ],
+        "description": "MQL class definition"
+    },
+    "Enum Definition": {
+        "prefix": [
+            "enum",
+            "mqlenum"
+        ],
+        "body": [
+            "enum ENUM_${1:NAME}",
+            "{",
+            "    ${2:VALUE_1},",
+            "    ${3:VALUE_2},",
+            "    $0",
+            "};"
+        ],
+        "description": "Enum definition"
+    }
+}

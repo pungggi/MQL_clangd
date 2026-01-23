@@ -1,0 +1,499 @@
+{
+    "name": "mql-clangd",
+    "displayName": "MQL Clangd",
+    "description": "High-performance MQL4/MQL5 tools with Clangd support.",
+    "version": "1.0.18",
+    "publisher": "ngsoftware",
+    "engines": {
+        "vscode": "^1.75.0",
+        "node": ">22.0.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters",
+        "Snippets",
+        "Other"
+    ],
+    "keywords": [
+        "mql",
+        "mql4",
+        "mql5",
+        "mqh",
+        "mq4",
+        "mq5",
+        "clangd",
+        "metatrader",
+        "intellisense"
+    ],
+    "icon": "images/mql_icon.png",
+    "galleryBanner": {
+        "color": "#1e1e1e",
+        "theme": "dark"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/pungggi/MQL_clangd"
+    },
+    "main": "./src/extension.js",
+    "contributes": {
+        "configuration": {
+            "title": "MQL Clangd",
+            "properties": {
+                "mql_tools.LogFile.DeleteLog": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%mql_tools.configuration.DeleteLog.description%"
+                },
+                "mql_tools.Metaeditor.Metaeditor4Dir": {
+                    "type": "string",
+                    "default": "C:\\MT4_Install\\MetaTrader\\metaeditor.exe",
+                    "description": "%mql_tools.configuration.Metaeditor4Dir.description%"
+                },
+                "mql_tools.Metaeditor.Metaeditor5Dir": {
+                    "type": "string",
+                    "default": "C:\\MT5_Install\\MetaTrader\\metaeditor.exe",
+                    "description": "%mql_tools.configuration.Metaeditor5Dir.description%"
+                },
+                "mql_tools.Metaeditor.Include4Dir": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%mql_tools.configuration.Include4Dir.description%"
+                },
+                "mql_tools.Metaeditor.Include5Dir": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%mql_tools.configuration.Include5Dir.description%"
+                },
+                "mql_tools.Metaeditor.Portable4": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%mql_tools.configuration.Portable4.description%"
+                },
+                "mql_tools.Metaeditor.Portable5": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%mql_tools.configuration.Portable5.description%"
+                },
+                "mql_tools.LogFile.NameLog": {
+                    "type": "string",
+                    "default": "",
+                    "description": "%mql_tools.configuration.LogDir.description%"
+                },
+                "mql_tools.ShowButton.Compile": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%mql_tools.configuration.ShowButtonCompile.description%"
+                },
+                "mql_tools.ShowButton.Check": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%mql_tools.configuration.ShowButtonCheck.description%"
+                },
+                "mql_tools.ShowButton.Script": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%mql_tools.configuration.ShowButtonScript.description%"
+                },
+                "mql_tools.Script.MiniME": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%mql_tools.configuration.MiniME.description%"
+                },
+                "mql_tools.Script.Timetomini": {
+                    "type": "number",
+                    "default": 500,
+                    "minimum": 100,
+                    "description": "%mql_tools.configuration.Timetomini.description%"
+                },
+                "mql_tools.Script.CloseME": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%mql_tools.configuration.CloseME.description%"
+                },
+                "mql_tools.AutoCheck.Enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically run syntax check after you stop typing (debounced)."
+                },
+                "mql_tools.AutoCheck.Delay": {
+                    "type": "number",
+                    "default": 3000,
+                    "minimum": 1000,
+                    "maximum": 30000,
+                    "description": "Delay in milliseconds before auto-check runs after typing stops (default: 3000ms)."
+                },
+                "mql_tools.CheckOnSave": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically run syntax check when an MQL file is saved."
+                },
+                "mql_tools.Diagnostics.Lightweight": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable lightweight live diagnostics for common MQL errors (no MetaEditor required). Provides instant feedback while typing."
+                },
+                "mql_tools.Wine.Enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%mql_tools.configuration.Wine.Enabled.description%"
+                },
+                "mql_tools.Wine.Binary": {
+                    "type": "string",
+                    "default": "wine64",
+                    "description": "%mql_tools.configuration.Wine.Binary.description%"
+                },
+                "mql_tools.context": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDeprecationMessage": "%mql_tools.configuration.context%"
+                },
+                "mql_tools.CompileTarget.Storage": {
+                    "type": "string",
+                    "enum": [
+                        "workspaceState",
+                        "globalState",
+                        "workspaceSettings"
+                    ],
+                    "default": "workspaceState",
+                    "description": "Where to store compile target mappings for .mqh files. 'workspaceState': per-user, per-workspace (recommended). 'globalState': per-user, across all workspaces. 'workspaceSettings': in .vscode/settings.json (shared with team).",
+                    "enumDescriptions": [
+                        "Store mappings per-user, per-workspace (not shared with team)",
+                        "Store mappings per-user, across all workspaces (not shared with team)",
+                        "Store mappings in workspace settings (shared with team via .vscode/settings.json)"
+                    ]
+                },
+                "mql_tools.CompileTarget.AllowMultiSelect": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Allow selecting multiple compile targets for a single .mqh header file."
+                },
+                "mql_tools.CompileTarget.InferMaxFiles": {
+                    "type": "number",
+                    "default": 5000,
+                    "minimum": 100,
+                    "maximum": 50000,
+                    "description": "Maximum number of files to scan when building the include graph for automatic target inference."
+                },
+                "mql_tools.CompileTarget.Map": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Manual mapping of .mqh header files to their compile targets (workspace-relative paths). Only used when Storage is set to 'workspaceSettings'.",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "mql_tools.Clangd.PreserveSuppressions": {
+                    "type": "string",
+                    "enum": [
+                        "prompt",
+                        "always",
+                        "never"
+                    ],
+                    "default": "prompt",
+                    "description": "Whether to preserve custom diagnostic suppressions when re-running 'MQL: Create configuration'. 'prompt': ask each time (default). 'always': automatically merge existing suppressions. 'never': always overwrite the .clangd file.",
+                    "enumDescriptions": [
+                        "Ask whether to merge suppressions each time",
+                        "Automatically merge existing suppressions",
+                        "Always overwrite the .clangd file"
+                    ]
+                }
+            }
+        },
+        "languages": [
+            {
+                "id": "cpp",
+                "extensions": [
+                    ".mq4",
+                    ".mq5",
+                    ".mqh"
+                ],
+                "configuration": "./syntaxes/mql.configuration.json"
+            },
+            {
+                "id": "mql-output",
+                "mimetypes": [
+                    "text/x-code-output"
+                ]
+            }
+        ],
+        "grammars": [
+            {
+                "language": "cpp",
+                "scopeName": "source.mql",
+                "path": "./syntaxes/mql.tmLanguage"
+            },
+            {
+                "language": "mql-output",
+                "scopeName": "mql.output",
+                "path": "./syntaxes/mql.out.tmLanguage"
+            }
+        ],
+        "snippets": [
+            {
+                "language": "cpp",
+                "path": "./snippets/mql.json"
+            }
+        ],
+        "commands": [
+            {
+                "command": "mql_tools.compileScript",
+                "title": "%mql_tools.commands.compileScript.title%",
+                "category": "MQL",
+                "icon": {
+                    "dark": "./media/script_dark.svg",
+                    "light": "./media/script_light.svg"
+                }
+            },
+            {
+                "command": "mql_tools.compileFile",
+                "title": "%mql_tools.commands.compileFile.title%",
+                "category": "MQL",
+                "icon": {
+                    "dark": "./media/compile_dark.svg",
+                    "light": "./media/compile_light.svg"
+                }
+            },
+            {
+                "command": "mql_tools.checkFile",
+                "title": "%mql_tools.commands.checkFile.title%",
+                "category": "MQL",
+                "icon": {
+                    "dark": "./media/check_dark.svg",
+                    "light": "./media/check_light.svg"
+                }
+            },
+            {
+                "command": "mql_tools.help",
+                "title": "%mql_tools.commands.help.title%",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.offlineHelp",
+                "title": "%mql_tools.commands.offlineHelp.title%",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.configurations",
+                "title": "%mql_tools.commands.configurations.title%",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.Addicon",
+                "title": "%mql_tools.commands.Addicon.title%",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.Showfiles",
+                "title": "%mql_tools.commands.Showfiles.title%"
+            },
+            {
+                "command": "mql_tools.InsNameMQL",
+                "title": "%mql_tools.commands.InsNameMQL.title%"
+            },
+            {
+                "command": "mql_tools.InsMQL",
+                "title": "%mql_tools.commands.InsNameMQL.title%"
+            },
+            {
+                "command": "mql_tools.InsNameMQH",
+                "title": "%mql_tools.commands.InsNameMQH.title%"
+            },
+            {
+                "command": "mql_tools.InsMQH",
+                "title": "%mql_tools.commands.InsNameMQH.title%"
+            },
+            {
+                "command": "mql_tools.InsResource",
+                "title": "%mql_tools.commands.InsResource.title%"
+            },
+            {
+                "command": "mql_tools.InsImport",
+                "title": "%mql_tools.commands.InsImport.title%"
+            },
+            {
+                "command": "mql_tools.InsTime",
+                "title": "%mql_tools.commands.InsTime.title%"
+            },
+            {
+                "command": "mql_tools.InsIcon",
+                "title": "%mql_tools.commands.InsIcon.title%"
+            },
+            {
+                "command": "mql_tools.commentary",
+                "title": "%mql_tools.commands.createCommentary.title%"
+            },
+            {
+                "command": "mql_tools.openInME",
+                "title": "%mql_tools.commands.openInME.title%"
+            },
+            {
+                "command": "mql_tools.reportNoisyDiagnostic",
+                "title": "%mql_tools.commands.reportNoisyDiagnostic.title%",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.selectCompileTarget",
+                "title": "Select Compile Target(s) for Header",
+                "category": "MQL",
+                "icon": "$(target)"
+            },
+            {
+                "command": "mql_tools.resetCompileTarget",
+                "title": "Reset Compile Target for Current Header",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.resetAllCompileTargets",
+                "title": "Reset All Compile Target Mappings",
+                "category": "MQL"
+            }
+        ],
+        "menus": {
+            "editor/context": [
+                {
+                    "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh",
+                    "submenu": "mql_tools.commentary.context",
+                    "group": "mql"
+                }
+            ],
+            "editor/title": [
+                {
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Script == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.Script == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Script == true",
+                    "command": "mql_tools.compileScript",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Compile == true",
+                    "command": "mql_tools.compileFile",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Check == true|| resourceExtname == .mq5 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Check == true",
+                    "command": "mql_tools.checkFile",
+                    "group": "navigation"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "when": "config.mql_tools.context == true",
+                    "command": "mql_tools.Showfiles",
+                    "group": "z_commands"
+                },
+                {
+                    "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh",
+                    "command": "mql_tools.openInME",
+                    "group": "z_commands"
+                },
+                {
+                    "when": "resourceExtname == .mqh",
+                    "command": "mql_tools.InsNameMQH",
+                    "group": "z_commands"
+                },
+                {
+                    "when": "resourceExtname == .mq4 || resourceExtname == .mq5",
+                    "command": "mql_tools.InsNameMQL",
+                    "group": "z_commands"
+                }
+            ],
+            "mql_tools.commentary.context": [
+                {
+                    "command": "mql_tools.commentary",
+                    "group": "comment"
+                },
+                {
+                    "command": "mql_tools.InsMQH",
+                    "group": "insert"
+                },
+                {
+                    "command": "mql_tools.InsResource",
+                    "group": "insert"
+                },
+                {
+                    "command": "mql_tools.InsImport",
+                    "group": "insert"
+                },
+                {
+                    "command": "mql_tools.InsTime",
+                    "group": "insert"
+                },
+                {
+                    "command": "mql_tools.InsIcon",
+                    "group": "insert"
+                },
+                {
+                    "when": "resourceExtname == .mqh",
+                    "command": "mql_tools.InsMQL",
+                    "group": "insert"
+                }
+            ]
+        },
+        "submenus": [
+            {
+                "id": "mql_tools.commentary.context",
+                "label": "MQL Clangd"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "mql_tools.compileFile",
+                "key": "ctrl+shift+x",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.checkFile",
+                "key": "ctrl+shift+z",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.compileScript",
+                "key": "ctrl+shift+c",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.help",
+                "key": "shift+F1",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.configurations",
+                "key": "ctrl+alt+m",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.openInME",
+                "key": "ctrl+alt+o",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.commentary",
+                "key": "ctrl+alt+c",
+                "when": "editorTextFocus && resourceExtname == .mq4 || editorTextFocus && resourceExtname == .mq5 || editorTextFocus && resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.InsMQH",
+                "key": "ctrl+alt+i",
+                "when": "editorTextFocus && resourceExtname == .mq4 || editorTextFocus && resourceExtname == .mq5 || editorTextFocus && resourceExtname == .mqh"
+            }
+        ]
+    },
+    "extensionDependencies": [
+        "llvm-vs-code-extensions.vscode-clangd"
+    ],
+    "scripts": {
+        "lint": "eslint .",
+        "pretest": "npm run lint",
+        "test": "node ./test/runTest.js",
+        "test:unit": "node ./test/runUnitTests.js"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.10",
+        "@types/node": "22.x",
+        "@types/vscode": "^1.75.0",
+        "eslint": "^8.57.1",
+        "mocha": "^11.7.5"
+    },
+    "license": "MIT"
+}

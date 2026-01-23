@@ -1,0 +1,22 @@
+{
+  "name": "mql-stub-generator",
+  "version": "1.0.0",
+  "description": "Generates clangd-compatible stub declarations from MQL5 Standard Library headers",
+  "main": "index.js",
+  "bin": {
+    "mql-stub-gen": "./index.js"
+  },
+  "scripts": {
+    "generate": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "mql5",
+    "metatrader",
+    "clangd",
+    "stub-generator"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
