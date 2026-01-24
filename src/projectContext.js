@@ -58,8 +58,11 @@ function extractSymbolsFromText(text, filePath) {
         const enumName = match[1];
         const enumBody = match[2];
         const members = enumBody.split(',')
-            .map(m => m.trim().split(/[=\s]/)[0].trim())
-            .filter(m => m && !m.startsWith('//'));
+            .map(m => {
+                const cleaned = m.replace(/\/\/.*$/, '').trim();
+                return cleaned.split('=')[0].trim();
+            })
+            .filter(m => m);
         symbols.enums.push({ name: enumName, members: members.slice(0, 10) }); // Limit members
     }
 
@@ -70,13 +73,55 @@ function extractSymbolsFromText(text, filePath) {
         const name = match[2];
         const base = match[3] || null;
 
-        // Find the class body (simplified - find matching brace)
+        const STATE_NORMAL = 0;
+        const STATE_SINGLE_QUOTE = 1;
+        const STATE_DOUBLE_QUOTE = 2;
+        const STATE_TEMPLATE = 3;
+        const STATE_SINGLE_COMMENT = 4;
+        const STATE_MULTI_COMMENT = 5;
+
         const startIdx = match.index + match[0].length;
         let braceCount = 1;
         let endIdx = startIdx;
+        let state = STATE_NORMAL;
+        let escapeNext = false;
+
         for (let i = startIdx; i < text.length && braceCount > 0; i++) {
-            if (text[i] === '{') braceCount++;
-            else if (text[i] === '}') braceCount--;
+            const ch = text[i];
+            const nextCh = i + 1 < text.length ? text[i + 1] : '';
+
+            if (escapeNext) {
+                escapeNext = false;
+            } else if (ch === '\\') {
+                escapeNext = true;
+            } else {
+                switch (state) {
+                    case STATE_NORMAL:
+                        if (ch === '\'') state = STATE_SINGLE_QUOTE;
+                        else if (ch === '"') state = STATE_DOUBLE_QUOTE;
+                        else if (ch === '`') state = STATE_TEMPLATE;
+                        else if (ch === '/' && nextCh === '/') { state = STATE_SINGLE_COMMENT; i++; }
+                        else if (ch === '/' && nextCh === '*') { state = STATE_MULTI_COMMENT; i++; }
+                        else if (ch === '{') braceCount++;
+                        else if (ch === '}') braceCount--;
+                        break;
+                    case STATE_SINGLE_QUOTE:
+                        if (ch === '\'') state = STATE_NORMAL;
+                        break;
+                    case STATE_DOUBLE_QUOTE:
+                        if (ch === '"') state = STATE_NORMAL;
+                        break;
+                    case STATE_TEMPLATE:
+                        if (ch === '`') state = STATE_NORMAL;
+                        break;
+                    case STATE_SINGLE_COMMENT:
+                        if (ch === '\n') state = STATE_NORMAL;
+                        break;
+                    case STATE_MULTI_COMMENT:
+                        if (ch === '*' && nextCh === '/') { state = STATE_NORMAL; i++; }
+                        break;
+                }
+            }
             endIdx = i;
         }
         const classBody = text.substring(startIdx, endIdx);
@@ -178,9 +223,12 @@ async function generateContextContent(workspaceFolder, config) {
     const pattern = scanMode === 'IncludesOnly' ? '**/*.mqh' : '**/*.{mq4,mq5,mqh}';
 
     // Find all matching files
+    const exclude = excludePatterns.length > 0
+        ? `{${excludePatterns.join(',')},**/node_modules/**}`
+        : `**/node_modules/**`;
     const files = await vscode.workspace.findFiles(
         new vscode.RelativePattern(workspaceFolder, pattern),
-        `{${excludePatterns.join(',')},**/node_modules/**}`
+        exclude
     );
 
     // Aggregate symbols
@@ -351,7 +399,8 @@ function generateMarkdownOutput(data, fileList, allDefines, allEnums, allClasses
         md += '| Name | Value | File |\n';
         md += '|------|-------|------|\n';
         for (const d of allDefines.slice(0, 100)) {
-            md += `| \`${d.name}\` | \`${d.value || ''}\` | ${d.file} |\n`;
+            const escapePipes = (v) => (v || '').replace(/\|/g, '\\|');
+            md += `| \`${escapePipes(d.name)}\` | \`${escapePipes(d.value)}\` | ${escapePipes(d.file)} |\n`;
         }
         if (allDefines.length > 100) {
             md += `\n*... and ${allDefines.length - 100} more defines*\n`;
@@ -430,15 +479,16 @@ async function writeContextFile(workspaceFolder) {
         const content = await generateContextContent(workspaceFolder, config);
 
         // Token Count Warning
-        const tokens = enc.encode(content).length;
+        const warningHeader = `> ⚠️ **WARNING**: This file is **${enc.encode(content).length.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}). It may exceed your AI context window.\n\n`;
+        const finalContent = warningHeader + content;
+        const tokens = enc.encode(finalContent).length;
         if (maxTokens > 0 && tokens > maxTokens) {
             const msg = `[MQL Context] Warning: Generated context is ${tokens.toLocaleString()} tokens (exceeds ${maxTokens.toLocaleString()}). Costs may be high.`;
             vscode.window.showWarningMessage(msg);
             console.warn(msg);
 
             // Inject warning into the markdown file itself
-            const warningHeader = `> ⚠️ **WARNING**: This file is **${tokens.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}). It may exceed your AI context window.\n\n`;
-            await fs.promises.writeFile(filePath, warningHeader + content, 'utf-8');
+            await fs.promises.writeFile(filePath, finalContent, 'utf-8');
         } else {
             await fs.promises.writeFile(filePath, content, 'utf-8');
         }
