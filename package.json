@@ -133,8 +133,7 @@
                 },
                 "mql_tools.context": {
                     "type": "boolean",
-                    "default": false,
-                    "markdownDeprecationMessage": "%mql_tools.configuration.context%"
+                    "default": false
                 },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
