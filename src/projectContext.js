@@ -291,11 +291,11 @@ async function generateContextContent(workspaceFolder, config, resolvedFormat) {
         }
     }));
 
-    // Sort lists for deterministic output
+    // Sort lists for deterministic output (primary key, then file as secondary)
     fileList.sort((a, b) => a.path.localeCompare(b.path));
-    allDefines.sort((a, b) => a.name.localeCompare(b.name));
-    allEnums.sort((a, b) => a.name.localeCompare(b.name));
-    allClasses.sort((a, b) => a.name.localeCompare(b.name));
+    allDefines.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file));
+    allEnums.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file));
+    allClasses.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file));
     allFunctions.sort((a, b) => a.signature.localeCompare(b.signature) || a.file.localeCompare(b.file));
 
     // Build data object for TOML/Markdown
