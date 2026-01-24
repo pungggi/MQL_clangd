@@ -19,6 +19,32 @@ let debounceTimer = null;
 const DEBOUNCE_MS = 2000;
 
 /**
+ * Validate and resolve format consistency between FileName and Format
+ * @param {string} fileName - The configured FileName
+ * @param {string} format - The configured Format
+ * @returns {{ format: string, message: string|null }}
+ */
+function validateAndResolveFormat(fileName, format) {
+    const ext = pathModule.extname(fileName).toLowerCase();
+    let inferredFormat = null;
+
+    if (ext === '.toml') {
+        inferredFormat = 'toml';
+    } else if (ext === '.md' || ext === '.markdown') {
+        inferredFormat = 'markdown';
+    }
+
+    if (inferredFormat && inferredFormat !== format) {
+        const msg = `[MQL Context] mql_tools.ProjectContext.FileName extension (${ext}) conflicts with mql_tools.ProjectContext.Format (${format}). Using format inferred from extension: ${inferredFormat}.`;
+        vscode.window.showWarningMessage(msg);
+        console.warn(msg);
+        return { format: inferredFormat, message: msg };
+    }
+
+    return { format, message: null };
+}
+
+/**
  * Extract symbols from a file's text content (without needing a vscode.TextDocument)
  * @param {string} text - File content
  * @param {string} filePath - For reference
@@ -212,9 +238,10 @@ function generateStdLibStub(includeStdLib) {
  * Generate the project context markdown content
  * @param {vscode.WorkspaceFolder} workspaceFolder
  * @param {object} config
+ * @param {string} resolvedFormat - The resolved output format (toml or markdown)
  * @returns {Promise<string>}
  */
-async function generateContextContent(workspaceFolder, config) {
+async function generateContextContent(workspaceFolder, config, resolvedFormat) {
     const scanMode = config.get('ProjectContext.ScanMode', 'IncludesOnly');
     const includeStdLib = config.get('ProjectContext.IncludeStdLib', true);
     const excludePatterns = config.get('ProjectContext.ExcludePatterns', []);
@@ -292,10 +319,8 @@ async function generateContextContent(workspaceFolder, config) {
         data.stdlib = generateStdLibData();
     }
 
-    // Format based on configuration
-    const format = config.get('ProjectContext.Format', 'toml');
-
-    if (format === 'toml') {
+    // Format based on resolved configuration
+    if (resolvedFormat === 'toml') {
         return generateTomlOutput(data);
     } else {
         return generateMarkdownOutput(data, fileList, allDefines, allEnums, allClasses, allFunctions, includeStdLib);
@@ -471,12 +496,15 @@ function generateMarkdownOutput(data, fileList, allDefines, allEnums, allClasses
  */
 async function writeContextFile(workspaceFolder) {
     const config = vscode.workspace.getConfiguration('mql_tools');
-    const fileName = config.get('ProjectContext.FileName', '.mql-context.md');
+    const fileName = config.get('ProjectContext.FileName', '.mql-context.toml');
+    const format = config.get('ProjectContext.Format', 'toml');
     const maxTokens = config.get('ProjectContext.MaxTokens', 100000);
+
+    const { format: resolvedFormat } = validateAndResolveFormat(fileName, format);
     const filePath = pathModule.join(workspaceFolder.uri.fsPath, fileName);
 
     try {
-        const content = await generateContextContent(workspaceFolder, config);
+        const content = await generateContextContent(workspaceFolder, config, resolvedFormat);
 
         // Token Count Warning
         const warningHeader = `> ⚠️ **WARNING**: This file is **${enc.encode(content).length.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}). It may exceed your AI context window.\n\n`;
@@ -573,7 +601,7 @@ async function activateProjectContext(context) {
     context.workspaceState.update('projectContextActivated', true);
 
     const config = vscode.workspace.getConfiguration('mql_tools');
-    const fileName = config.get('ProjectContext.FileName', '.mql-context.md');
+    const fileName = config.get('ProjectContext.FileName', '.mql-context.toml');
     vscode.window.showInformationMessage(`MQL Project Context activated. File: ${fileName}`);
 }
 

@@ -165,8 +165,8 @@ Generate an AI-friendly project context file that provides a condensed summary o
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `mql_tools.ProjectContext.FileName` | string | `.mql-context.toml` | Output file name |
-| `mql_tools.ProjectContext.Format` | enum | `toml` | Output format (`toml` or `markdown`) |
+| `mql_tools.ProjectContext.FileName` | string | `.mql-context.toml` | Output file name. The extension determines the format (takes precedence over `Format`. `.toml` → TOML, `.md`/`.markdown` → Markdown) |
+| `mql_tools.ProjectContext.Format` | enum | `toml` | Output format (`toml` or `markdown`). Note: `FileName` extension takes precedence; a warning is shown if there's a conflict |
 | `mql_tools.ProjectContext.EnableAutoUpdate` | boolean | `true` | Auto-regenerate on file changes |
 | `mql_tools.ProjectContext.ScanMode` | enum | `IncludesOnly` | Which files to index (`IncludesOnly` or `FullWorkspace`) |
 | `mql_tools.ProjectContext.IncludeStdLib` | boolean | `true` | Include MQL standard library summary |

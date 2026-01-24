@@ -14,7 +14,6 @@
   - Persists activation state across VS Code sessions
   - New configuration settings: `ProjectContext.FileName`, `ProjectContext.Format`, `ProjectContext.EnableAutoUpdate`, `ProjectContext.ScanMode`, `ProjectContext.IncludeStdLib`, `ProjectContext.ExcludePatterns`, `ProjectContext.MaxTokens`
 
-
 ## 1.0.18  (2026-01-24)
 
 ### Features

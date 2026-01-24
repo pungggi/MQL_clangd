@@ -213,7 +213,7 @@
                 "mql_tools.ProjectContext.FileName": {
                     "type": "string",
                     "default": ".mql-context.toml",
-                    "markdownDescription": "Name of the generated context file, relative to project root. Examples: `.mql-context.toml`, `.mql-context.md`."
+                    "markdownDescription": "Name of the generated context file, relative to project root. Examples: `.mql-context.toml`, `.mql-context.md`. The file extension determines the output format (takes precedence over `mql_tools.ProjectContext.Format`). `.toml` → TOML, `.md` or `.markdown` → Markdown."
                 },
                 "mql_tools.ProjectContext.Format": {
                     "type": "string",
@@ -222,7 +222,7 @@
                         "markdown"
                     ],
                     "default": "toml",
-                    "description": "Output format for the context file.",
+                    "description": "Output format for the context file. Note: The `mql_tools.ProjectContext.FileName` extension takes precedence. If the extension conflicts with this setting, the extension-derived format is used and a warning is shown.",
                     "enumDescriptions": [
                         "TOML format (recommended - optimized for AI context engines)",
                         "Markdown format (human-readable with diagrams)"
