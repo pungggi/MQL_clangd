@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.0.18",
+    "version": "1.0.19",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.75.0",
@@ -209,6 +209,61 @@
                         "Automatically merge existing suppressions",
                         "Always overwrite the .clangd file"
                     ]
+                },
+                "mql_tools.ProjectContext.FileName": {
+                    "type": "string",
+                    "default": ".mql-context.toml",
+                    "markdownDescription": "Name of the generated context file, relative to project root. Examples: `.mql-context.toml`, `.mql-context.md`."
+                },
+                "mql_tools.ProjectContext.Format": {
+                    "type": "string",
+                    "enum": [
+                        "toml",
+                        "markdown"
+                    ],
+                    "default": "toml",
+                    "description": "Output format for the context file.",
+                    "enumDescriptions": [
+                        "TOML format (recommended - optimized for AI context engines)",
+                        "Markdown format (human-readable with diagrams)"
+                    ]
+                },
+                "mql_tools.ProjectContext.EnableAutoUpdate": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically regenerate the context file when MQL files change."
+                },
+                "mql_tools.ProjectContext.ScanMode": {
+                    "type": "string",
+                    "enum": [
+                        "IncludesOnly",
+                        "FullWorkspace"
+                    ],
+                    "default": "IncludesOnly",
+                    "description": "Which files to index. 'IncludesOnly' scans only .mqh (libraries). 'FullWorkspace' scans all MQL files.",
+                    "enumDescriptions": [
+                        "Index only .mqh files (recommended - focuses on your libraries)",
+                        "Index all .mq4, .mq5, and .mqh files"
+                    ]
+                },
+                "mql_tools.ProjectContext.IncludeStdLib": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Include a summary of high-frequency MQL standard library functions."
+                },
+                "mql_tools.ProjectContext.ExcludePatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Glob patterns to exclude from scanning (e.g., '**/Backup/**', '**/Old/**')."
+                },
+                "mql_tools.ProjectContext.MaxTokens": {
+                    "type": "number",
+                    "default": 100000,
+                    "minimum": 10000,
+                    "description": "Maximum token count before showing a warning. Set to 0 to disable warnings."
                 }
             }
         },
@@ -369,6 +424,11 @@
                 "command": "mql_tools.toggleTerminalLog",
                 "title": "Toggle Live Runtime Log",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.activateProjectContext",
+                "title": "Activate Project Context",
+                "category": "MQL"
             }
         ],
         "menus": {
@@ -520,5 +580,9 @@
         "eslint": "^8.57.1",
         "mocha": "^11.7.5"
     },
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "js-tiktoken": "^1.0.21",
+        "smol-toml": "^1.6.0"
+    }
 }

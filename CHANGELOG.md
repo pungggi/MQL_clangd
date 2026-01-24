@@ -1,5 +1,20 @@
 # Changelog
 
+## Unpublished
+
+### Features
+- **MQL Project Context & AI Bridge**: New command `MQL: Activate Project Context` generates an AI-friendly context file at project root
+  - **TOML format** (default): Optimized for AI context engines (uses `smol-toml`)
+  - **Markdown format**: Human-readable with Mermaid dependency diagrams
+  - Extracts symbol tables: `#define`, `enum`, `class/struct`, function signatures, and `#include` dependencies
+  - Includes curated summary of high-frequency MQL standard library functions
+  - Auto-updates on file changes with debounced file watcher (2s delay)
+  - Token counting with `js-tiktoken` (configurable warning threshold)
+  - Parallel file I/O for improved performance
+  - Persists activation state across VS Code sessions
+  - New configuration settings: `ProjectContext.FileName`, `ProjectContext.Format`, `ProjectContext.EnableAutoUpdate`, `ProjectContext.ScanMode`, `ProjectContext.IncludeStdLib`, `ProjectContext.ExcludePatterns`, `ProjectContext.MaxTokens`
+
+
 ## 1.0.18  (2026-01-24)
 
 ### Features

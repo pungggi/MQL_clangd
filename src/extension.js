@@ -36,6 +36,7 @@ const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require("./compileTargetResolver");
 const { toWineWindowsPath, isWineEnabled, getWineBinary } = require("./wineHelper");
 const logTailer = require("./logTailer");
+const { activateProjectContext, restoreContextWatcher } = require("./projectContext");
 const outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
 
 // =============================================================================
@@ -2137,6 +2138,12 @@ function activate(context) {
     fileWatcher.onDidCreate(markFolderDirty);
     fileWatcher.onDidDelete(markFolderDirty);
     context.subscriptions.push(fileWatcher);
+
+    // Register Project Context command
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.activateProjectContext', () => activateProjectContext(context)));
+
+    // Restore Project Context watcher if previously activated
+    restoreContextWatcher(context);
 }
 
 function deactivate() {

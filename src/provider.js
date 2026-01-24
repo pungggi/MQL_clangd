@@ -1025,5 +1025,6 @@ module.exports = {
     HelpProvider,
     ColorProvider,
     MQLDocumentSymbolProvider,
-    obj_items
+    obj_items,
+    extractDocumentSymbols
 }
