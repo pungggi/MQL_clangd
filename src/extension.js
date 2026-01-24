@@ -267,9 +267,6 @@ async function compilePath(rt, pathToCompile, _context) {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const fileName = pathModule.basename(pathToCompile);
     const extension = pathModule.extname(pathToCompile).toLowerCase();
-    const Timemini = config.Script.Timetomini;
-    const mme = config.Script.MiniME;
-    const cme = config.Script.CloseME;
     const startT = new Date();
     const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
 
@@ -475,19 +472,21 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         })
                         .on('close', () => {
-                            outputChannel.appendLine(String(cme ? log.text : log.text + lg['info_log_compile']));
+                            outputChannel.appendLine(String(log.text + lg['info_log_compile']));
                             resolve();
                         });
                 } else {
-                    const scriptCmd = mme ? `powershell -Command "Start-Process -FilePath '${MetaDir}' -ArgumentList '/compile:\\"${compileArg}\\"' -WindowStyle Minimized; Start-Sleep -Milliseconds ${Timemini}; ${cme ? 'Stop-Process -Name metaeditor -Force' : ''}"` : `"${MetaDir}" /compile:"${compileArg}"`;
-                    childProcess.exec(scriptCmd, (error) => {
-                        if (error) {
+                    // Direct execution on Windows
+                    const args = [`/compile:${compileArg}`];
+                    childProcess.spawn(MetaDir, args, { shell: false })
+                        .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
-                            return resolve();
-                        }
-                        outputChannel.appendLine(String(cme ? log.text : log.text + lg['info_log_compile']));
-                        resolve();
-                    });
+                            resolve();
+                        })
+                        .on('close', () => {
+                            outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                            resolve();
+                        });
                 }
             } else {
                 outputChannel.appendLine(String(log.text));
