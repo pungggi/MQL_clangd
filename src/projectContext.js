@@ -483,6 +483,19 @@ function generateMarkdownOutput(data, fileList, allDefines, allEnums, allClasses
 
 
 /**
+ * Remove the generated timestamp from content for comparison purposes
+ * @param {string} content
+ * @returns {string}
+ */
+function stripGeneratedTimestamp(content) {
+    // For TOML: remove the generated = "..." line
+    // For Markdown: remove the **Generated**: ... line
+    return content
+        .replace(/^generated\s*=\s*"[^"]*"\s*$/gm, '')
+        .replace(/^\*\*Generated\*\*:\s*.*$/gm, '');
+}
+
+/**
  * Write the context file
  * @param {vscode.WorkspaceFolder} workspaceFolder
  */
@@ -497,6 +510,23 @@ async function writeContextFile(workspaceFolder) {
 
     try {
         const content = await generateContextContent(workspaceFolder, config, resolvedFormat);
+
+        // Check if file exists and compare content (excluding timestamp)
+        let existingContent = '';
+        try {
+            existingContent = await fs.promises.readFile(filePath, 'utf-8');
+        } catch {
+            // File doesn't exist, will be created
+        }
+
+        // Compare content without timestamps
+        const newContentStripped = stripGeneratedTimestamp(content);
+        const existingContentStripped = stripGeneratedTimestamp(existingContent);
+
+        if (newContentStripped === existingContentStripped) {
+            console.log(`[MQL Context] No changes detected, skipping update: ${filePath}`);
+            return;
+        }
 
         // Token Count Warning
         const warningHeader = `> ⚠️ **WARNING**: This file is **${enc.encode(content).length.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}).\n\n`;
