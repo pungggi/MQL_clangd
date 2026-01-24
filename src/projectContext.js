@@ -14,6 +14,17 @@ const enc = getEncoding('cl100k_base');
 // Generates a context file (.toml or .md) for AI Agents and manual users
 // =============================================================================
 
+const STDLIB_CATEGORIES = {
+    'Account': ['AccountInfoDouble', 'AccountInfoInteger', 'AccountInfoString'],
+    'Trading': ['OrderSend', 'OrderClose', 'OrderModify', 'OrderDelete', 'PositionOpen', 'PositionClose', 'PositionModify'],
+    'Market': ['SymbolInfoDouble', 'SymbolInfoInteger', 'SymbolInfoString', 'MarketInfo'],
+    'Arrays': ['ArraySize', 'ArrayResize', 'ArrayCopy', 'ArraySort', 'ArrayMaximum', 'ArrayMinimum'],
+    'Math': ['MathMax', 'MathMin', 'MathAbs', 'MathRound', 'MathFloor', 'MathCeil', 'MathPow', 'MathSqrt'],
+    'Strings': ['StringLen', 'StringFind', 'StringSubstr', 'StringConcatenate', 'IntegerToString', 'DoubleToString'],
+    'Time': ['TimeCurrent', 'TimeLocal', 'TimeGMT', 'iTime'],
+    'Indicators': ['iMA', 'iRSI', 'iMACD', 'iBands', 'iATR', 'iStochastic']
+};
+
 let contextWatcher = null;
 let debounceTimer = null;
 const DEBOUNCE_MS = 2000;
@@ -203,21 +214,9 @@ function extractSymbolsFromText(text, filePath) {
 function generateStdLibStub(includeStdLib) {
     if (!includeStdLib) return '';
 
-    // Filter to common trading functions (group 2 = functions)
-    const categories = {
-        'Account': ['AccountInfoDouble', 'AccountInfoInteger', 'AccountInfoString'],
-        'Trading': ['OrderSend', 'OrderClose', 'OrderModify', 'OrderDelete', 'PositionOpen', 'PositionClose', 'PositionModify'],
-        'Market': ['SymbolInfoDouble', 'SymbolInfoInteger', 'SymbolInfoString', 'MarketInfo'],
-        'Arrays': ['ArraySize', 'ArrayResize', 'ArrayCopy', 'ArraySort', 'ArrayMaximum', 'ArrayMinimum'],
-        'Math': ['MathMax', 'MathMin', 'MathAbs', 'MathRound', 'MathFloor', 'MathCeil', 'MathPow', 'MathSqrt'],
-        'Strings': ['StringLen', 'StringFind', 'StringSubstr', 'StringConcatenate', 'IntegerToString', 'DoubleToString'],
-        'Time': ['TimeCurrent', 'TimeLocal', 'TimeGMT', 'iTime'],
-        'Indicators': ['iMA', 'iRSI', 'iMACD', 'iBands', 'iATR', 'iStochastic']
-    };
-
     let md = '\n## MQL Standard Library (High-Frequency Functions)\n\n';
 
-    for (const [category, funcs] of Object.entries(categories)) {
+    for (const [category, funcs] of Object.entries(STDLIB_CATEGORIES)) {
         const validFuncs = funcs.filter(f => obj_items[f]);
         if (validFuncs.length === 0) continue;
 
@@ -332,19 +331,8 @@ async function generateContextContent(workspaceFolder, config, resolvedFormat) {
  * @returns {object}
  */
 function generateStdLibData() {
-    const categories = {
-        'Account': ['AccountInfoDouble', 'AccountInfoInteger', 'AccountInfoString'],
-        'Trading': ['OrderSend', 'OrderClose', 'OrderModify', 'OrderDelete', 'PositionOpen', 'PositionClose', 'PositionModify'],
-        'Market': ['SymbolInfoDouble', 'SymbolInfoInteger', 'SymbolInfoString', 'MarketInfo'],
-        'Arrays': ['ArraySize', 'ArrayResize', 'ArrayCopy', 'ArraySort', 'ArrayMaximum', 'ArrayMinimum'],
-        'Math': ['MathMax', 'MathMin', 'MathAbs', 'MathRound', 'MathFloor', 'MathCeil', 'MathPow', 'MathSqrt'],
-        'Strings': ['StringLen', 'StringFind', 'StringSubstr', 'StringConcatenate', 'IntegerToString', 'DoubleToString'],
-        'Time': ['TimeCurrent', 'TimeLocal', 'TimeGMT', 'iTime'],
-        'Indicators': ['iMA', 'iRSI', 'iMACD', 'iBands', 'iATR', 'iStochastic']
-    };
-
     const result = {};
-    for (const [category, funcs] of Object.entries(categories)) {
+    for (const [category, funcs] of Object.entries(STDLIB_CATEGORIES)) {
         result[category] = funcs
             .filter(f => obj_items[f] && obj_items[f].code && obj_items[f].code[0])
             .map(f => obj_items[f].code[0].label);
@@ -364,7 +352,12 @@ function generateTomlOutput(data) {
 # Format: TOML (optimized for AI context engines)
 
 `;
-    return header + TOML.stringify(data);
+    try {
+        return header + TOML.stringify(data);
+    } catch (err) {
+        console.error(`[MQL Context] TOML serialization failed: ${err.message}`);
+        return header + `# ERROR: TOML serialization failed.\n# Reason: ${err.message}\n# The data object may contain circular references or unsupported types.\n`;
+    }
 }
 
 /**
@@ -542,8 +535,8 @@ function scheduleUpdate(workspaceFolder) {
 
 /**
  * Initialize the context file watcher
- * @param {vscode.ExtensionContext} context
- * @param {vscode.WorkspaceFolder} workspaceFolder
+ * @param {vscode.ExtensionContext} context - The extension context
+ * @param {vscode.WorkspaceFolder} workspaceFolder - The workspace folder to watch for file changes
  */
 function initializeContextWatcher(context, workspaceFolder) {
     // Dispose existing watcher if any
