@@ -8,11 +8,11 @@
   - **Markdown format**: Human-readable with Mermaid dependency diagrams
   - Extracts symbol tables: `#define`, `enum`, `class/struct`, function signatures, and `#include` dependencies
   - Includes curated summary of high-frequency MQL standard library functions
-  - Auto-updates on file changes with debounced file watcher (2s delay)
+  - Auto-updates on file changes with debounced file watcher (default 12s delay, configurable)
   - Token counting with `js-tiktoken` (configurable warning threshold)
-  - Parallel file I/O for improved performance
+  - Concurrency-limited parallel file I/O for reduced system load
   - Persists activation state across VS Code sessions
-  - New configuration settings: `ProjectContext.FileName`, `ProjectContext.Format`, `ProjectContext.EnableAutoUpdate`, `ProjectContext.ScanMode`, `ProjectContext.IncludeStdLib`, `ProjectContext.ExcludePatterns`, `ProjectContext.MaxTokens`
+  - New configuration settings: `ProjectContext.FileName`, `ProjectContext.Format`, `ProjectContext.EnableAutoUpdate`, `ProjectContext.AutoUpdateDelay`, `ProjectContext.ScanMode`, `ProjectContext.IncludeStdLib`, `ProjectContext.ExcludePatterns`, `ProjectContext.MaxTokens`
 
 ## 1.0.18
 

@@ -264,6 +264,13 @@
                     "default": 100000,
                     "minimum": 0,
                     "description": "Maximum token count before showing a warning. Set to 0 to disable warnings."
+                },
+                "mql_tools.ProjectContext.AutoUpdateDelay": {
+                    "type": "number",
+                    "default": 12000,
+                    "minimum": 2000,
+                    "maximum": 60000,
+                    "description": "Delay in milliseconds before regenerating context file after file changes (default: 12000ms)."
                 }
             }
         },

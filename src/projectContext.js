@@ -27,7 +27,7 @@ const STDLIB_CATEGORIES = {
 
 let contextWatcher = null;
 let debounceTimer = null;
-const DEBOUNCE_MS = 2000;
+const DEFAULT_DEBOUNCE_MS = 12000;
 
 /**
  * Validate and resolve format consistency between FileName and Format
@@ -264,32 +264,36 @@ async function generateContextContent(workspaceFolder, config, resolvedFormat) {
     const allFunctions = [];
     const fileList = [];
 
-    // Parallel file processing
-    await Promise.all(files.map(async (fileUri) => {
-        const relativePath = pathModule.relative(wsPath, fileUri.fsPath).replace(/\\/g, '/');
+    // Parallel file processing (with concurrency limit)
+    const CONCURRENCY_LIMIT = 10;
+    for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
+        const batch = files.slice(i, i + CONCURRENCY_LIMIT);
+        await Promise.all(batch.map(async (fileUri) => {
+            const relativePath = pathModule.relative(wsPath, fileUri.fsPath).replace(/\\/g, '/');
 
-        try {
-            const content = await fs.promises.readFile(fileUri.fsPath, 'utf-8');
-            const symbols = extractSymbolsFromText(content, fileUri.fsPath);
+            try {
+                const content = await fs.promises.readFile(fileUri.fsPath, 'utf-8');
+                const symbols = extractSymbolsFromText(content, fileUri.fsPath);
 
-            fileList.push({ path: relativePath, includes: symbols.includes });
+                fileList.push({ path: relativePath, includes: symbols.includes });
 
-            for (const d of symbols.defines) {
-                allDefines.push({ ...d, file: relativePath });
+                for (const d of symbols.defines) {
+                    allDefines.push({ ...d, file: relativePath });
+                }
+                for (const e of symbols.enums) {
+                    allEnums.push({ ...e, file: relativePath });
+                }
+                for (const c of symbols.classes) {
+                    allClasses.push({ ...c, file: relativePath });
+                }
+                for (const f of symbols.functions) {
+                    allFunctions.push({ ...f, file: relativePath });
+                }
+            } catch (err) {
+                console.error(`[MQL Context] Failed to process ${relativePath}: ${err.message}`);
             }
-            for (const e of symbols.enums) {
-                allEnums.push({ ...e, file: relativePath });
-            }
-            for (const c of symbols.classes) {
-                allClasses.push({ ...c, file: relativePath });
-            }
-            for (const f of symbols.functions) {
-                allFunctions.push({ ...f, file: relativePath });
-            }
-        } catch (err) {
-            console.error(`[MQL Context] Failed to process ${relativePath}: ${err.message}`);
-        }
-    }));
+        }));
+    }
 
     // Sort lists for deterministic output (primary key, then file as secondary)
     fileList.sort((a, b) => a.path.localeCompare(b.path));
@@ -554,9 +558,12 @@ function scheduleUpdate(workspaceFolder) {
     if (debounceTimer) {
         clearTimeout(debounceTimer);
     }
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    const debounceMs = config.get('ProjectContext.AutoUpdateDelay', DEFAULT_DEBOUNCE_MS);
+
     debounceTimer = setTimeout(() => {
         writeContextFile(workspaceFolder);
-    }, DEBOUNCE_MS);
+    }, debounceMs);
 }
 
 /**

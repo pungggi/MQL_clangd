@@ -2129,14 +2129,40 @@ function activate(context) {
     // Watch for file changes to invalidate reverse index cache
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{mq4,mq5,mqh}');
 
-    const markFolderDirty = (uri) => {
+    // Debounced invalidation to handle batch updates (e.g. git checkout)
+    let indexInvalidationTimer = null;
+    const INDEX_DEBOUNCE_MS = 1000;
+    const pendingDirtyFolders = new Set();
+
+    const debouncedMarkDirty = (uri) => {
         const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (folder) markIndexDirty(folder);
+        if (folder) {
+            pendingDirtyFolders.add(folder.uri.toString());
+        }
+
+        if (indexInvalidationTimer) {
+            clearTimeout(indexInvalidationTimer);
+        }
+
+        indexInvalidationTimer = setTimeout(() => {
+            if (pendingDirtyFolders.size === 0) return;
+
+            // Process all pending folders
+            for (const folderUriStr of pendingDirtyFolders) {
+                const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.toString() === folderUriStr);
+                if (folder) {
+                    markIndexDirty(folder);
+                    // console.log(`[MQL Index] Invalidated cache for ${folder.name} (debounced)`);
+                }
+            }
+            pendingDirtyFolders.clear();
+            indexInvalidationTimer = null;
+        }, INDEX_DEBOUNCE_MS);
     };
 
-    fileWatcher.onDidChange(markFolderDirty);
-    fileWatcher.onDidCreate(markFolderDirty);
-    fileWatcher.onDidDelete(markFolderDirty);
+    fileWatcher.onDidChange(debouncedMarkDirty);
+    fileWatcher.onDidCreate(debouncedMarkDirty);
+    fileWatcher.onDidDelete(debouncedMarkDirty);
     context.subscriptions.push(fileWatcher);
 
     // Register Project Context command
