@@ -2143,7 +2143,12 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.activateProjectContext', () => activateProjectContext(context)));
 
     // Restore Project Context watcher if previously activated
-    restoreContextWatcher(context);
+    try {
+        restoreContextWatcher(context);
+    } catch (err) {
+        console.error('Failed to restore Project Context watcher:', err);
+        vscode.window.showErrorMessage(`Failed to restore Project Context watcher: ${err.message}`);
+    }
 }
 
 function deactivate() {
