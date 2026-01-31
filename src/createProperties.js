@@ -645,7 +645,7 @@ ${suppressionsYaml}
       - performance-*
       - google-*
     
-  Hover:
+Hover:
     ShowAKA: No
 
 CompileFlags:
