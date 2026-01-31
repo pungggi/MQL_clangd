@@ -481,7 +481,7 @@ async function compilePath(rt, pathToCompile, _context) {
                     const args = [`/compile:${compileArg}`];
                     childProcess.spawn(MetaDir, args, { shell: false })
                         .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
+                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
                         })
                         .on('close', () => {

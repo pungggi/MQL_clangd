@@ -161,6 +161,7 @@ class StubGenerator {
     generateMember(member) {
         let decl = this.indent;
         if (member.isStatic) decl += 'static ';
+        if (member.isConst) decl += 'const ';
         decl += member.type + ' ' + member.name + ';';
         return decl;
     }
@@ -212,21 +213,46 @@ class StubGenerator {
         lines.push('#ifdef __clang__');
         lines.push('');
 
-        // Forward declarations for all classes
+        // Forward declarations for all classes and their base classes
         const allClasses = [];
+        const baseClasses = new Set();
+
         for (const data of parsedDataArray) {
             for (const cls of data.classes) {
                 if (!allClasses.find(c => c.name === cls.name)) {
                     allClasses.push(cls);
                 }
+                if (cls.baseClass) {
+                    baseClasses.add(cls.baseClass);
+                }
             }
         }
 
         lines.push('// Forward declarations');
+        // First, forward declare everything we have definitions for
         for (const cls of allClasses) {
             const keyword = cls.isStruct ? 'struct' : 'class';
             lines.push(`${keyword} ${cls.name};`);
+            baseClasses.delete(cls.name); // Remove if we already declared it
         }
+
+        // Then, forward declare base classes that weren't in our definitions
+        // (Assuming they are classes unless we know otherwise)
+        if (baseClasses.size > 0) {
+            lines.push('// Base classes from other headers');
+            for (const base of baseClasses) {
+                // Skip common built-in types that might be used as base but aren't classes
+                if (['CObject', 'CArray', 'CList', 'CTreeNode'].includes(base)) {
+                    lines.push(`class ${base};`);
+                } else {
+                    // MQL5 uses struct for many built-ins like MqlTradeRequest
+                    const keyword = base.startsWith('Mql') ? 'struct' : 'class';
+                    lines.push(`${keyword} ${base};`);
+                }
+            }
+        }
+        lines.push('');
+        lines.push('');
         lines.push('');
 
         // Generate all enums first

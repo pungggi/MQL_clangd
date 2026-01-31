@@ -1,8 +1,5 @@
 # Changelog
 
-## 1.1.1
-### Bug Fixes
-
 ## 1.1.0 (pre-release)
 ### Features
 - **MQL Project Context & AI Bridge**: New command `MQL: Activate Project Context` generates an AI-friendly context file at project root

@@ -83,29 +83,117 @@ class MqlParser {
      * Parse enum declarations
      */
     parseEnums(source) {
-        const enumRegex = /enum\s+(\w+)\s*\{([^}]+)\}/g;
+        let pos = 0;
+        const startRegex = /enum\s*(\w+)?\s*\{/g;
         let match;
+        let anonCounter = 0;
 
-        while ((match = enumRegex.exec(source)) !== null) {
-            const enumObj = new ParsedEnum(match[1]);
-            const body = match[2];
+        while ((match = startRegex.exec(source)) !== null) {
+            const enumName = match[1] || `anonymous_enum_${++anonCounter}`;
+            const startPos = match.index + match[0].length;
 
-            // Parse enum values
-            const valueRegex = /(\w+)\s*(?:=\s*([^,\n]+))?/g;
-            let valueMatch;
-            while ((valueMatch = valueRegex.exec(body)) !== null) {
-                if (valueMatch[1] && !valueMatch[1].match(/^\s*$/)) {
+            // Use extractBracedBlock to get the body accurately
+            const body = this.extractBracedBlock(source, startPos - 1);
+
+            if (body !== null) {
+                const enumObj = new ParsedEnum(enumName);
+                this.parseEnumBody(body, enumObj);
+                if (enumObj.values.length > 0) {
+                    this.enums.push(enumObj);
+                }
+                // Advance regex to end of this enum
+                startRegex.lastIndex = startPos + body.length;
+            }
+        }
+    }
+
+    /**
+     * Parse the contents of an enum body
+     */
+    parseEnumBody(body, enumObj) {
+        // Split by commas, but respect parentheses and nested braces
+        const parts = this.splitByCommaOutsideParens(body);
+
+        for (let part of parts) {
+            part = part.trim();
+            if (!part) continue;
+
+            const eqIdx = part.indexOf('=');
+            if (eqIdx !== -1) {
+                const name = part.substring(0, eqIdx).trim();
+                const value = part.substring(eqIdx + 1).trim();
+                // Names must be valid identifiers
+                if (name && /^[a-zA-Z_]\w*$/.test(name)) {
                     enumObj.values.push({
-                        name: valueMatch[1].trim(),
-                        value: valueMatch[2] ? valueMatch[2].trim() : null
+                        name: name,
+                        value: value.replace(/\s+/g, ' ') // Normalize whitespace in values
+                    });
+                }
+            } else {
+                const name = part.trim();
+                if (name && /^[a-zA-Z_]\w*$/.test(name)) {
+                    enumObj.values.push({
+                        name: name,
+                        value: null
                     });
                 }
             }
-
-            if (enumObj.values.length > 0) {
-                this.enums.push(enumObj);
-            }
         }
+    }
+
+    /**
+     * Splits a string by commas, but only those at the top level
+     * (not inside parentheses, braces, or brackets)
+     */
+    splitByCommaOutsideParens(str) {
+        const parts = [];
+        let current = '';
+        let depth = 0;
+        let inSingleQuote = false;
+        let inDoubleQuote = false;
+        let escaped = false;
+
+        for (let i = 0; i < str.length; i++) {
+            const char = str[i];
+
+            if (escaped) {
+                escaped = false;
+                current += char;
+                continue;
+            }
+            if (char === '\\') {
+                escaped = true;
+                current += char;
+                continue;
+            }
+            if (char === '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+                current += char;
+                continue;
+            }
+            if (char === '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+                current += char;
+                continue;
+            }
+            if (inSingleQuote || inDoubleQuote) {
+                current += char;
+                continue;
+            }
+
+            if (char === '(' || char === '{' || char === '[') depth++;
+            else if (char === ')' || char === '}' || char === ']') depth--;
+            else if (char === ',' && depth === 0) {
+                parts.push(current);
+                current = '';
+                continue;
+            }
+            current += char;
+        }
+        if (current.trim()) {
+            parts.push(current);
+        }
+        return parts;
     }
 
     /**
