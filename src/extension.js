@@ -480,15 +480,52 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         });
                 } else {
-                    const scriptCmd = mme ? `powershell -Command "Start-Process -FilePath '${MetaDir}' -ArgumentList '/compile:\\"${compileArg}\\"' -WindowStyle Minimized; Start-Sleep -Milliseconds ${Timemini}; ${cme ? 'Stop-Process -Name metaeditor -Force' : ''}"` : `"${MetaDir}" /compile:"${compileArg}"`;
-                    childProcess.exec(scriptCmd, (error) => {
-                        if (error) {
+                    // Safe spawn-based execution without command injection vulnerability
+                    const compileParam = `/compile:${compileArg}`;
+                    const metaEditorArgs = [compileParam];
+
+                    if (mme) {
+                        // Use PowerShell to start minimized and optionally close after delay
+                        // Pass MetaDir and compileArg as separate array elements (no shell evaluation)
+                        const psScript = `
+                            $proc = Start-Process -FilePath '${MetaDir.replace(/'/g, "''")}' -ArgumentList '${compileParam.replace(/'/g, "''")}' -WindowStyle Minimized -PassThru;
+                            Start-Sleep -Milliseconds ${Timemini};
+                            if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+                        `;
+                        const psArgs = ['-Command', psScript.trim()];
+                        const psProc = childProcess.spawn('powershell', psArgs, { shell: false });
+
+                        psProc.on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
-                            return resolve();
-                        }
-                        outputChannel.appendLine(String(cme ? log.text : log.text + lg['info_log_compile']));
-                        resolve();
-                    });
+                            resolve();
+                        });
+
+                        psProc.on('close', (code) => {
+                            if (cme) {
+                                outputChannel.appendLine(String(log.text));
+                            } else {
+                                outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                            }
+                            resolve();
+                        });
+                    } else {
+                        // Direct spawn without PowerShell wrapper
+                        const child = childProcess.spawn(MetaDir, metaEditorArgs, { shell: false });
+
+                        child.on('error', (error) => {
+                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
+                            resolve();
+                        });
+
+                        child.on('close', (code) => {
+                            if (cme) {
+                                outputChannel.appendLine(String(log.text));
+                            } else {
+                                outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                            }
+                            resolve();
+                        });
+                    }
                 }
             } else {
                 outputChannel.appendLine(String(log.text));

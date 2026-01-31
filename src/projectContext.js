@@ -268,31 +268,34 @@ async function generateContextContent(workspaceFolder, config, resolvedFormat) {
     const CONCURRENCY_LIMIT = 10;
     for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
         const batch = files.slice(i, i + CONCURRENCY_LIMIT);
-        await Promise.all(batch.map(async (fileUri) => {
+        const batchResults = await Promise.all(batch.map(async (fileUri) => {
             const relativePath = pathModule.relative(wsPath, fileUri.fsPath).replace(/\\/g, '/');
 
             try {
                 const content = await fs.promises.readFile(fileUri.fsPath, 'utf-8');
                 const symbols = extractSymbolsFromText(content, fileUri.fsPath);
 
-                fileList.push({ path: relativePath, includes: symbols.includes });
-
-                for (const d of symbols.defines) {
-                    allDefines.push({ ...d, file: relativePath });
-                }
-                for (const e of symbols.enums) {
-                    allEnums.push({ ...e, file: relativePath });
-                }
-                for (const c of symbols.classes) {
-                    allClasses.push({ ...c, file: relativePath });
-                }
-                for (const f of symbols.functions) {
-                    allFunctions.push({ ...f, file: relativePath });
-                }
+                return {
+                    file: { path: relativePath, includes: symbols.includes },
+                    defines: symbols.defines.map(d => ({ ...d, file: relativePath })),
+                    enums: symbols.enums.map(e => ({ ...e, file: relativePath })),
+                    classes: symbols.classes.map(c => ({ ...c, file: relativePath })),
+                    functions: symbols.functions.map(f => ({ ...f, file: relativePath }))
+                };
             } catch (err) {
                 console.error(`[MQL Context] Failed to process ${relativePath}: ${err.message}`);
+                return null;
             }
         }));
+        for (const result of batchResults) {
+            if (result) {
+                fileList.push(result.file);
+                allDefines.push(...result.defines);
+                allEnums.push(...result.enums);
+                allClasses.push(...result.classes);
+                allFunctions.push(...result.functions);
+            }
+        }
     }
 
     // Sort lists for deterministic output (primary key, then file as secondary)
@@ -533,17 +536,17 @@ async function writeContextFile(workspaceFolder) {
         }
 
         // Token Count Warning
-        const warningHeader = `> ⚠️ **WARNING**: This file is **${enc.encode(content).length.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}).\n\n`;
-        const finalContent = warningHeader + content;
-        const tokens = enc.encode(finalContent).length;
+        const tokens = enc.encode(content).length;
+        const warningHeader = `> ⚠️ **WARNING**: This file is **${tokens.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}).\n\n`;
+        const finalBody = tokens > maxTokens ? warningHeader + content : content;
+
         if (maxTokens > 0 && tokens > maxTokens) {
             const msg = `[MQL Context] Warning: Generated context is ${tokens.toLocaleString()} tokens (exceeds ${maxTokens.toLocaleString()}).`;
             vscode.window.showWarningMessage(msg);
             console.warn(msg);
-        } else {
-            await fs.promises.writeFile(filePath, content, 'utf-8');
         }
 
+        await fs.promises.writeFile(filePath, finalBody, 'utf-8');
         console.log(`[MQL Context] Updated: ${filePath} (${tokens} tokens)`);
     } catch (err) {
         console.error(`[MQL Context] Error writing context file: ${err.message}`);

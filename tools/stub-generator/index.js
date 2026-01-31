@@ -52,7 +52,8 @@ function parseArgs() {
         dryRun: false,
         forwardOnly: false,
         merge: false,
-        force: false
+        force: false,
+        fallback: false
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -91,6 +92,9 @@ function parseArgs() {
             case '--force':
                 options.force = true;
                 break;
+            case '--fallback':
+                options.fallback = true;
+                break;
             case '-h':
             case '--help':
                 printHelp();
@@ -116,10 +120,11 @@ Options:
   -f, --forward-only Generate forward declarations only (no class definitions)
                      Use this to avoid conflicts with real MQL5 headers
   -m, --merge        Merge with existing output file (add new, keep existing)
-  --force            Overwrite existing file without prompting
-  -v, --verbose      Enable verbose output
-  --dry-run          Parse files but don't write output
-  -h, --help         Show this help message
+   --force            Overwrite existing file without prompting
+   --fallback         Automatically use all files when directory filter matches nothing
+   -v, --verbose      Enable verbose output
+   --dry-run          Parse files but don't write output
+   -h, --help         Show this help message
 
 Examples:
   # Parse all headers in MQL5 Include
@@ -248,12 +253,27 @@ async function main() {
         // Remove duplicates
         filesToParse = [...new Set(filesToParse)];
 
-        // Fallback: if nothing matched but we have files, offer to use all
+        // Fallback: if nothing matched but we have files, require explicit consent
         if (filesToParse.length === 0 && allFiles.length > 0) {
             console.log('');
             console.log(`No matches for specified directories, but found ${allFiles.length} .mqh files in input path.`);
-            console.log('Falling back to parsing all files...');
-            filesToParse = allFiles;
+
+            let useFallback = false;
+
+            if (options.fallback) {
+                // User explicitly enabled fallback via CLI flag
+                useFallback = true;
+                console.log('Fallback enabled via --fallback flag.');
+            } else {
+                // Prompt user for confirmation
+                const answer = await prompt('No files matched the specified directories. Use all files instead? [y/N]: ');
+                useFallback = answer === 'y' || answer === 'yes';
+            }
+
+            if (useFallback) {
+                filesToParse = allFiles;
+                console.log('Falling back to parsing all files...');
+            }
         }
     } else {
         filesToParse = allFiles;
@@ -446,7 +466,7 @@ async function main() {
 
                 // Find where to insert (before the closing #endif)
                 const endifIndex = existingContent.lastIndexOf('#endif');
-                if (endifIndex > 0) {
+                if (endifIndex !== -1) {
                     // Insert new content before #endif
                     const beforeEndif = existingContent.substring(0, endifIndex);
                     const afterEndif = existingContent.substring(endifIndex);
