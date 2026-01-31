@@ -73,9 +73,9 @@ suite('Portable Mode Tests', () => {
             assert.strictEqual(result, '');
         });
 
-        test('should return " /portable" when portable mode is enabled', () => {
+        test('should return "/portable" when portable mode is enabled', () => {
             const result = generatePortableSwitch(true);
-            assert.strictEqual(result, ' /portable');
+            assert.strictEqual(result, '/portable');
         });
 
         test('should handle undefined as falsy (disabled)', () => {
@@ -97,7 +97,7 @@ suite('Portable Mode Tests', () => {
             const logFile = 'C:\\Users\\Test\\MQL5\\Experts\\test.log';
             const portableSwitch = generatePortableSwitch(false);
 
-            const command = `"${MetaDir}" /compile:"${filePath}"${includefile} /s /log:"${logFile}"${portableSwitch}`;
+            const command = `"${MetaDir}" /compile:"${filePath}"${includefile} /s /log:"${logFile}"${portableSwitch ? ' ' + portableSwitch : ''}`;
 
             assert.ok(!command.includes('/portable'), 'Command should not include /portable when disabled');
             assert.ok(command.includes('/compile:'), 'Command should include /compile');
@@ -111,7 +111,7 @@ suite('Portable Mode Tests', () => {
             const logFile = 'C:\\Users\\Test\\MQL5\\Experts\\test.log';
             const portableSwitch = generatePortableSwitch(true);
 
-            const command = `"${MetaDir}" /compile:"${filePath}"${includefile} /s /log:"${logFile}"${portableSwitch}`;
+            const command = `"${MetaDir}" /compile:"${filePath}"${includefile} /s /log:"${logFile}"${portableSwitch ? ' ' + portableSwitch : ''}`;
 
             assert.ok(command.includes('/portable'), 'Command should include /portable when enabled');
             assert.ok(command.endsWith('/portable'), 'Command should end with /portable');
@@ -124,7 +124,7 @@ suite('Portable Mode Tests', () => {
             const filePath = 'C:\\Users\\Test\\MQL5\\Experts\\test.mq5';
             const portableSwitch = generatePortableSwitch(false);
 
-            const command = `"${MetaDir}" "${filePath}"${portableSwitch}`;
+            const command = `"${MetaDir}" "${filePath}"${portableSwitch ? ' ' + portableSwitch : ''}`;
 
             assert.ok(!command.includes('/portable'), 'Command should not include /portable when disabled');
         });
@@ -134,7 +134,7 @@ suite('Portable Mode Tests', () => {
             const filePath = 'C:\\Users\\Test\\MQL5\\Experts\\test.mq5';
             const portableSwitch = generatePortableSwitch(true);
 
-            const command = `"${MetaDir}" "${filePath}"${portableSwitch}`;
+            const command = `"${MetaDir}" "${filePath}"${portableSwitch ? ' ' + portableSwitch : ''}`;
 
             assert.ok(command.includes('/portable'), 'Command should include /portable when enabled');
             assert.ok(command.endsWith('/portable'), 'Command should end with /portable');

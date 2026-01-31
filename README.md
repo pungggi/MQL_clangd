@@ -153,7 +153,7 @@ Generate an AI-friendly project context file that provides a condensed summary o
 **Features:**
 - **Symbol Table**: Extracts all `#define` macros, `enum` types, `class/struct` definitions, and function signatures from your `.mqh` files
 - **Standard Library Summary**: Includes a curated list of high-frequency MQL built-in functions with signatures
-- **Auto-Update**: Watches for file changes and regenerates the context file automatically (with 2s debounce)
+- **Auto-Update**: Watches for file changes and regenerates the context file automatically (with 12s debounce)
 - **Persistent Activation**: Once activated, the watcher persists across VS Code sessions
 
 **Usage:**

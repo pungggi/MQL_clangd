@@ -5,7 +5,7 @@ const path = require('path');
 const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch } = require('../../src/createProperties');
 
 // Import Wine helper functions
-const { isWineEnabled, getWineBinary } = require('../../src/wineHelper');
+const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath } = require('../../src/wineHelper');
 
 function withPlatform(value, fn) {
     const original = process.platform;
@@ -194,8 +194,8 @@ suite('Pure Logic Unit Tests', () => {
             assert.strictEqual(generatePortableSwitch(false), '');
         });
 
-        test('should return " /portable" when portable mode is enabled', () => {
-            assert.strictEqual(generatePortableSwitch(true), ' /portable');
+        test('should return "/portable" when portable mode is enabled', () => {
+            assert.strictEqual(generatePortableSwitch(true), '/portable');
         });
     });
 
@@ -269,9 +269,103 @@ suite('Pure Logic Unit Tests', () => {
                 const config = { Wine: { Binary: '/opt/wine-staging/bin/wine64' } };
                 assert.strictEqual(getWineBinary(config), '/opt/wine-staging/bin/wine64');
             });
+
+            test('should handle paths with spaces', () => {
+                const config = { Wine: { Binary: '/Applications/My Wine/bin/wine64' } };
+                assert.strictEqual(getWineBinary(config), '/Applications/My Wine/bin/wine64');
+            });
+        });
+
+        suite('getWinePrefix', () => {
+            test('should return configured Wine.Prefix value', () => {
+                const config = { Wine: { Prefix: '/Users/test/.wine' } };
+                assert.strictEqual(getWinePrefix(config), '/Users/test/.wine');
+            });
+
+            test('should return empty string when Wine.Prefix is not set', () => {
+                const config = { Wine: {} };
+                assert.strictEqual(getWinePrefix(config), '');
+            });
+
+            test('should return empty string when Wine config is missing', () => {
+                const config = {};
+                assert.strictEqual(getWinePrefix(config), '');
+            });
+
+            test('should handle CrossOver bottles path', () => {
+                const config = { Wine: { Prefix: '/Users/test/Library/Application Support/CrossOver/Bottles/MetaTrader' } };
+                assert.strictEqual(getWinePrefix(config), '/Users/test/Library/Application Support/CrossOver/Bottles/MetaTrader');
+            });
+        });
+
+        suite('getWineTimeout', () => {
+            test('should return configured Wine.Timeout value', () => {
+                const config = { Wine: { Timeout: 120000 } };
+                assert.strictEqual(getWineTimeout(config), 120000);
+            });
+
+            test('should return default 60000 when Wine.Timeout is not set', () => {
+                const config = { Wine: {} };
+                assert.strictEqual(getWineTimeout(config), 60000);
+            });
+
+            test('should return default 60000 when Wine config is missing', () => {
+                const config = {};
+                assert.strictEqual(getWineTimeout(config), 60000);
+            });
+
+            test('should return default 60000 for invalid timeout values', () => {
+                assert.strictEqual(getWineTimeout({ Wine: { Timeout: 0 } }), 60000);
+                assert.strictEqual(getWineTimeout({ Wine: { Timeout: -1 } }), 60000);
+                assert.strictEqual(getWineTimeout({ Wine: { Timeout: 'invalid' } }), 60000);
+            });
+        });
+
+        suite('validateWinePath', () => {
+            test('should accept Unix-style paths', () => {
+                const result = validateWinePath('/Users/test/path/to/file.exe');
+                assert.strictEqual(result.valid, true);
+            });
+
+            test('should accept Linux-style paths', () => {
+                const result = validateWinePath('/home/user/.wine/drive_c/Program Files/MetaTrader 5/metaeditor64.exe');
+                assert.strictEqual(result.valid, true);
+            });
+
+            test('should reject Windows-style paths with backslashes', () => {
+                const result = validateWinePath('C:\\Program Files\\MetaTrader 5\\metaeditor64.exe');
+                assert.strictEqual(result.valid, false);
+                assert.ok(result.error.includes('Unix-style paths'));
+            });
+
+            test('should reject Windows-style paths with forward slashes', () => {
+                const result = validateWinePath('C:/Program Files/MetaTrader 5/metaeditor64.exe');
+                assert.strictEqual(result.valid, false);
+            });
+
+            test('should reject Windows-style paths with lowercase drive letter', () => {
+                const result = validateWinePath('d:\\temp\\file.exe');
+                assert.strictEqual(result.valid, false);
+            });
+
+            test('should return error for empty path', () => {
+                const result = validateWinePath('');
+                assert.strictEqual(result.valid, false);
+            });
+
+            test('should return error for null path', () => {
+                const result = validateWinePath(null);
+                assert.strictEqual(result.valid, false);
+            });
+
+            test('should return error for undefined path', () => {
+                const result = validateWinePath(undefined);
+                assert.strictEqual(result.valid, false);
+            });
         });
 
         // Note: toWineWindowsPath is not tested here because it requires actual Wine installation
         // and executes external processes. It should be tested in integration tests or manually.
+        // However, the error handling paths are covered by the validateWinePath tests above.
     });
 });

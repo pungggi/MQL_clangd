@@ -34,7 +34,19 @@ const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, Co
 const { registerLightweightDiagnostics } = require("./lightweightDiagnostics");
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require("./createProperties");
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require("./compileTargetResolver");
-const { toWineWindowsPath, isWineEnabled, getWineBinary } = require("./wineHelper");
+const {
+    toWineWindowsPath,
+    toWineWindowsPathLegacy,
+    isWineEnabled,
+    getWineBinary,
+    getWinePrefix,
+    getWineTimeout,
+    getWineEnv,
+    spawnWineProcess,
+    validateWinePath,
+    isWineInstalled,
+    setOutputChannel: setWineOutputChannel
+} = require("./wineHelper");
 const logTailer = require("./logTailer");
 const { activateProjectContext, restoreContextWatcher } = require("./projectContext");
 const outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
@@ -358,17 +370,48 @@ async function compilePath(rt, pathToCompile, _context) {
     const baseName = pathModule.basename(pathToCompile, extension);
     logFile = pathModule.join(pathModule.dirname(pathToCompile), `${baseName}.log`);
 
+
     // Check if Wine is enabled (macOS/Linux with Wine wrapper)
     const useWine = isWineEnabled(config);
     const wineBinary = getWineBinary(config);
+    const winePrefix = getWinePrefix(config);
+
+    // Wine-specific validation
+    if (useWine) {
+        // Validate MetaEditor path format (must be Unix path, not Windows path)
+        const pathValidation = validateWinePath(MetaDir);
+        if (!pathValidation.valid) {
+            vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
+            return undefined;
+        }
+    }
 
     // Build command arguments - convert paths if using Wine (async, done before Promise)
     let compileArg, logArg, incArg;
     if (useWine) {
         // Convert Unix paths to Windows paths via winepath
-        compileArg = await toWineWindowsPath(pathToCompile, wineBinary);
-        logArg = await toWineWindowsPath(logFile, wineBinary);
-        incArg = incDir ? await toWineWindowsPath(incDir, wineBinary) : '';
+        const compileResult = await toWineWindowsPath(pathToCompile, wineBinary, winePrefix);
+        const logResult = await toWineWindowsPath(logFile, wineBinary, winePrefix);
+
+        if (!compileResult.success) {
+            outputChannel.appendLine(`[Wine] Warning: Path conversion may have failed for compile path`);
+        }
+        if (!logResult.success) {
+            outputChannel.appendLine(`[Wine] Warning: Path conversion may have failed for log path`);
+        }
+
+        compileArg = compileResult.path;
+        logArg = logResult.path;
+
+        if (incDir) {
+            const incResult = await toWineWindowsPath(incDir, wineBinary, winePrefix);
+            if (!incResult.success) {
+                outputChannel.appendLine(`[Wine] Warning: Path conversion may have failed for include path`);
+            }
+            incArg = incResult.path;
+        } else {
+            incArg = '';
+        }
     } else {
         compileArg = pathToCompile;
         logArg = logFile;
@@ -467,9 +510,10 @@ async function compilePath(rt, pathToCompile, _context) {
             if (rt === 2 && !log.error) {
                 if (useWine) {
                     const args = [MetaDir, `/compile:${compileArg}`];
-                    childProcess.spawn(wineBinary, args, { shell: false })
+                    const wineEnv = getWineEnv(config);
+                    childProcess.spawn(wineBinary, args, { shell: false, env: wineEnv })
                         .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
+                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
                         })
                         .on('close', () => {
@@ -495,12 +539,46 @@ async function compilePath(rt, pathToCompile, _context) {
             }
         };
 
-        // Execute command
-        const proc = childProcess.spawn(command, execArgs, { shell: false });
+        // Execute command with timeout for Wine processes
+        const spawnOptions = { shell: false };
+        if (useWine) {
+            spawnOptions.env = getWineEnv(config);
+        }
+
+        const proc = childProcess.spawn(command, execArgs, spawnOptions);
         let stderrData = '';
+        let timeoutId = null;
+
+        // Set up timeout for Wine processes
+        if (useWine) {
+            const wineTimeout = getWineTimeout(config);
+            timeoutId = setTimeout(() => {
+                outputChannel.appendLine(`[Wine] Compilation timed out after ${wineTimeout / 1000} seconds. Killing process...`);
+                proc.kill('SIGTERM');
+                setTimeout(() => {
+                    if (!proc.killed) {
+                        proc.kill('SIGKILL');
+                    }
+                }, 2000);
+            }, wineTimeout);
+        }
+
+        const clearWineTimeout = () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+        };
+
         proc.stderr.on('data', (data) => { stderrData += data.toString(); });
-        proc.on('error', (err) => handleCompilationResult(err, stderrData));
-        proc.on('close', (code) => handleCompilationResult(code !== 0 ? `Process exited with code ${code}` : null, stderrData));
+        proc.on('error', (err) => {
+            clearWineTimeout();
+            handleCompilationResult(err, stderrData);
+        });
+        proc.on('close', (code) => {
+            clearWineTimeout();
+            handleCompilationResult(code !== 0 ? `Process exited with code ${code}` : null, stderrData);
+        });
     });
 }
 
@@ -1880,6 +1958,34 @@ function activate(context) {
     const currentVersion = vscode.extensions.getExtension(extensionId)?.packageJSON.version;
     const previousVersion = context.globalState.get('mql-tools.version');
 
+    // Initialize Wine helper with output channel for logging
+    setWineOutputChannel(outputChannel);
+
+    // Validate Wine configuration if enabled
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    if (isWineEnabled(config)) {
+        const wineBinary = getWineBinary(config);
+        const winePrefix = getWinePrefix(config);
+
+        isWineInstalled(wineBinary, winePrefix).then(result => {
+            if (!result.installed) {
+                vscode.window.showErrorMessage(
+                    `Wine is enabled but not found: ${result.error || 'Unknown error'}`,
+                    'Open Settings'
+                ).then(selection => {
+                    if (selection === 'Open Settings') {
+                        vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Wine');
+                    }
+                });
+            } else {
+                outputChannel.appendLine(`[Wine] Detected: ${result.version}`);
+                if (winePrefix) {
+                    outputChannel.appendLine(`[Wine] Using prefix: ${winePrefix}`);
+                }
+            }
+        });
+    }
+
     // Wait for environment to stabilize before migration check
     sleep(2000).then(() => {
         if (previousVersion !== currentVersion) {
@@ -2144,7 +2250,10 @@ function activate(context) {
         }
 
         indexInvalidationTimer = setTimeout(() => {
-            if (pendingDirtyFolders.size === 0) return;
+            if (pendingDirtyFolders.size === 0) {
+                indexInvalidationTimer = null; // Reset timer state (Comment 6)
+                return;
+            }
 
             // Process all pending folders
             for (const folderUriStr of pendingDirtyFolders) {

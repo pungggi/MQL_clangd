@@ -145,7 +145,7 @@ function Help(keyword, version) {
 }
 
 /**
- * Get possible CHM file paths based on OS and MQL version
+ * Get possible CHM file paths based on OS, MQL version, and Wine configuration
  * @param {number} version - MQL version (4 or 5)
  * @returns {string[]} - Array of possible CHM file paths
  */
@@ -153,22 +153,52 @@ function getChmPaths(version) {
     const chmFile = version === 4 ? 'mql4.chm' : 'mql5.chm';
     const paths = [];
 
+    // Check for Wine.Prefix configuration
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    const winePrefix = config.Wine?.Prefix || '';
+
     if (platform === 'win32') {
         // Windows: %APPDATA%\MetaQuotes\Terminal\Help\
         const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
         paths.push(path.join(appData, 'MetaQuotes', 'Terminal', 'Help', chmFile));
     } else if (platform === 'darwin') {
-        // macOS: ~/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/Program Files/MetaTrader 5/Help/
+        // macOS: Check Wine prefix first if configured
         const home = os.homedir();
+
+        if (winePrefix) {
+            // User-configured Wine prefix takes priority
+            if (version === 5) {
+                paths.push(path.join(winePrefix, 'drive_c', 'Program Files', 'MetaTrader 5', 'Help', chmFile));
+            } else {
+                paths.push(path.join(winePrefix, 'drive_c', 'Program Files', 'MetaTrader 4', 'Help', chmFile));
+            }
+        }
+
+        // Fallback to common macOS Wine locations
         if (version === 5) {
             paths.push(path.join(home, 'Library', 'Application Support', 'net.metaquotes.wine.metatrader5', 'drive_c', 'Program Files', 'MetaTrader 5', 'Help', chmFile));
             paths.push(path.join(home, 'Library', 'Application Support', 'MetaTrader 5', 'Bottles', 'metatrader5', 'drive_c', 'Program Files', 'MetaTrader 5', 'Help', chmFile));
+            // CrossOver support
+            paths.push(path.join(home, 'Library', 'Application Support', 'CrossOver', 'Bottles', 'MetaTrader5', 'drive_c', 'Program Files', 'MetaTrader 5', 'Help', chmFile));
         } else {
             paths.push(path.join(home, 'Library', 'Application Support', 'net.metaquotes.wine.metatrader4', 'drive_c', 'Program Files', 'MetaTrader 4', 'Help', chmFile));
+            // CrossOver support
+            paths.push(path.join(home, 'Library', 'Application Support', 'CrossOver', 'Bottles', 'MetaTrader4', 'drive_c', 'Program Files', 'MetaTrader 4', 'Help', chmFile));
         }
     } else if (platform === 'linux') {
-        // Linux: ~/.mt5/drive_c/Program Files/MetaTrader 5/Help/
+        // Linux: Check Wine prefix first if configured
         const home = os.homedir();
+
+        if (winePrefix) {
+            // User-configured Wine prefix takes priority
+            if (version === 5) {
+                paths.push(path.join(winePrefix, 'drive_c', 'Program Files', 'MetaTrader 5', 'Help', chmFile));
+            } else {
+                paths.push(path.join(winePrefix, 'drive_c', 'Program Files', 'MetaTrader 4', 'Help', chmFile));
+            }
+        }
+
+        // Fallback to common Linux Wine locations
         if (version === 5) {
             paths.push(path.join(home, '.mt5', 'drive_c', 'Program Files', 'MetaTrader 5', 'Help', chmFile));
             paths.push(path.join(home, '.wine', 'drive_c', 'Program Files', 'MetaTrader 5', 'Help', chmFile));

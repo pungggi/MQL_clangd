@@ -479,7 +479,8 @@ class MqlParser {
         // - Assignments: something = something
         // - Function calls without type: funcName(args)
         // - Comparisons: a == b, a != b, etc.
-        if (/^\w+\s*[=!<>+\-*/|&]/.test(decl) && !/^(static\s+)?\w+.*\s+\w+\s*=/.test(decl)) {
+        // Note: Must not match valid declarations like "CObject* p;" or "int& r;" (Comment 7)
+        if (/^\w+\s*[=!<>+\-*/]/.test(decl) && !/^(static\s+)?\w+.*\s+\w+\s*=/.test(decl)) {
             // This looks like an expression, not a declaration
             // Exception: static int x = 5; or int x = 5; are valid declarations
             return;

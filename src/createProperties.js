@@ -73,11 +73,12 @@ function isSourceExtension(ext) {
 
 /**
  * Generates the portable switch string for MetaEditor commands.
+ * Note: Returns the switch without leading space - callers should handle spacing.
  * @param {boolean} portableMode - Whether portable mode is enabled
- * @returns {string} - Empty string or ' /portable'
+ * @returns {string} - Empty string or '/portable'
  */
 function generatePortableSwitch(portableMode) {
-    return portableMode ? ' /portable' : '';
+    return portableMode ? '/portable' : '';
 }
 
 /**

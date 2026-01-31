@@ -418,8 +418,9 @@ async function main() {
         if (fileExists && options.merge) {
             const existingContent = fs.readFileSync(options.output, 'utf-8');
 
-            // Extract existing class and enum names
+            // Extract existing class, struct, and enum names (Comment 8)
             const existingClasses = new Set();
+            const existingStructs = new Set();
             const existingEnums = new Set();
 
             // Match class declarations: class ClassName or class ClassName :
@@ -427,6 +428,12 @@ async function main() {
             let match;
             while ((match = classPattern.exec(existingContent)) !== null) {
                 existingClasses.add(match[1]);
+            }
+
+            // Match struct declarations: struct StructName or struct StructName {
+            const structPattern = /^struct\s+(\w+)\s*\{/gm;
+            while ((match = structPattern.exec(existingContent)) !== null) {
+                existingStructs.add(match[1]);
             }
 
             // Match enum declarations: enum EnumName {
@@ -441,7 +448,10 @@ async function main() {
 
             for (const data of parsedData) {
                 data.classes = data.classes.filter(cls => {
-                    if (!existingClasses.has(cls.name)) {
+                    // Check both classes and structs sets based on kind (Comment 8)
+                    const isStruct = cls.kind === 'struct';
+                    const existingSet = isStruct ? existingStructs : existingClasses;
+                    if (!existingSet.has(cls.name)) {
                         newClasses++;
                         return true;
                     }

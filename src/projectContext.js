@@ -29,6 +29,9 @@ let contextWatcher = null;
 let debounceTimer = null;
 const DEFAULT_DEBOUNCE_MS = 12000;
 
+// Track warnings shown to avoid repeated notifications (Comment 3)
+const shownWarnings = new Set();
+
 /**
  * Validate and resolve format consistency between FileName and Format
  * @param {string} fileName - The configured FileName
@@ -47,7 +50,12 @@ function validateAndResolveFormat(fileName, format) {
 
     if (inferredFormat && inferredFormat !== format) {
         const msg = `[MQL Context] mql_tools.ProjectContext.FileName extension (${ext}) conflicts with mql_tools.ProjectContext.Format (${format}). Using format inferred from extension: ${inferredFormat}.`;
-        vscode.window.showWarningMessage(msg);
+        // Only show warning once per session to avoid repeated notifications (Comment 3)
+        const warningKey = `format-mismatch-${ext}-${format}`;
+        if (!shownWarnings.has(warningKey)) {
+            shownWarnings.add(warningKey);
+            vscode.window.showWarningMessage(msg);
+        }
         console.warn(msg);
         return { format: inferredFormat, message: msg };
     }
@@ -503,6 +511,32 @@ function stripGeneratedTimestamp(content) {
 }
 
 /**
+ * Validate that fileName is a safe relative path within workspaceFolder (Comment 1)
+ * @param {string} fileName - The configured FileName
+ * @param {string} workspacePath - The workspace folder path
+ * @returns {{ isValid: boolean, error?: string, resolvedPath?: string }}
+ */
+function validateFileName(fileName, workspacePath) {
+    // Reject absolute paths
+    if (pathModule.isAbsolute(fileName)) {
+        return { isValid: false, error: 'Absolute paths are not allowed for ProjectContext.FileName' };
+    }
+    
+    // Resolve the full path
+    const resolvedPath = pathModule.resolve(workspacePath, fileName);
+    const normalizedWorkspace = pathModule.normalize(workspacePath);
+    const normalizedResolved = pathModule.normalize(resolvedPath);
+    
+    // Ensure resolved path is within workspace (prevents ../ traversal attacks)
+    if (!normalizedResolved.startsWith(normalizedWorkspace + pathModule.sep) && 
+        normalizedResolved !== normalizedWorkspace) {
+        return { isValid: false, error: 'File path must resolve within the workspace folder' };
+    }
+    
+    return { isValid: true, resolvedPath };
+}
+
+/**
  * Write the context file
  * @param {vscode.WorkspaceFolder} workspaceFolder
  */
@@ -510,10 +544,19 @@ async function writeContextFile(workspaceFolder) {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const fileName = config.get('ProjectContext.FileName', '.mql-context.toml');
     const format = config.get('ProjectContext.Format', 'toml');
-    const maxTokens = config.get('ProjectContext.MaxTokens', 200000);
+    const maxTokens = config.get('ProjectContext.MaxTokens', 100000);
+
+    // Validate fileName is safe (Comment 1)
+    const validation = validateFileName(fileName, workspaceFolder.uri.fsPath);
+    if (!validation.isValid) {
+        const msg = `[MQL Context] Invalid ProjectContext.FileName: ${validation.error}`;
+        vscode.window.showErrorMessage(msg);
+        console.error(msg);
+        return;
+    }
 
     const { format: resolvedFormat } = validateAndResolveFormat(fileName, format);
-    const filePath = pathModule.join(workspaceFolder.uri.fsPath, fileName);
+    const filePath = validation.resolvedPath;
 
     try {
         const content = await generateContextContent(workspaceFolder, config, resolvedFormat);
@@ -537,8 +580,17 @@ async function writeContextFile(workspaceFolder) {
 
         // Token Count Warning
         const tokens = enc.encode(content).length;
-        const warningHeader = `> ⚠️ **WARNING**: This file is **${tokens.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}).\n\n`;
-        const finalBody = tokens > maxTokens ? warningHeader + content : content;
+        
+        // Use TOML-compatible warning format for TOML output, Markdown for Markdown (Comment 2)
+        let warningHeader;
+        if (resolvedFormat === 'toml') {
+            warningHeader = `# ⚠️ WARNING: This file is ${tokens.toLocaleString()} tokens (exceeds ${maxTokens.toLocaleString()}).\n\n`;
+        } else {
+            warningHeader = `> ⚠️ **WARNING**: This file is **${tokens.toLocaleString()} tokens** (exceeds ${maxTokens.toLocaleString()}).\n\n`;
+        }
+        
+        // Only prepend warning if maxTokens > 0 and tokens exceed limit (Comment 4)
+        const finalBody = (maxTokens > 0 && tokens > maxTokens) ? warningHeader + content : content;
 
         if (maxTokens > 0 && tokens > maxTokens) {
             const msg = `[MQL Context] Warning: Generated context is ${tokens.toLocaleString()} tokens (exceeds ${maxTokens.toLocaleString()}).`;
