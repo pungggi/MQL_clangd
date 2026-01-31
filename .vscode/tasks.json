@@ -107,7 +107,49 @@
             "problemMatcher": []
         },
         {
-            "label": "Generate MQL5 Stubs",
+            "label": "Generate MQL5 Stubs (Merge)",
+            "type": "shell",
+            "command": "node",
+            "args": [
+                "tools/stub-generator/index.js",
+                "-i",
+                "${input:mql5IncludePath}",
+                "-o",
+                "${input:mql5StubOutput}",
+                "--merge",
+                "-v"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Generate MQL5 Stubs (Overwrite)",
+            "type": "shell",
+            "command": "node",
+            "args": [
+                "tools/stub-generator/index.js",
+                "-i",
+                "${input:mql5IncludePath}",
+                "-o",
+                "${input:mql5StubOutput}",
+                "--force",
+                "-v"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Generate MQL5 Stubs (With Filter)",
             "type": "shell",
             "command": "node",
             "args": [
@@ -115,10 +157,10 @@
                 "-i",
                 "${input:mql5IncludePath}",
                 "-d",
-                "Trade,Controls,Arrays",
+                "${input:mql5Dirs}",
                 "-o",
-                "files/mql5_stdlib_stubs.h",
-                "--forward-only",
+                "${input:mql5StubOutput}",
+                "--merge",
                 "-v"
             ],
             "presentation": {
@@ -136,6 +178,18 @@
             "type": "promptString",
             "description": "Path to MQL5 Include directory",
             "default": "C:/Users/User/AppData/Roaming/MetaQuotes/Terminal/870072DB5DBAB61841BAE146AFAAFB8A/MQL5/Include"
+        },
+        {
+            "id": "mql5Dirs",
+            "type": "promptString",
+            "description": "Directories or patterns to parse (comma-separated, e.g. Trade,Position,Order)",
+            "default": "Trade,Position,Order"
+        },
+        {
+            "id": "mql5StubOutput",
+            "type": "promptString",
+            "description": "Output file path for stubs",
+            "default": "files/mql5_stdlib_stubs.h"
         }
     ]
 }

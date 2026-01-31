@@ -26,16 +26,28 @@ let isAutoCheckRunning = false;
 let autoCheckDocVersions = new Map(); // Track document versions to ignore our own edits
 // Guard to prevent CheckOnSave from re-triggering itself when Compile() saves files.
 let internalSaveDepth = 0;
-const lg = require("./language");
-const { Help, OfflineHelp } = require("./help");
-const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require("./contextMenu");
-const { IconsInstallation } = require("./addIcon");
-const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, obj_items } = require("./provider");
-const { registerLightweightDiagnostics } = require("./lightweightDiagnostics");
-const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require("./createProperties");
-const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require("./compileTargetResolver");
-const { toWineWindowsPath, isWineEnabled, getWineBinary } = require("./wineHelper");
-const logTailer = require("./logTailer");
+const lg = require('./language');
+const { Help, OfflineHelp } = require('./help');
+const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
+const { IconsInstallation } = require('./addIcon');
+const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider } = require('./provider');
+const { obj_items } = require('./provider');
+const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
+const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
+const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
+const {
+    toWineWindowsPath,
+    isWineEnabled,
+    getWineBinary,
+    getWinePrefix,
+    getWineTimeout,
+    getWineEnv,
+    validateWinePath,
+    isWineInstalled,
+    setOutputChannel: setWineOutputChannel
+} = require('./wineHelper');
+const logTailer = require('./logTailer');
+const { activateProjectContext, restoreContextWatcher } = require('./projectContext');
 const outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
 
 // =============================================================================
@@ -277,11 +289,10 @@ async function compilePath(rt, pathToCompile, _context) {
     const wsFolder = vscode.workspace.getWorkspaceFolder(fileUri) || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
     const workspaceFolderPath = wsFolder && wsFolder.uri ? wsFolder.uri.fsPath : '';
 
-    let isMql4 = false;
     let isMql5 = false;
 
     if (extension === '.mq4') {
-        isMql4 = true;
+        // isMql4
     } else if (extension === '.mq5') {
         isMql5 = true;
     } else if (extension === '.mqh') {
@@ -297,13 +308,13 @@ async function compilePath(rt, pathToCompile, _context) {
         }
 
         if (resolvedFlavor === 'mql4') {
-            isMql4 = true;
+            // isMql4
         } else if (resolvedFlavor === 'mql5') {
             isMql5 = true;
         } else {
             // Last-resort fallback
             if (pathToCompile.toLowerCase().includes('mql4')) {
-                isMql4 = true;
+                // isMql4
             } else {
                 isMql5 = true; // Default to MQL5
             }
@@ -357,17 +368,54 @@ async function compilePath(rt, pathToCompile, _context) {
     const baseName = pathModule.basename(pathToCompile, extension);
     logFile = pathModule.join(pathModule.dirname(pathToCompile), `${baseName}.log`);
 
+
     // Check if Wine is enabled (macOS/Linux with Wine wrapper)
     const useWine = isWineEnabled(config);
     const wineBinary = getWineBinary(config);
+    const winePrefix = getWinePrefix(config);
+
+    // Wine-specific validation
+    if (useWine) {
+        // Validate MetaEditor path format (must be Unix path, not Windows path)
+        const pathValidation = validateWinePath(MetaDir);
+        if (!pathValidation.valid) {
+            vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
+            return undefined;
+        }
+    }
 
     // Build command arguments - convert paths if using Wine (async, done before Promise)
     let compileArg, logArg, incArg;
     if (useWine) {
         // Convert Unix paths to Windows paths via winepath
-        compileArg = await toWineWindowsPath(pathToCompile, wineBinary);
-        logArg = await toWineWindowsPath(logFile, wineBinary);
-        incArg = incDir ? await toWineWindowsPath(incDir, wineBinary) : '';
+        const compileResult = await toWineWindowsPath(pathToCompile, wineBinary, winePrefix);
+        const logResult = await toWineWindowsPath(logFile, wineBinary, winePrefix);
+
+        if (!compileResult.success) {
+            outputChannel.appendLine(`[Wine] Path conversion failed for compile path '${pathToCompile}'; using original path as fallback`);
+            compileArg = pathToCompile;
+        } else {
+            compileArg = compileResult.path;
+        }
+
+        if (!logResult.success) {
+            outputChannel.appendLine(`[Wine] Path conversion failed for log path '${logFile}'; using original path as fallback`);
+            logArg = logFile;
+        } else {
+            logArg = logResult.path;
+        }
+
+        if (incDir) {
+            const incResult = await toWineWindowsPath(incDir, wineBinary, winePrefix);
+            if (!incResult.success) {
+                outputChannel.appendLine(`[Wine] Path conversion failed for include path '${incDir}'; using original path as fallback`);
+                incArg = incDir;
+            } else {
+                incArg = incResult.path;
+            }
+        } else {
+            incArg = '';
+        }
     } else {
         compileArg = pathToCompile;
         logArg = logFile;
@@ -448,7 +496,7 @@ async function compilePath(rt, pathToCompile, _context) {
                     if (diag.errorCode) {
                         diagnostic.code = {
                             value: `MQL${diag.errorCode}`,
-                            target: vscode.Uri.parse(`https://www.mql5.com/en/docs/runtime/errors`)
+                            target: vscode.Uri.parse('https://www.mql5.com/en/docs/runtime/errors')
                         };
                     }
                     diagnosticsMap.get(uri.toString()).push(diagnostic);
@@ -466,9 +514,10 @@ async function compilePath(rt, pathToCompile, _context) {
             if (rt === 2 && !log.error) {
                 if (useWine) {
                     const args = [MetaDir, `/compile:${compileArg}`];
-                    childProcess.spawn(wineBinary, args, { shell: false })
+                    const wineEnv = getWineEnv(config);
+                    childProcess.spawn(wineBinary, args, { shell: false, env: wineEnv })
                         .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
+                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
                         })
                         .on('close', () => {
@@ -480,7 +529,7 @@ async function compilePath(rt, pathToCompile, _context) {
                     const args = [`/compile:${compileArg}`];
                     childProcess.spawn(MetaDir, args, { shell: false })
                         .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
+                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
                         })
                         .on('close', () => {
@@ -494,12 +543,46 @@ async function compilePath(rt, pathToCompile, _context) {
             }
         };
 
-        // Execute command
-        const proc = childProcess.spawn(command, execArgs, { shell: false });
+        // Execute command with timeout for Wine processes
+        const spawnOptions = { shell: false };
+        if (useWine) {
+            spawnOptions.env = getWineEnv(config);
+        }
+
+        const proc = childProcess.spawn(command, execArgs, spawnOptions);
         let stderrData = '';
+        let timeoutId = null;
+
+        // Set up timeout for Wine processes
+        if (useWine) {
+            const wineTimeout = getWineTimeout(config);
+            timeoutId = setTimeout(() => {
+                outputChannel.appendLine(`[Wine] Compilation timed out after ${wineTimeout / 1000} seconds. Killing process...`);
+                proc.kill('SIGTERM');
+                setTimeout(() => {
+                    if (!proc.killed) {
+                        proc.kill('SIGKILL');
+                    }
+                }, 2000);
+            }, wineTimeout);
+        }
+
+        const clearWineTimeout = () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+        };
+
         proc.stderr.on('data', (data) => { stderrData += data.toString(); });
-        proc.on('error', (err) => handleCompilationResult(err, stderrData));
-        proc.on('close', (code) => handleCompilationResult(code !== 0 ? `Process exited with code ${code}` : null, stderrData));
+        proc.on('error', (err) => {
+            clearWineTimeout();
+            handleCompilationResult(err, stderrData);
+        });
+        proc.on('close', (code) => {
+            clearWineTimeout();
+            handleCompilationResult(code !== 0 ? `Process exited with code ${code}` : null, stderrData);
+        });
     });
 }
 
@@ -573,8 +656,8 @@ async function Compile(rt, context) {
     // (We keep lightweight diagnostics in a separate collection.)
     diagnosticCollection.clear();
 
-    const startT = new Date();
-    const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
+    // const startT = new Date();
+    // const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
     const teq = rt === 0 ? lg['checking'] : (rt === 1 ? lg['compiling'] : lg['comp_usi_script']);
 
 
@@ -777,22 +860,22 @@ async function FixFormatting() {
             "\\bD '(?:(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})|(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})\\s{1,}[\\d:]+)'"
         ],
         searchValue: [
-            "C ",
-            "C ",
-            "D "
+            'C ',
+            'C ',
+            'D '
         ],
         replaceValue: [
-            "C",
-            "C",
-            "D"
+            'C',
+            'C',
+            'D'
         ]
     };
 
     Array.from(document.getText().matchAll(new RegExp(CollectRegEx(data.reg), 'g'))).forEach(match => {
         for (const i in data.reg) {
             if (match[0].match(new RegExp(data.reg[i], 'g'))) {
-                let range = new vscode.Range(document.positionAt(match.index), document.positionAt(match.index + match[0].length))
-                array.push({ range, to: document.getText(range).replace(data.searchValue[i], data.replaceValue[i]) })
+                let range = new vscode.Range(document.positionAt(match.index), document.positionAt(match.index + match[0].length));
+                array.push({ range, to: document.getText(range).replace(data.searchValue[i], data.replaceValue[i]) });
             }
         }
     });
@@ -806,7 +889,7 @@ async function FixFormatting() {
     });
 }
 
-function CollectRegEx(dt, string = "") {
+function CollectRegEx(dt, string = '') {
     for (const i in dt) {
         string += dt[i] + '|';
     }
@@ -1879,6 +1962,46 @@ function activate(context) {
     const currentVersion = vscode.extensions.getExtension(extensionId)?.packageJSON.version;
     const previousVersion = context.globalState.get('mql-tools.version');
 
+    // Initialize Wine helper with output channel for logging
+    setWineOutputChannel(outputChannel);
+
+    // Validate Wine configuration if enabled
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    if (isWineEnabled(config)) {
+        const wineBinary = getWineBinary(config);
+        const winePrefix = getWinePrefix(config);
+
+        isWineInstalled(wineBinary, winePrefix).then(result => {
+            if (!result.installed) {
+                vscode.window.showErrorMessage(
+                    `Wine is enabled but not found: ${result.error || 'Unknown error'}`,
+                    'Open Settings'
+                ).then(selection => {
+                    if (selection === 'Open Settings') {
+                        vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Wine');
+                    }
+                });
+            } else {
+                outputChannel.appendLine(`[Wine] Detected: ${result.version}`);
+                if (winePrefix) {
+                    outputChannel.appendLine(`[Wine] Using prefix: ${winePrefix}`);
+                }
+            }
+        }).catch(error => {
+            const errorMessage = error?.message || String(error);
+            outputChannel.appendLine(`[Wine] Error checking Wine installation: ${errorMessage}`);
+            outputChannel.appendLine(error?.stack || '');
+            vscode.window.showErrorMessage(
+                `Failed to check Wine installation: ${errorMessage}`,
+                'Open Settings'
+            ).then(selection => {
+                if (selection === 'Open Settings') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Wine');
+                }
+            });
+        });
+    }
+
     // Wait for environment to stabilize before migration check
     sleep(2000).then(() => {
         if (previousVersion !== currentVersion) {
@@ -2127,15 +2250,55 @@ function activate(context) {
     // Watch for file changes to invalidate reverse index cache
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{mq4,mq5,mqh}');
 
-    const markFolderDirty = (uri) => {
+    // Debounced invalidation to handle batch updates (e.g. git checkout)
+    let indexInvalidationTimer = null;
+    const INDEX_DEBOUNCE_MS = 1000;
+    const pendingDirtyFolders = new Set();
+
+    const debouncedMarkDirty = (uri) => {
         const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (folder) markIndexDirty(folder);
+        if (folder) {
+            pendingDirtyFolders.add(folder.uri.toString());
+        }
+
+        if (indexInvalidationTimer) {
+            clearTimeout(indexInvalidationTimer);
+        }
+
+        indexInvalidationTimer = setTimeout(() => {
+            if (pendingDirtyFolders.size === 0) {
+                indexInvalidationTimer = null; // Reset timer state (Comment 6)
+                return;
+            }
+
+            // Process all pending folders
+            for (const folderUriStr of pendingDirtyFolders) {
+                const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.toString() === folderUriStr);
+                if (folder) {
+                    markIndexDirty(folder);
+                    // console.log(`[MQL Index] Invalidated cache for ${folder.name} (debounced)`);
+                }
+            }
+            pendingDirtyFolders.clear();
+            indexInvalidationTimer = null;
+        }, INDEX_DEBOUNCE_MS);
     };
 
-    fileWatcher.onDidChange(markFolderDirty);
-    fileWatcher.onDidCreate(markFolderDirty);
-    fileWatcher.onDidDelete(markFolderDirty);
+    fileWatcher.onDidChange(debouncedMarkDirty);
+    fileWatcher.onDidCreate(debouncedMarkDirty);
+    fileWatcher.onDidDelete(debouncedMarkDirty);
     context.subscriptions.push(fileWatcher);
+
+    // Register Project Context command
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.activateProjectContext', () => activateProjectContext(context)));
+
+    // Restore Project Context watcher if previously activated
+    try {
+        restoreContextWatcher(context);
+    } catch (err) {
+        console.error('Failed to restore Project Context watcher:', err);
+        vscode.window.showErrorMessage(`Failed to restore Project Context watcher: ${err.message}`);
+    }
 }
 
 function deactivate() {
@@ -2148,4 +2311,4 @@ module.exports = {
     deactivate,
     replaceLog,
     tf
-}
+};

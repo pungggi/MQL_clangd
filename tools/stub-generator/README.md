@@ -32,7 +32,10 @@ node index.js -i "./Include" -d "Trade" -v --dry-run
 |--------|-------------|
 | `-i, --input` | Path to MQL5 Include directory (required) |
 | `-o, --output` | Output file path (default: `generated_stubs.h`) |
-| `-d, --dirs` | Specific subdirectories to parse (comma-separated) |
+| `-d, --dirs` | Specific subdirectories or patterns to parse (comma-separated, flexible matching) |
+| `-f, --forward-only` | Generate forward declarations only (no class definitions) |
+| `-m, --merge` | Merge with existing output file (add new, keep existing declarations) |
+| `--force` | Overwrite existing file without prompting |
 | `-v, --verbose` | Enable verbose output |
 | `--dry-run` | Parse files but don't write output |
 | `-h, --help` | Show help message |

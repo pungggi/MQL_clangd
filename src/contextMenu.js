@@ -3,10 +3,17 @@ const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
 const pathModule = require('path');
-const lg = require("./language");
-const { tf } = require("./extension");
-const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require("./createProperties");
-const { toWineWindowsPath, isWineEnabled, getWineBinary } = require("./wineHelper");
+const lg = require('./language');
+const { tf } = require('./extension');
+const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
+const {
+    toWineWindowsPath,
+    isWineEnabled,
+    getWineBinary,
+    getWinePrefix,
+    getWineEnv,
+    validateWinePath
+} = require('./wineHelper');
 
 
 function ShowFiles(...args) {
@@ -78,8 +85,8 @@ function InsertMQH() {
 
     vscode.window.showOpenDialog(options).then(fileUri => {
         if (fileUri && fileUri[0])
-            InsertNameFileMQH(fileUri[0])
-    })
+            InsertNameFileMQH(fileUri[0]);
+    });
 
 }
 
@@ -91,7 +98,7 @@ function InsertNameFileMQH(uri) {
 
     if (['.mq4', '.mq5', '.mqh'].includes(extension)) {
         const dirName = pathModule.dirname(Path), Ye = NName.includes(Path.match(/.*\\(?=(?:(?:(?:.+)\.(?:\w+))$))/m)[0]) ? 1 : 0,
-            str = Ye ? NName.slice(dirName.length + 1) : RelativePath.replace(/(^include\/)(.+)/im, "$2");
+            str = Ye ? NName.slice(dirName.length + 1) : RelativePath.replace(/(^include\/)(.+)/im, '$2');
         edit(edit => edit.insert(pos, (ns > 0 ? '\n' : '') + '#include ' + (Ye === 1 ? '"' : '<') + str + (Ye === 1 ? '"' : '>')));
     }
 }
@@ -217,7 +224,7 @@ async function OpenFileInMetaEditor(uri) {
     const Nm = pathModule.basename(MetaDir), Pm = pathModule.dirname(MetaDir),
         lowNm = Nm.toLowerCase();
 
-    if (!(fs.existsSync(Pm) && (lowNm === 'metaeditor.exe' || lowNm === 'metaeditor64.exe'))) {
+    if (!(fs.existsSync(MetaDir) && fs.statSync(MetaDir).isFile() && (lowNm === 'metaeditor.exe' || lowNm === 'metaeditor64.exe'))) {
         return vscode.window.showErrorMessage(`${CommM} [${MetaDir}]`, 'Configure')
             .then(selection => {
                 if (selection === 'Configure') {
@@ -231,12 +238,26 @@ async function OpenFileInMetaEditor(uri) {
 
     try {
         if (useWine) {
+            // Validate MetaEditor path format (must be Unix path, not Windows path)
+            const pathValidation = validateWinePath(MetaDir);
+            if (!pathValidation.valid) {
+                return vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
+            }
+
             const wineBinary = getWineBinary(config);
-            const winePath = await toWineWindowsPath(uri.fsPath, wineBinary);
+            const winePrefix = getWinePrefix(config);
+            const wineEnv = getWineEnv(config);
+
+            const pathResult = await toWineWindowsPath(uri.fsPath, wineBinary, winePrefix);
+            if (!pathResult.success) {
+                console.error(`[Wine] Path conversion failed: ${pathResult.error}`);
+                return vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName} (Wine path conversion failed)`);
+            }
+
             // Note: MetaDir (path to metaeditor.exe) is passed as Unix path - Wine accepts this for executables in its prefix
-            const args = [MetaDir, winePath];
+            const args = [MetaDir, pathResult.path];
             if (portableSwitch) args.push(portableSwitch);
-            const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore' });
+            const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore', env: wineEnv });
             proc.on('error', (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
@@ -309,7 +330,7 @@ async function OpenTradingTerminal() {
     const Nm = pathModule.basename(TerminalDir), Pm = pathModule.dirname(TerminalDir),
         lowNm = Nm.toLowerCase();
 
-    if (!(fs.existsSync(Pm) && (lowNm === 'terminal.exe' || lowNm === 'terminal64.exe'))) {
+    if (!(fs.existsSync(TerminalDir) && fs.statSync(TerminalDir).isFile() && (lowNm === 'terminal.exe' || lowNm === 'terminal64.exe'))) {
         return vscode.window.showErrorMessage(`${CommT} [${TerminalDir}]`, 'Configure')
             .then(selection => {
                 if (selection === 'Configure') {
@@ -323,10 +344,17 @@ async function OpenTradingTerminal() {
 
     try {
         if (useWine) {
+            // Validate Terminal path format (must be Unix path, not Windows path)
+            const pathValidation = validateWinePath(TerminalDir);
+            if (!pathValidation.valid) {
+                return vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
+            }
+
             const wineBinary = getWineBinary(config);
+            const wineEnv = getWineEnv(config);
             const args = [TerminalDir];
             if (portableSwitch) args.push(portableSwitch);
-            const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore' });
+            const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore', env: wineEnv });
             proc.on('error', (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
@@ -362,4 +390,4 @@ module.exports = {
     CreateComment,
     OpenFileInMetaEditor,
     OpenTradingTerminal
-}
+};

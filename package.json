@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.0.18",
+    "version": "1.1.1",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.75.0",
@@ -124,12 +124,24 @@
                 "mql_tools.Wine.Enabled": {
                     "type": "boolean",
                     "default": false,
-                    "description": "%mql_tools.configuration.Wine.Enabled.description%"
+                    "markdownDescription": "Enable Wine support for running MetaEditor on macOS/Linux. When enabled, the extension will use Wine to execute MetaEditor and compile MQL files. **Note:** This setting is ignored on Windows."
                 },
                 "mql_tools.Wine.Binary": {
                     "type": "string",
                     "default": "wine64",
-                    "description": "%mql_tools.configuration.Wine.Binary.description%"
+                    "markdownDescription": "Path to the Wine executable. Use `wine64` (default) for Intel Macs and most Linux systems. **On Apple Silicon Macs** with CrossOver or Game Porting Toolkit, you may need to use `wine` instead. Examples: `wine64`, `/usr/local/bin/wine`, `/Applications/CrossOver.app/Contents/.../wine`."
+                },
+                "mql_tools.Wine.Prefix": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Path to the Wine prefix (WINEPREFIX). Leave empty to use the default prefix (`~/.wine`). For CrossOver bottles or custom Wine installations, specify the prefix path. Examples: `~/.wine`, `/Users/you/Library/Application Support/CrossOver/Bottles/MetaTrader`."
+                },
+                "mql_tools.Wine.Timeout": {
+                    "type": "number",
+                    "default": 60000,
+                    "minimum": 10000,
+                    "maximum": 300000,
+                    "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
                 "mql_tools.context": {
                     "type": "boolean",
@@ -187,6 +199,68 @@
                         "Automatically merge existing suppressions",
                         "Always overwrite the .clangd file"
                     ]
+                },
+                "mql_tools.ProjectContext.FileName": {
+                    "type": "string",
+                    "default": ".mql-context.toml",
+                    "markdownDescription": "Name of the generated context file, relative to project root. Examples: `.mql-context.toml`, `.mql-context.md`. The file extension determines the output format (takes precedence over `mql_tools.ProjectContext.Format`). `.toml` → TOML, `.md` or `.markdown` → Markdown."
+                },
+                "mql_tools.ProjectContext.Format": {
+                    "type": "string",
+                    "enum": [
+                        "toml",
+                        "markdown"
+                    ],
+                    "default": "toml",
+                    "description": "Output format for the context file. Note: The `mql_tools.ProjectContext.FileName` extension takes precedence. If the extension conflicts with this setting, the extension-derived format is used and a warning is shown.",
+                    "enumDescriptions": [
+                        "TOML format (recommended - optimized for AI context engines)",
+                        "Markdown format (human-readable with diagrams)"
+                    ]
+                },
+                "mql_tools.ProjectContext.EnableAutoUpdate": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically regenerate the context file when MQL files change."
+                },
+                "mql_tools.ProjectContext.ScanMode": {
+                    "type": "string",
+                    "enum": [
+                        "IncludesOnly",
+                        "FullWorkspace"
+                    ],
+                    "default": "IncludesOnly",
+                    "description": "Which files to index. 'IncludesOnly' scans only .mqh (libraries). 'FullWorkspace' scans all MQL files.",
+                    "enumDescriptions": [
+                        "Index only .mqh files (recommended - focuses on your libraries)",
+                        "Index all .mq4, .mq5, and .mqh files"
+                    ]
+                },
+                "mql_tools.ProjectContext.IncludeStdLib": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Include a summary of high-frequency MQL standard library functions."
+                },
+                "mql_tools.ProjectContext.ExcludePatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Glob patterns to exclude from scanning (e.g., '**/Backup/**', '**/Old/**')."
+                },
+                "mql_tools.ProjectContext.MaxTokens": {
+                    "type": "number",
+                    "default": 100000,
+                    "minimum": 0,
+                    "description": "Maximum token count before showing a warning. Set to 0 to disable warnings."
+                },
+                "mql_tools.ProjectContext.AutoUpdateDelay": {
+                    "type": "number",
+                    "default": 12000,
+                    "minimum": 2000,
+                    "maximum": 60000,
+                    "description": "Delay in milliseconds before regenerating context file after file changes (default: 12000ms)."
                 }
             }
         },
@@ -347,6 +421,11 @@
                 "command": "mql_tools.toggleTerminalLog",
                 "title": "Toggle Live Runtime Log",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.activateProjectContext",
+                "title": "Activate Project Context",
+                "category": "MQL"
             }
         ],
         "menus": {
@@ -498,5 +577,9 @@
         "eslint": "^8.57.1",
         "mocha": "^11.7.5"
     },
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "js-tiktoken": "^1.0.21",
+        "smol-toml": "^1.6.0"
+    }
 }

@@ -1,6 +1,24 @@
 # Changelog
 
-## 1.0.18  (2026-01-24)
+## 1.1.1
+
+### Bug Fixes
+- **Project Context**: Fixed race condition in parallel processing that caused incomplete symbol extraction (missing defines/enums/classes)
+
+## 1.1.0 (pre-release)
+### Features
+- **MQL Project Context & AI Bridge**: New command `MQL: Activate Project Context` generates an AI-friendly context file at project root
+  - **TOML format** (default): Optimized for AI context engines (uses `smol-toml`)
+  - **Markdown format**: Human-readable with Mermaid dependency diagrams
+  - Extracts symbol tables: `#define`, `enum`, `class/struct`, function signatures, and `#include` dependencies
+  - Includes curated summary of high-frequency MQL standard library functions
+  - Auto-updates on file changes with debounced file watcher (default 12s delay, configurable)
+  - Token counting with `js-tiktoken` (configurable warning threshold)
+  - Concurrency-limited parallel file I/O for reduced system load
+  - Persists activation state across VS Code sessions
+  - New configuration settings: `ProjectContext.FileName`, `ProjectContext.Format`, `ProjectContext.EnableAutoUpdate`, `ProjectContext.AutoUpdateDelay`, `ProjectContext.ScanMode`, `ProjectContext.IncludeStdLib`, `ProjectContext.ExcludePatterns`, `ProjectContext.MaxTokens`
+
+## 1.0.18
 
 ### Features
 - **Live Runtime Log**:
@@ -16,7 +34,7 @@
   - Improved regex for return type stripping to be more robust across different MQL data types.
 - **Enhanced configuration descriptions**: Updated `Include4Dir` and `Include5Dir` settings to use markdown descriptions highlighting their importance for the Live Runtime Log feature
 
-## 1.0.17 (2026-01-23)
+## 1.0.17
 
 ### Bug Fixes
 - **Fixed compilation not working on Windows**: MetaEditor was not executing due to incorrect argument quoting
@@ -27,7 +45,7 @@
 ### Improvements
 - **Focus Problems panel on errors**: After compilation, the Problems panel is automatically focused if there are errors; otherwise the Output panel stays focused
 
-## 1.0.16 (2026-01-23)
+## 1.0.16
 
 ### Bug Fixes
 - **Fixed file staying dirty after CheckOnSave**: Files no longer remain in a dirty (unsaved) state after the CheckOnSave feature runs
@@ -35,7 +53,7 @@
   - Now saves documents after the synthetic edit cycle to clear the dirty state
   - Uses `internalSaveDepth` guard to prevent re-triggering CheckOnSave during the cleanup save
 
-## 1.0.15 (2026-01-22)
+## 1.0.15
 
 ### Features
 - **Wine support for macOS/Linux**: Run MetaEditor on macOS and Linux through Wine compatibility layer

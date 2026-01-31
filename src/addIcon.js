@@ -77,7 +77,14 @@ async function add(dirName, fileExt, dirJsonName, JsonFileName, PartPath, NameDi
     for (const name of JsonFileName) {
         const jsonPath = pathModule.join(extenPath, NameDir, dirJsonName, name + '.json');
         const data = await fsPromises.readFile(jsonPath, 'utf8');
-        const obj = JSON.parse(data);
+
+        let obj;
+        try {
+            obj = JSON.parse(data);
+        } catch (err) {
+            console.error(`[MQL Tools] Failed to parse icon configuration JSON at ${jsonPath}: ${err.message}`);
+            continue; // Skip this file and continue with others
+        }
 
         if (NameExt === 'Material Theme Icons') { dirName = dirName.split('/')[dirName.split('/').length - 1]; }
         if (NameExt === 'VSCode Great Icons') {
@@ -110,7 +117,13 @@ async function add(dirName, fileExt, dirJsonName, JsonFileName, PartPath, NameDi
                 { ex5: 'ex5' });
         }
 
-        const json = JSON.stringify(obj, null, 4);
+        let json;
+        try {
+            json = JSON.stringify(obj, null, 4);
+        } catch (err) {
+            console.error(`[MQL Tools] Failed to stringify icon configuration: ${err.message}`);
+            continue; // Skip this file and continue with others
+        }
         await fsPromises.writeFile(jsonPath, json, 'utf8');
     }
 
@@ -246,4 +259,4 @@ function IconsInstallation() {
 
 module.exports = {
     IconsInstallation
-}
+};
