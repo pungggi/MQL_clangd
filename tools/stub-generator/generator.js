@@ -64,10 +64,68 @@ class StubGenerator {
     }
 
     /**
+     * Common template parameter names used in MQL5/C++
+     * These are identifiers that, if found in types without being defined,
+     * indicate the class is a template.
+     */
+    static TEMPLATE_PARAMS = new Set([
+        'T', 'K', 'V', 'U', 'R', 'E', 'N', 'M',
+        'T1', 'T2', 'T3', 'T4', 'T5',
+        'TKey', 'TValue', 'TResult', 'TInput', 'TOutput',
+        'PURGER', 'FUNCTOR', 'COMPARATOR', 'ALLOCATOR'
+    ]);
+
+    /**
+     * Detect template parameters used in a class
+     * Scans all methods and members for type names that look like template parameters
+     */
+    detectTemplateParams(classObj) {
+        const usedParams = new Set();
+
+        // Helper to extract potential template params from a type string
+        const extractParams = (typeStr) => {
+            if (!typeStr) return;
+            // Match standalone identifiers that could be template params
+            // Look for: T, T*, T&, T[], const T, etc.
+            const matches = typeStr.match(/\b([A-Z][A-Z0-9_]*)\b/g);
+            if (matches) {
+                for (const m of matches) {
+                    if (StubGenerator.TEMPLATE_PARAMS.has(m)) {
+                        usedParams.add(m);
+                    }
+                }
+            }
+        };
+
+        // Check all methods
+        for (const method of classObj.methods) {
+            extractParams(method.returnType);
+            for (const param of method.params || []) {
+                extractParams(param.type);
+            }
+        }
+
+        // Check all members
+        for (const member of classObj.members) {
+            extractParams(member.type);
+        }
+
+        // Return sorted array for consistent output
+        return Array.from(usedParams).sort();
+    }
+
+    /**
      * Generate class/struct declaration
      */
     generateClass(classObj) {
         const lines = [];
+
+        // Detect and generate template declaration if needed
+        const templateParams = this.detectTemplateParams(classObj);
+        if (templateParams.length > 0) {
+            const templateDecl = templateParams.map(p => `typename ${p}`).join(', ');
+            lines.push(`template<${templateDecl}>`);
+        }
 
         // Class declaration
         const keyword = classObj.isStruct ? 'struct' : 'class';
@@ -255,13 +313,74 @@ class StubGenerator {
         lines.push('');
         lines.push('');
 
-        // Generate all enums first
-        lines.push('// Enums');
+        // Helper to check if two enums are identical
+        const areEnumsEqual = (e1, e2) => {
+            if (e1.values.length !== e2.values.length) return false;
+            for (let i = 0; i < e1.values.length; i++) {
+                if (e1.values[i].name !== e2.values[i].name) return false;
+                if (e1.values[i].value !== e2.values[i].value) return false;
+            }
+            return true;
+        };
+
+        // Helper to update type references in classes when an enum is renamed
+        const updateTypeReferences = (classes, oldName, newName) => {
+            // Regex to match whole word type name
+            const regex = new RegExp(`\\b${oldName}\\b`, 'g');
+            const update = (s) => s ? s.replace(regex, newName) : s;
+
+            for (const cls of classes) {
+                for (const m of cls.members) {
+                    m.type = update(m.type);
+                }
+                for (const m of cls.methods) {
+                    m.returnType = update(m.returnType);
+                    for (const p of m.params) {
+                        p.type = update(p.type);
+                    }
+                }
+            }
+        };
+
+        // Process enums: deduplicate and handle collisions
+        const processedEnums = new Map(); // name -> enumObj
+        const finalEnums = [];
+
         for (const data of parsedDataArray) {
             for (const enumObj of data.enums) {
-                lines.push(this.generateEnum(enumObj));
-                lines.push('');
+                if (processedEnums.has(enumObj.name)) {
+                    const existing = processedEnums.get(enumObj.name);
+                    if (areEnumsEqual(existing, enumObj)) {
+                        continue; // Exact duplicate, skip
+                    } else {
+                        // Collision! Rename current enum
+                        const oldName = enumObj.name;
+                        let counter = 2;
+                        let newName = `${oldName}_${counter}`;
+                        while (processedEnums.has(newName)) {
+                            counter++;
+                            newName = `${oldName}_${counter}`;
+                        }
+
+                        enumObj.name = newName;
+                        processedEnums.set(newName, enumObj);
+                        finalEnums.push(enumObj);
+
+                        // Update references in this file's classes
+                        updateTypeReferences(data.classes, oldName, newName);
+                    }
+                } else {
+                    processedEnums.set(enumObj.name, enumObj);
+                    finalEnums.push(enumObj);
+                }
             }
+        }
+
+        // Generate all enums first
+        lines.push('// Enums');
+        for (const enumObj of finalEnums) {
+            lines.push(this.generateEnum(enumObj));
+            lines.push('');
         }
 
         // Generate class definitions (unless forwardDeclOnly mode)

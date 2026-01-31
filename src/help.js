@@ -64,8 +64,12 @@ function openWebHelp(version, keyword) {
         const docsMap = loadMql5DocsMap();
         const keyLower = keyword.toLowerCase();
 
-        const docPath = docsMap[keyLower];
+        let docPath = docsMap[keyLower];
         if (docPath) {
+            // Handle both single paths and arrays (from collision detection)
+            if (Array.isArray(docPath)) {
+                docPath = docPath[0]; // Use first path when multiple exist
+            }
             // Check if it's a full path (contains /) or just a category
             if (docPath.includes('/')) {
                 // Full path: standardlibrary/tradeclasses/ctrade/ctradepositionmodify
@@ -155,7 +159,7 @@ function getChmPaths(version) {
 
     // Check for Wine.Prefix configuration
     const config = vscode.workspace.getConfiguration('mql_tools');
-    const winePrefix = config.Wine?.Prefix || '';
+    const winePrefix = config.get('Wine.Prefix', '');
 
     if (platform === 'win32') {
         // Windows: %APPDATA%\MetaQuotes\Terminal\Help\
@@ -294,7 +298,10 @@ function OfflineHelp() {
     }
 
     const { start, end } = selection;
-    if (end.line !== start.line) return;
+    if (end.line !== start.line) {
+        vscode.window.showInformationMessage('MQL Help: Multi-line selections not supported; place cursor on a single line or select a single word');
+        return;
+    }
 
     const isSelectionSearch = end.character !== start.character;
     const wordAtCursorRange = isSelectionSearch

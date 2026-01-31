@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+### Bug Fixes
+- **Project Context**: Fixed race condition in parallel processing that caused incomplete symbol extraction (missing defines/enums/classes)
+
 ## 1.1.0 (pre-release)
 ### Features
 - **MQL Project Context & AI Bridge**: New command `MQL: Activate Project Context` generates an AI-friendly context file at project root

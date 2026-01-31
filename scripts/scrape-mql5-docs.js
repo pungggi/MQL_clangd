@@ -16,6 +16,8 @@ const DELAY_MS = 300; // Delay between requests
 const allDocs = {};
 const visited = new Set();
 
+const FETCH_TIMEOUT_MS = 30000; // 30 second timeout
+
 function fetchPage(url) {
     return new Promise((resolve, reject) => {
         const options = {
@@ -24,11 +26,47 @@ function fetchPage(url) {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             }
         };
-        https.get(url, options, (res) => {
+
+        let timeoutId = null;
+
+        const cleanup = () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+        };
+
+        const req = https.get(url, options, (res) => {
+            // Set timeout on the request
+            timeoutId = setTimeout(() => {
+                req.destroy();
+                cleanup();
+                reject(new Error(`Request timeout after ${FETCH_TIMEOUT_MS}ms for ${url}`));
+            }, FETCH_TIMEOUT_MS);
+
+            // Check HTTP status code
+            if (res.statusCode < 200 || res.statusCode >= 300) {
+                cleanup();
+                reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+                return;
+            }
+
             let data = '';
             res.on('data', chunk => data += chunk);
-            res.on('end', () => resolve(data));
-        }).on('error', reject);
+            res.on('end', () => {
+                cleanup();
+                resolve(data);
+            });
+            res.on('error', (err) => {
+                cleanup();
+                reject(err);
+            });
+        });
+
+        req.on('error', (err) => {
+            cleanup();
+            reject(err);
+        });
     });
 }
 
@@ -67,7 +105,27 @@ async function scrapePage(docPath, depth = 0) {
 
         // Only store if it looks like a function/class page (not a category index)
         if (pathWithoutLang.includes('/')) {
-            allDocs[keyword] = pathWithoutLang;
+            // Handle collisions: preserve all paths for the same keyword
+            if (allDocs[keyword]) {
+                // Already exists, convert to array if needed and add new path
+                if (Array.isArray(allDocs[keyword])) {
+                    // Check if this path is already in the array
+                    if (!allDocs[keyword].includes(pathWithoutLang)) {
+                        allDocs[keyword].push(pathWithoutLang);
+                        console.warn(`Collision detected for keyword "${keyword}": existing paths [${allDocs[keyword].slice(0, -1).join(', ')}], new path "${pathWithoutLang}"`);
+                    }
+                } else {
+                    // Convert existing single value to array
+                    const existingPath = allDocs[keyword];
+                    if (existingPath !== pathWithoutLang) {
+                        allDocs[keyword] = [existingPath, pathWithoutLang];
+                        console.warn(`Collision detected for keyword "${keyword}": existing path "${existingPath}", new path "${pathWithoutLang}"`);
+                    }
+                }
+            } else {
+                // First occurrence, store as single value (backward compatible)
+                allDocs[keyword] = pathWithoutLang;
+            }
         }
 
         // Progress output

@@ -392,21 +392,27 @@ async function compilePath(rt, pathToCompile, _context) {
         const logResult = await toWineWindowsPath(logFile, wineBinary, winePrefix);
 
         if (!compileResult.success) {
-            outputChannel.appendLine('[Wine] Warning: Path conversion may have failed for compile path');
-        }
-        if (!logResult.success) {
-            outputChannel.appendLine('[Wine] Warning: Path conversion may have failed for log path');
+            outputChannel.appendLine(`[Wine] Path conversion failed for compile path '${pathToCompile}'; using original path as fallback`);
+            compileArg = pathToCompile;
+        } else {
+            compileArg = compileResult.path;
         }
 
-        compileArg = compileResult.path;
-        logArg = logResult.path;
+        if (!logResult.success) {
+            outputChannel.appendLine(`[Wine] Path conversion failed for log path '${logFile}'; using original path as fallback`);
+            logArg = logFile;
+        } else {
+            logArg = logResult.path;
+        }
 
         if (incDir) {
             const incResult = await toWineWindowsPath(incDir, wineBinary, winePrefix);
             if (!incResult.success) {
-                outputChannel.appendLine('[Wine] Warning: Path conversion may have failed for include path');
+                outputChannel.appendLine(`[Wine] Path conversion failed for include path '${incDir}'; using original path as fallback`);
+                incArg = incDir;
+            } else {
+                incArg = incResult.path;
             }
-            incArg = incResult.path;
         } else {
             incArg = '';
         }
@@ -1981,6 +1987,18 @@ function activate(context) {
                     outputChannel.appendLine(`[Wine] Using prefix: ${winePrefix}`);
                 }
             }
+        }).catch(error => {
+            const errorMessage = error?.message || String(error);
+            outputChannel.appendLine(`[Wine] Error checking Wine installation: ${errorMessage}`);
+            outputChannel.appendLine(error?.stack || '');
+            vscode.window.showErrorMessage(
+                `Failed to check Wine installation: ${errorMessage}`,
+                'Open Settings'
+            ).then(selection => {
+                if (selection === 'Open Settings') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Wine');
+                }
+            });
         });
     }
 

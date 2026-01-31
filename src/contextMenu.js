@@ -224,7 +224,7 @@ async function OpenFileInMetaEditor(uri) {
     const Nm = pathModule.basename(MetaDir), Pm = pathModule.dirname(MetaDir),
         lowNm = Nm.toLowerCase();
 
-    if (!(fs.existsSync(Pm) && (lowNm === 'metaeditor.exe' || lowNm === 'metaeditor64.exe'))) {
+    if (!(fs.existsSync(MetaDir) && fs.statSync(MetaDir).isFile() && (lowNm === 'metaeditor.exe' || lowNm === 'metaeditor64.exe'))) {
         return vscode.window.showErrorMessage(`${CommM} [${MetaDir}]`, 'Configure')
             .then(selection => {
                 if (selection === 'Configure') {
@@ -250,7 +250,8 @@ async function OpenFileInMetaEditor(uri) {
 
             const pathResult = await toWineWindowsPath(uri.fsPath, wineBinary, winePrefix);
             if (!pathResult.success) {
-                console.warn(`[Wine] Path conversion warning: ${pathResult.error}`);
+                console.error(`[Wine] Path conversion failed: ${pathResult.error}`);
+                return vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName} (Wine path conversion failed)`);
             }
 
             // Note: MetaDir (path to metaeditor.exe) is passed as Unix path - Wine accepts this for executables in its prefix
@@ -329,7 +330,7 @@ async function OpenTradingTerminal() {
     const Nm = pathModule.basename(TerminalDir), Pm = pathModule.dirname(TerminalDir),
         lowNm = Nm.toLowerCase();
 
-    if (!(fs.existsSync(Pm) && (lowNm === 'terminal.exe' || lowNm === 'terminal64.exe'))) {
+    if (!(fs.existsSync(TerminalDir) && fs.statSync(TerminalDir).isFile() && (lowNm === 'terminal.exe' || lowNm === 'terminal64.exe'))) {
         return vscode.window.showErrorMessage(`${CommT} [${TerminalDir}]`, 'Configure')
             .then(selection => {
                 if (selection === 'Configure') {
