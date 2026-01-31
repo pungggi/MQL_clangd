@@ -84,11 +84,6 @@
                     "default": false,
                     "description": "%mql_tools.configuration.Portable5.description%"
                 },
-                "mql_tools.LogFile.NameLog": {
-                    "type": "string",
-                    "default": "",
-                    "description": "%mql_tools.configuration.LogDir.description%"
-                },
                 "mql_tools.ShowButton.Compile": {
                     "type": "boolean",
                     "default": true,
@@ -103,22 +98,6 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%mql_tools.configuration.ShowButtonScript.description%"
-                },
-                "mql_tools.Script.MiniME": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%mql_tools.configuration.MiniME.description%"
-                },
-                "mql_tools.Script.Timetomini": {
-                    "type": "number",
-                    "default": 500,
-                    "minimum": 100,
-                    "description": "%mql_tools.configuration.Timetomini.description%"
-                },
-                "mql_tools.Script.CloseME": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%mql_tools.configuration.CloseME.description%"
                 },
                 "mql_tools.AutoCheck.Enabled": {
                     "type": "boolean",
@@ -154,8 +133,7 @@
                 },
                 "mql_tools.context": {
                     "type": "boolean",
-                    "default": false,
-                    "markdownDeprecationMessage": "%mql_tools.configuration.context%"
+                    "default": false
                 },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",

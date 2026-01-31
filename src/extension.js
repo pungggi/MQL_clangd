@@ -268,9 +268,6 @@ async function compilePath(rt, pathToCompile, _context) {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const fileName = pathModule.basename(pathToCompile);
     const extension = pathModule.extname(pathToCompile).toLowerCase();
-    const Timemini = config.Script.Timetomini;
-    const mme = config.Script.MiniME;
-    const cme = config.Script.CloseME;
     const startT = new Date();
     const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
 
@@ -476,56 +473,21 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         })
                         .on('close', () => {
-                            outputChannel.appendLine(String(cme ? log.text : log.text + lg['info_log_compile']));
+                            outputChannel.appendLine(String(log.text + lg['info_log_compile']));
                             resolve();
                         });
                 } else {
-                    // Safe spawn-based execution without command injection vulnerability
-                    const compileParam = `/compile:${compileArg}`;
-                    const metaEditorArgs = [compileParam];
-
-                    if (mme) {
-                        // Use PowerShell to start minimized and optionally close after delay
-                        // Pass MetaDir and compileArg as separate array elements (no shell evaluation)
-                        const psScript = `
-                            $proc = Start-Process -FilePath '${MetaDir.replace(/'/g, "''")}' -ArgumentList '${compileParam.replace(/'/g, "''")}' -WindowStyle Minimized -PassThru;
-                            Start-Sleep -Milliseconds ${Timemini};
-                            if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
-                        `;
-                        const psArgs = ['-Command', psScript.trim()];
-                        const psProc = childProcess.spawn('powershell', psArgs, { shell: false });
-
-                        psProc.on('error', (error) => {
+                    // Direct execution on Windows
+                    const args = [`/compile:${compileArg}`];
+                    childProcess.spawn(MetaDir, args, { shell: false })
+                        .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
                             resolve();
-                        });
-
-                        psProc.on('close', (code) => {
-                            if (cme) {
-                                outputChannel.appendLine(String(log.text));
-                            } else {
-                                outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                            }
+                        })
+                        .on('close', () => {
+                            outputChannel.appendLine(String(log.text + lg['info_log_compile']));
                             resolve();
                         });
-                    } else {
-                        // Direct spawn without PowerShell wrapper
-                        const child = childProcess.spawn(MetaDir, metaEditorArgs, { shell: false });
-
-                        child.on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}`);
-                            resolve();
-                        });
-
-                        child.on('close', (code) => {
-                            if (cme) {
-                                outputChannel.appendLine(String(log.text));
-                            } else {
-                                outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                            }
-                            resolve();
-                        });
-                    }
                 }
             } else {
                 outputChannel.appendLine(String(log.text));
