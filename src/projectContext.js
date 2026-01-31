@@ -6,8 +6,22 @@ const { obj_items } = require('./provider');
 const { getEncoding } = require('js-tiktoken');
 const TOML = require('smol-toml');
 
-// Initialize tokenizer (cl100k_base is used by GPT-4/GPT-3.5)
-const enc = getEncoding('cl100k_base');
+// Lazy-initialized tokenizer (cl100k_base is used by GPT-4/GPT-3.5)
+let enc = null;
+function getEncoder() {
+    if (!enc) {
+        try {
+            enc = getEncoding('cl100k_base');
+        } catch (err) {
+            console.error('[MQL Context] Failed to initialize tokenizer:', err.message);
+            // Return a fallback that just counts characters if tokenizer fails
+            return {
+                encode: (text) => ({ length: Math.ceil(text.length / 4) })
+            };
+        }
+    }
+    return enc;
+}
 
 // =============================================================================
 // PROJECT CONTEXT GENERATOR
@@ -579,7 +593,7 @@ async function writeContextFile(workspaceFolder) {
         }
 
         // Token Count Warning
-        const tokens = enc.encode(content).length;
+        const tokens = getEncoder().encode(content).length;
 
         // Use TOML-compatible warning format for TOML output, Markdown for Markdown (Comment 2)
         let warningHeader;

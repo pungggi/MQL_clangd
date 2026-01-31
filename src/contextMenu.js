@@ -221,7 +221,7 @@ async function OpenFileInMetaEditor(uri) {
             });
     }
 
-    const Nm = pathModule.basename(MetaDir), Pm = pathModule.dirname(MetaDir),
+    const Nm = pathModule.basename(MetaDir),
         lowNm = Nm.toLowerCase();
 
     if (!(fs.existsSync(MetaDir) && fs.statSync(MetaDir).isFile() && (lowNm === 'metaeditor.exe' || lowNm === 'metaeditor64.exe'))) {
@@ -327,7 +327,7 @@ async function OpenTradingTerminal() {
             });
     }
 
-    const Nm = pathModule.basename(TerminalDir), Pm = pathModule.dirname(TerminalDir),
+    const Nm = pathModule.basename(TerminalDir),
         lowNm = Nm.toLowerCase();
 
     if (!(fs.existsSync(TerminalDir) && fs.statSync(TerminalDir).isFile() && (lowNm === 'terminal.exe' || lowNm === 'terminal64.exe'))) {

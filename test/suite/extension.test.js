@@ -183,7 +183,7 @@ suite('safeConfigUpdate Tests (Issue #21)', () => {
         vscodeMock.workspace._configMock = {
             get: () => undefined,
             update: () => { updateCalled = true; return Promise.resolve(); },
-            inspect: () => ({ workspaceValue: undefined })  // Setting exists
+            inspect: () => ({ defaultValue: 'default', workspaceValue: undefined })  // Setting exists
         };
 
         await safeConfigUpdate('existing.setting', 'value', ConfigurationTarget.Workspace, false);
