@@ -22,8 +22,23 @@
 
 const fs = require('fs');
 const path = require('path');
+const readline = require('readline');
 const { MqlParser } = require('./parser');
 const { StubGenerator } = require('./generator');
+
+// Helper to prompt user for input
+function prompt(question) {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+    return new Promise(resolve => {
+        rl.question(question, answer => {
+            rl.close();
+            resolve(answer.trim().toLowerCase());
+        });
+    });
+}
 
 // Parse command line arguments
 function parseArgs() {
@@ -35,7 +50,9 @@ function parseArgs() {
         dirs: null,
         verbose: false,
         dryRun: false,
-        forwardOnly: false
+        forwardOnly: false,
+        merge: false,
+        force: false
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -67,6 +84,13 @@ function parseArgs() {
             case '--forward-only':
                 options.forwardOnly = true;
                 break;
+            case '-m':
+            case '--merge':
+                options.merge = true;
+                break;
+            case '--force':
+                options.force = true;
+                break;
             case '-h':
             case '--help':
                 printHelp();
@@ -91,6 +115,8 @@ Options:
                      Example: -d "Trade,Controls,Arrays"
   -f, --forward-only Generate forward declarations only (no class definitions)
                      Use this to avoid conflicts with real MQL5 headers
+  -m, --merge        Merge with existing output file (add new, keep existing)
+  --force            Overwrite existing file without prompting
   -v, --verbose      Enable verbose output
   --dry-run          Parse files but don't write output
   -h, --help         Show this help message
@@ -144,6 +170,19 @@ async function main() {
         process.exit(1);
     }
 
+    // Normalize input path - be forgiving with trailing slashes, quotes, etc.
+    options.input = options.input
+        .replace(/^["']|["']$/g, '')     // Remove surrounding quotes
+        .replace(/[\\/]+$/g, '')          // Remove trailing slashes (both / and \)
+        .trim();
+
+    // Normalize output path too
+    if (options.output) {
+        options.output = options.output
+            .replace(/^["']|["']$/g, '')
+            .trim();
+    }
+
     if (!fs.existsSync(options.input)) {
         console.error(`Error: Input path does not exist: ${options.input}`);
         process.exit(1);
@@ -160,24 +199,87 @@ async function main() {
 
     // Find files to parse
     let filesToParse = [];
+    const allFiles = findMqhFiles(options.input);
 
     if (options.dirs) {
+        // Try multiple matching strategies for flexibility
         for (const dir of options.dirs) {
             const dirPath = path.join(options.input, dir);
-            if (fs.existsSync(dirPath)) {
+
+            // Strategy 1: Exact directory match
+            if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
                 filesToParse.push(...findMqhFiles(dirPath));
+                continue;
+            }
+
+            // Strategy 2: Case-insensitive directory match
+            const dirLower = dir.toLowerCase();
+            try {
+                const entries = fs.readdirSync(options.input, { withFileTypes: true });
+                const matchedDir = entries.find(e =>
+                    e.isDirectory() && e.name.toLowerCase() === dirLower
+                );
+                if (matchedDir) {
+                    const matchedPath = path.join(options.input, matchedDir.name);
+                    filesToParse.push(...findMqhFiles(matchedPath));
+                    console.log(`  Matched directory: ${matchedDir.name}`);
+                    continue;
+                }
+            } catch (err) {
+                // Ignore read errors
+            }
+
+            // Strategy 3: Filter files by pattern (filename contains the pattern)
+            const patternLower = dir.toLowerCase();
+            const matchedFiles = allFiles.filter(f => {
+                const baseName = path.basename(f, '.mqh').toLowerCase();
+                const relativePath = path.relative(options.input, f).toLowerCase();
+                return baseName.includes(patternLower) || relativePath.includes(patternLower);
+            });
+
+            if (matchedFiles.length > 0) {
+                filesToParse.push(...matchedFiles);
+                console.log(`  Pattern "${dir}" matched ${matchedFiles.length} files`);
             } else {
-                console.warn(`Warning: Directory not found: ${dirPath}`);
+                console.warn(`Warning: No matches for "${dir}" (tried directory and filename patterns)`);
             }
         }
+
+        // Remove duplicates
+        filesToParse = [...new Set(filesToParse)];
+
+        // Fallback: if nothing matched but we have files, offer to use all
+        if (filesToParse.length === 0 && allFiles.length > 0) {
+            console.log('');
+            console.log(`No matches for specified directories, but found ${allFiles.length} .mqh files in input path.`);
+            console.log('Falling back to parsing all files...');
+            filesToParse = allFiles;
+        }
     } else {
-        filesToParse = findMqhFiles(options.input);
+        filesToParse = allFiles;
     }
 
     console.log(`Found ${filesToParse.length} .mqh files to parse`);
 
     if (filesToParse.length === 0) {
         console.error('Error: No .mqh files found');
+
+        // Help the user by showing what's available
+        try {
+            const entries = fs.readdirSync(options.input, { withFileTypes: true });
+            const subdirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+            const mqhFiles = entries.filter(e => e.isFile() && e.name.endsWith('.mqh')).map(e => e.name);
+
+            if (subdirs.length > 0) {
+                console.log(`\nAvailable subdirectories: ${subdirs.slice(0, 10).join(', ')}${subdirs.length > 10 ? '...' : ''}`);
+            }
+            if (mqhFiles.length > 0) {
+                console.log(`Files in root: ${mqhFiles.slice(0, 5).join(', ')}${mqhFiles.length > 5 ? `... (${mqhFiles.length} total)` : ''}`);
+            }
+        } catch (err) {
+            // Ignore
+        }
+
         process.exit(1);
     }
 
@@ -257,18 +359,123 @@ async function main() {
             forwardDeclOnly: options.forwardOnly
         });
 
-        const output = generator.generateHeader(parsedData);
+        let output = generator.generateHeader(parsedData);
 
-        // Write output file
+        // Ensure output directory exists
         const outputDir = path.dirname(options.output);
         if (outputDir && !fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
 
-        fs.writeFileSync(options.output, output, 'utf-8');
+        // Check if output file exists
+        const fileExists = fs.existsSync(options.output);
 
-        const stats = fs.statSync(options.output);
-        console.log(`Written: ${options.output} (${(stats.size / 1024).toFixed(1)} KB)`);
+        if (fileExists && !options.force && !options.merge) {
+            // Interactive prompt
+            const existingStats = fs.statSync(options.output);
+            console.log(`\nOutput file already exists: ${options.output} (${(existingStats.size / 1024).toFixed(1)} KB)`);
+            console.log('');
+            console.log('Options:');
+            console.log('  [m]erge     - Add new declarations, keep existing ones');
+            console.log('  [o]verwrite - Replace file completely');
+            console.log('  [c]ancel    - Abort without changes');
+            console.log('');
+
+            const answer = await prompt('Choose action [m/o/c]: ');
+
+            if (answer === 'c' || answer === 'cancel') {
+                console.log('Cancelled.');
+                process.exit(0);
+            } else if (answer === 'm' || answer === 'merge') {
+                options.merge = true;
+            } else if (answer !== 'o' && answer !== 'overwrite') {
+                console.log('Invalid choice. Aborting.');
+                process.exit(1);
+            }
+        }
+
+        // Handle merge mode
+        if (fileExists && options.merge) {
+            const existingContent = fs.readFileSync(options.output, 'utf-8');
+
+            // Extract existing class and enum names
+            const existingClasses = new Set();
+            const existingEnums = new Set();
+
+            // Match class declarations: class ClassName or class ClassName :
+            const classPattern = /^class\s+(\w+)\s*[:{]/gm;
+            let match;
+            while ((match = classPattern.exec(existingContent)) !== null) {
+                existingClasses.add(match[1]);
+            }
+
+            // Match enum declarations: enum EnumName {
+            const enumPattern = /^enum\s+(\w+)\s*\{/gm;
+            while ((match = enumPattern.exec(existingContent)) !== null) {
+                existingEnums.add(match[1]);
+            }
+
+            // Filter parsed data to only include new declarations
+            let newClasses = 0;
+            let newEnums = 0;
+
+            for (const data of parsedData) {
+                data.classes = data.classes.filter(cls => {
+                    if (!existingClasses.has(cls.name)) {
+                        newClasses++;
+                        return true;
+                    }
+                    return false;
+                });
+                data.enums = data.enums.filter(e => {
+                    if (!existingEnums.has(e.name)) {
+                        newEnums++;
+                        return true;
+                    }
+                    return false;
+                });
+            }
+
+            if (newClasses === 0 && newEnums === 0) {
+                console.log('No new declarations to add. File unchanged.');
+            } else {
+                console.log(`Merging: ${newClasses} new classes, ${newEnums} new enums`);
+
+                // Generate only the new declarations
+                const newOutput = generator.generateHeader(parsedData);
+
+                // Find where to insert (before the closing #endif)
+                const endifIndex = existingContent.lastIndexOf('#endif');
+                if (endifIndex > 0) {
+                    // Insert new content before #endif
+                    const beforeEndif = existingContent.substring(0, endifIndex);
+                    const afterEndif = existingContent.substring(endifIndex);
+
+                    // Extract just the declaration content from new output (skip header/footer)
+                    const contentStart = newOutput.indexOf('// Forward declarations');
+                    const contentEnd = newOutput.lastIndexOf('#endif');
+
+                    if (contentStart > 0 && contentEnd > contentStart) {
+                        const newDeclarations = newOutput.substring(contentStart, contentEnd);
+                        output = beforeEndif + '\n// === Merged declarations ===\n' + newDeclarations + '\n' + afterEndif;
+                    } else {
+                        output = beforeEndif + '\n// === Merged declarations ===\n' + newOutput + '\n' + afterEndif;
+                    }
+                } else {
+                    // No #endif found, just append
+                    output = existingContent + '\n// === Merged declarations ===\n' + newOutput;
+                }
+
+                fs.writeFileSync(options.output, output, 'utf-8');
+                const stats = fs.statSync(options.output);
+                console.log(`Merged: ${options.output} (${(stats.size / 1024).toFixed(1)} KB)`);
+            }
+        } else {
+            // Overwrite mode
+            fs.writeFileSync(options.output, output, 'utf-8');
+            const stats = fs.statSync(options.output);
+            console.log(`Written: ${options.output} (${(stats.size / 1024).toFixed(1)} KB)`);
+        }
     }
 
     console.log('');
