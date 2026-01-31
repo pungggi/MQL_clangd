@@ -201,7 +201,7 @@ class StubGenerator {
 
         // File header
         lines.push('/**');
-        lines.push(` * Auto-generated MQL5 Standard Library stubs for clangd`);
+        lines.push(' * Auto-generated MQL5 Standard Library stubs for clangd');
         lines.push(` * Header: ${headerName}`);
         lines.push(` * Generated: ${new Date().toISOString()}`);
         lines.push(' * ');

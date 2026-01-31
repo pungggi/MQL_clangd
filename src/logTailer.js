@@ -127,7 +127,7 @@ class MqlLogTailer {
             this.timer = null;
         }
         if (this.outputChannel) {
-            this.outputChannel.appendLine(`--- Tail Stopped ---`);
+            this.outputChannel.appendLine('--- Tail Stopped ---');
         }
     }
 
@@ -235,7 +235,7 @@ class MqlLogTailer {
             this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
             this.statusBarItem.tooltip = 'Click to stop live log tailing';
         } else {
-            this.statusBarItem.text = `$(primitive-square) MQL Log: Off`;
+            this.statusBarItem.text = '$(primitive-square) MQL Log: Off';
             this.statusBarItem.backgroundColor = undefined;
             this.statusBarItem.tooltip = 'Click to start live MQL log tailing';
         }
@@ -266,7 +266,7 @@ class MqlLogTailer {
                 } else if (stats.size < this.lastSize) {
                     // File was truncated or cleared
                     this.lastSize = 0;
-                    this.outputChannel.appendLine(`[Info] Log file truncated. Refreshing...`);
+                    this.outputChannel.appendLine('[Info] Log file truncated. Refreshing...');
                 }
             }
         } catch (err) {

@@ -324,4 +324,4 @@ module.exports = {
     Help,
     OfflineHelp,
     getMql5DocLang
-}
+};

@@ -96,7 +96,7 @@ function validateWinePath(pathToCheck) {
         return {
             valid: false,
             error: `Wine mode requires Unix-style paths. Got "${pathToCheck}". ` +
-                `Use something like "/Users/you/.wine/drive_c/..." instead of "C:\\..."`
+                'Use something like "/Users/you/.wine/drive_c/..." instead of "C:\\..."'
         };
     }
 

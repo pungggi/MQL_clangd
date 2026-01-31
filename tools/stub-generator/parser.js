@@ -83,7 +83,7 @@ class MqlParser {
      * Parse enum declarations
      */
     parseEnums(source) {
-        let pos = 0;
+        let _pos = 0;
         const startRegex = /enum\s*(\w+)?\s*\{/g;
         let match;
         let anonCounter = 0;
@@ -382,8 +382,8 @@ class MqlParser {
                 // Now skip past the entire method body
                 // We need to find the matching closing brace
                 // Rebuild the remaining text from current position
-                const remainingLines = lines.slice(i).join('\n');
-                const posInLine = fullDecl.indexOf('{');
+                const _remainingLines = lines.slice(i).join('\n');
+                const _posInLine = fullDecl.indexOf('{');
 
                 // Find where in 'remainingLines' the opening brace is
                 // Actually, it's simpler to just count braces from where we are

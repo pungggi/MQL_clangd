@@ -26,29 +26,28 @@ let isAutoCheckRunning = false;
 let autoCheckDocVersions = new Map(); // Track document versions to ignore our own edits
 // Guard to prevent CheckOnSave from re-triggering itself when Compile() saves files.
 let internalSaveDepth = 0;
-const lg = require("./language");
-const { Help, OfflineHelp } = require("./help");
-const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require("./contextMenu");
-const { IconsInstallation } = require("./addIcon");
-const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, obj_items } = require("./provider");
-const { registerLightweightDiagnostics } = require("./lightweightDiagnostics");
-const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require("./createProperties");
-const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require("./compileTargetResolver");
+const lg = require('./language');
+const { Help, OfflineHelp } = require('./help');
+const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
+const { IconsInstallation } = require('./addIcon');
+const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider } = require('./provider');
+const { obj_items } = require('./provider');
+const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
+const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
+const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
 const {
     toWineWindowsPath,
-    toWineWindowsPathLegacy,
     isWineEnabled,
     getWineBinary,
     getWinePrefix,
     getWineTimeout,
     getWineEnv,
-    spawnWineProcess,
     validateWinePath,
     isWineInstalled,
     setOutputChannel: setWineOutputChannel
-} = require("./wineHelper");
-const logTailer = require("./logTailer");
-const { activateProjectContext, restoreContextWatcher } = require("./projectContext");
+} = require('./wineHelper');
+const logTailer = require('./logTailer');
+const { activateProjectContext, restoreContextWatcher } = require('./projectContext');
 const outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
 
 // =============================================================================
@@ -290,11 +289,10 @@ async function compilePath(rt, pathToCompile, _context) {
     const wsFolder = vscode.workspace.getWorkspaceFolder(fileUri) || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
     const workspaceFolderPath = wsFolder && wsFolder.uri ? wsFolder.uri.fsPath : '';
 
-    let isMql4 = false;
     let isMql5 = false;
 
     if (extension === '.mq4') {
-        isMql4 = true;
+        // isMql4
     } else if (extension === '.mq5') {
         isMql5 = true;
     } else if (extension === '.mqh') {
@@ -310,13 +308,13 @@ async function compilePath(rt, pathToCompile, _context) {
         }
 
         if (resolvedFlavor === 'mql4') {
-            isMql4 = true;
+            // isMql4
         } else if (resolvedFlavor === 'mql5') {
             isMql5 = true;
         } else {
             // Last-resort fallback
             if (pathToCompile.toLowerCase().includes('mql4')) {
-                isMql4 = true;
+                // isMql4
             } else {
                 isMql5 = true; // Default to MQL5
             }
@@ -394,10 +392,10 @@ async function compilePath(rt, pathToCompile, _context) {
         const logResult = await toWineWindowsPath(logFile, wineBinary, winePrefix);
 
         if (!compileResult.success) {
-            outputChannel.appendLine(`[Wine] Warning: Path conversion may have failed for compile path`);
+            outputChannel.appendLine('[Wine] Warning: Path conversion may have failed for compile path');
         }
         if (!logResult.success) {
-            outputChannel.appendLine(`[Wine] Warning: Path conversion may have failed for log path`);
+            outputChannel.appendLine('[Wine] Warning: Path conversion may have failed for log path');
         }
 
         compileArg = compileResult.path;
@@ -406,7 +404,7 @@ async function compilePath(rt, pathToCompile, _context) {
         if (incDir) {
             const incResult = await toWineWindowsPath(incDir, wineBinary, winePrefix);
             if (!incResult.success) {
-                outputChannel.appendLine(`[Wine] Warning: Path conversion may have failed for include path`);
+                outputChannel.appendLine('[Wine] Warning: Path conversion may have failed for include path');
             }
             incArg = incResult.path;
         } else {
@@ -492,7 +490,7 @@ async function compilePath(rt, pathToCompile, _context) {
                     if (diag.errorCode) {
                         diagnostic.code = {
                             value: `MQL${diag.errorCode}`,
-                            target: vscode.Uri.parse(`https://www.mql5.com/en/docs/runtime/errors`)
+                            target: vscode.Uri.parse('https://www.mql5.com/en/docs/runtime/errors')
                         };
                     }
                     diagnosticsMap.get(uri.toString()).push(diagnostic);
@@ -652,8 +650,8 @@ async function Compile(rt, context) {
     // (We keep lightweight diagnostics in a separate collection.)
     diagnosticCollection.clear();
 
-    const startT = new Date();
-    const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
+    // const startT = new Date();
+    // const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
     const teq = rt === 0 ? lg['checking'] : (rt === 1 ? lg['compiling'] : lg['comp_usi_script']);
 
 
@@ -856,22 +854,22 @@ async function FixFormatting() {
             "\\bD '(?:(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})|(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})\\s{1,}[\\d:]+)'"
         ],
         searchValue: [
-            "C ",
-            "C ",
-            "D "
+            'C ',
+            'C ',
+            'D '
         ],
         replaceValue: [
-            "C",
-            "C",
-            "D"
+            'C',
+            'C',
+            'D'
         ]
     };
 
     Array.from(document.getText().matchAll(new RegExp(CollectRegEx(data.reg), 'g'))).forEach(match => {
         for (const i in data.reg) {
             if (match[0].match(new RegExp(data.reg[i], 'g'))) {
-                let range = new vscode.Range(document.positionAt(match.index), document.positionAt(match.index + match[0].length))
-                array.push({ range, to: document.getText(range).replace(data.searchValue[i], data.replaceValue[i]) })
+                let range = new vscode.Range(document.positionAt(match.index), document.positionAt(match.index + match[0].length));
+                array.push({ range, to: document.getText(range).replace(data.searchValue[i], data.replaceValue[i]) });
             }
         }
     });
@@ -885,7 +883,7 @@ async function FixFormatting() {
     });
 }
 
-function CollectRegEx(dt, string = "") {
+function CollectRegEx(dt, string = '') {
     for (const i in dt) {
         string += dt[i] + '|';
     }
@@ -2295,4 +2293,4 @@ module.exports = {
     deactivate,
     replaceLog,
     tf
-}
+};

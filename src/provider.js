@@ -6,7 +6,7 @@ const lg = require('./language');
 const { resolvePathRelativeToWorkspace } = require('./createProperties');
 const err_codes = require('../data/error-codes.json');
 const obj_items = require('../data/items.json');
-const colorW = require('../data/color.json')
+const colorW = require('../data/color.json');
 const language = vscode.env.language;
 const miniIconPath = vscode.Uri.file(pathModule.join(__dirname, '../', 'images', 'mql_icon_mini.png'));
 
@@ -244,7 +244,7 @@ function Hover_log() {
             }
             return new vscode.Hover(contents);
         }
-    }
+    };
 }
 
 function DefinitionProvider() {
@@ -268,7 +268,7 @@ function DefinitionProvider() {
 
             return new vscode.Location(uri, pos);
         }
-    }
+    };
 }
 
 function Hover_MQL() {
@@ -291,7 +291,7 @@ function Hover_MQL() {
                 const contents = new vscode.MarkdownString();
                 contents.appendCodeblock(`${inputMatch.type} ${inputMatch.name}`, 'cpp');
                 contents.appendMarkdown(`**Input Parameter** (line ${inputMatch.line + 1})\n\n`);
-                contents.appendMarkdown(`User-configurable parameter for this EA/Indicator.`);
+                contents.appendMarkdown('User-configurable parameter for this EA/Indicator.');
                 return new vscode.Hover(contents, range);
             }
 
@@ -334,9 +334,7 @@ function Hover_MQL() {
 
             // FUNCTIONS (group 2) - Compact documentation (no redundancy)
             if (item.group === 2) {
-                // Extract just the description text (remove return type prefix like "(int)")
-                // Regex now matches any content inside parentheses at start of string
-                const cleanDesc = dl.replace(/^\([^\)]+\)\s*/, '').trim();
+                const cleanDesc = dl.replace(/^\([^)]+\)\s*/, '').trim();
 
                 if (cleanDesc) {
                     contents.appendMarkdown(`${cleanDesc}\n\n`);
@@ -548,7 +546,7 @@ function ItemProvider() {
 
             return completionItems;
         }
-    }
+    };
 }
 
 function HelpProvider() {
@@ -613,7 +611,7 @@ function HelpProvider() {
                             `<span style="color:#ffd700e6;">${des.replace(r, '$1')}</span><span style="color:#C678DD;">${des.replace(r, '$2')}</span>` +
                             `<span style="color:#ffd700e6;">${des.replace(r, '$3')}</span><span style="color:#05AD97;">${des.replace(r, '$4')}</span>`);
                     md.supportHtml = true;
-                    return (new vscode.ParameterInformation(item, md))
+                    return (new vscode.ParameterInformation(item, md));
                 });
                 return (info);
             });
@@ -630,7 +628,7 @@ function HelpProvider() {
 
             return sig;
         }
-    }
+    };
 }
 
 function ColorProvider() {
@@ -650,7 +648,7 @@ function ColorProvider() {
                         clrRGB = hexToRgbA(hx[0]);
                     }
 
-                    else if (colorName.includes(`C'`)) {
+                    else if (colorName.includes('C\'')) {
                         lr = colorName.match(/(?<=C')\d{1,3},\d{1,3},\d{1,3}(?=')/);
                         if (lr) {
                             clrRGB = lr[0].split(',');
@@ -670,7 +668,7 @@ function ColorProvider() {
                             document.positionAt(match.index),
                             document.positionAt(match.index + match[0].length)
                         ),
-                            new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
+                        new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
                     }
                 });
 
@@ -683,7 +681,7 @@ function ColorProvider() {
                         document.positionAt(item.index),
                         document.positionAt(item.index + item[0].length)
                     ),
-                        new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
+                    new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
                 }
             }
 
@@ -700,7 +698,7 @@ function ColorProvider() {
             if (colorName.match(/(?<=\b0x)(?:[A-Fa-f0-9]{2})?(?:[A-Fa-f0-9]{6})\b/)) {
                 return [new vscode.ColorPresentation(`0x${rgbaToHex(blue, green, red, round(alpha, 0))}`)];
             }
-            else if (colorName.includes(`C'`)) {
+            else if (colorName.includes('C\'')) {
                 if (colorName.match(/(?<=C')\d{1,3},\d{1,3},\d{1,3}(?=')/)) {
                     const clrRGB = `${red},${green},${blue}`;
 
@@ -712,7 +710,7 @@ function ColorProvider() {
                     return [new vscode.ColorPresentation(`C'${clrRGB}'`)];
                 }
                 else if (colorName.match(/(?<=C')0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2}(?=')/)) {
-                    return [new vscode.ColorPresentation(`C'${dToHex(red, green, blue)}'`)]
+                    return [new vscode.ColorPresentation(`C'${dToHex(red, green, blue)}'`)];
                 }
             }
             else if (colorName in colorW) {
@@ -726,13 +724,13 @@ function ColorProvider() {
                 return [new vscode.ColorPresentation(`C'${clrRGB}'`)];
             }
         }
-    }
+    };
 }
 
 function hexToRgbA(hexColor) {
     return [
         hexColor & 0xFF, (hexColor >> 8) & 0xFF, (hexColor >> 16) & 0xFF, (hexColor >> 24) & 0xFF ? ((hexColor >> 24) & 0xFF) : 255
-    ]
+    ];
 }
 
 function rgbaToHex(red, green, blue, alpha = 255) {
@@ -748,7 +746,7 @@ function dToHex(r, g, b) {
 }
 
 function round(num, precision = 2) {
-    return +(Math.round(num + "e" + precision) + "e" + -precision);
+    return +(Math.round(num + 'e' + precision) + 'e' + -precision);
 }
 
 
@@ -1027,4 +1025,4 @@ module.exports = {
     MQLDocumentSymbolProvider,
     obj_items,
     extractDocumentSymbols
-}
+};

@@ -259,4 +259,4 @@ function IconsInstallation() {
 
 module.exports = {
     IconsInstallation
-}
+};

@@ -3,9 +3,9 @@ const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
 const pathModule = require('path');
-const lg = require("./language");
-const { tf } = require("./extension");
-const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require("./createProperties");
+const lg = require('./language');
+const { tf } = require('./extension');
+const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
 const {
     toWineWindowsPath,
     isWineEnabled,
@@ -13,7 +13,7 @@ const {
     getWinePrefix,
     getWineEnv,
     validateWinePath
-} = require("./wineHelper");
+} = require('./wineHelper');
 
 
 function ShowFiles(...args) {
@@ -85,8 +85,8 @@ function InsertMQH() {
 
     vscode.window.showOpenDialog(options).then(fileUri => {
         if (fileUri && fileUri[0])
-            InsertNameFileMQH(fileUri[0])
-    })
+            InsertNameFileMQH(fileUri[0]);
+    });
 
 }
 
@@ -98,7 +98,7 @@ function InsertNameFileMQH(uri) {
 
     if (['.mq4', '.mq5', '.mqh'].includes(extension)) {
         const dirName = pathModule.dirname(Path), Ye = NName.includes(Path.match(/.*\\(?=(?:(?:(?:.+)\.(?:\w+))$))/m)[0]) ? 1 : 0,
-            str = Ye ? NName.slice(dirName.length + 1) : RelativePath.replace(/(^include\/)(.+)/im, "$2");
+            str = Ye ? NName.slice(dirName.length + 1) : RelativePath.replace(/(^include\/)(.+)/im, '$2');
         edit(edit => edit.insert(pos, (ns > 0 ? '\n' : '') + '#include ' + (Ye === 1 ? '"' : '<') + str + (Ye === 1 ? '"' : '>')));
     }
 }
@@ -389,4 +389,4 @@ module.exports = {
     CreateComment,
     OpenFileInMetaEditor,
     OpenTradingTerminal
-}
+};

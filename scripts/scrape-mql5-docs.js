@@ -80,7 +80,7 @@ async function scrapePage(docPath, depth = 0) {
             await scrapePage(link, depth + 1);
         }
     } catch (err) {
-        process.stdout.write(`\n`);
+        process.stdout.write('\n');
         console.error(`Error scraping ${docPath}:`, err.message);
     }
 }
