@@ -20,7 +20,9 @@ const REG_FULL_PATH = /[a-z]:\\.+/gi;
 const REG_LINE_POS = /\((?:\d+,\d+)\)$/gm;
 const REG_LINE_FRAGMENT = /\((?=(\d+,\d+).$)/gm;
 
-const diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
+// NOTE: diagnosticCollection and outputChannel are initialized in activate()
+let diagnosticCollection = null;
+let outputChannel = null;
 let autoCheckTimer = null;
 let isAutoCheckRunning = false;
 let autoCheckDocVersions = new Map(); // Track document versions to ignore our own edits
@@ -48,7 +50,6 @@ const {
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
 const { activateProjectContext, restoreContextWatcher } = require('./projectContext');
-const outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
 
 // =============================================================================
 // SPELLCHECK INDEX - Lazy-loaded dictionary for typo detection
@@ -1958,6 +1959,10 @@ class MqlCodeActionProvider {
 }
 
 function activate(context) {
+    // Initialize VS Code API-dependent variables (must be inside activate, not at module level)
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
+    outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
+
     const extensionId = 'ngsoftware.mql-tools';
     const currentVersion = vscode.extensions.getExtension(extensionId)?.packageJSON.version;
     const previousVersion = context.globalState.get('mql-tools.version');
