@@ -50,12 +50,12 @@ class StubGenerator {
 
     /**
      * Generate enum declaration
-     * Uses 'enum class' (scoped enum) to match MQL5's scoped enum behavior
-     * and avoid enumerator name collisions in the global namespace
+     * Uses unscoped 'enum' to match MQL5's native enum behavior
+     * (allows unqualified access like PERIOD_M1 and implicit int conversion)
      */
     generateEnum(enumObj) {
         const lines = [];
-        lines.push(`enum class ${enumObj.name} {`);
+        lines.push(`enum ${enumObj.name} {`);
 
         const values = enumObj.values.map((v, i) => {
             const val = v.value !== null ? ` = ${v.value}` : '';
@@ -348,42 +348,42 @@ class StubGenerator {
             }
         };
 
-        // Process enums: deduplicate and handle collisions
-        const processedEnums = new Map(); // name -> enumObj
+        // Process enums: deduplicate and handle collisions (unless skipEnums is enabled)
         const finalEnums = [];
+        if (!this.skipEnums) {
+            const processedEnums = new Map(); // name -> enumObj
 
-        for (const data of parsedDataArray) {
-            for (const enumObj of data.enums) {
-                if (processedEnums.has(enumObj.name)) {
-                    const existing = processedEnums.get(enumObj.name);
-                    if (areEnumsEqual(existing, enumObj)) {
-                        continue; // Exact duplicate, skip
-                    } else {
-                        // Collision! Rename current enum
-                        const oldName = enumObj.name;
-                        let counter = 2;
-                        let newName = `${oldName}_${counter}`;
-                        while (processedEnums.has(newName)) {
-                            counter++;
-                            newName = `${oldName}_${counter}`;
+            for (const data of parsedDataArray) {
+                for (const enumObj of data.enums) {
+                    if (processedEnums.has(enumObj.name)) {
+                        const existing = processedEnums.get(enumObj.name);
+                        if (areEnumsEqual(existing, enumObj)) {
+                            continue; // Exact duplicate, skip
+                        } else {
+                            // Collision! Rename current enum
+                            const oldName = enumObj.name;
+                            let counter = 2;
+                            let newName = `${oldName}_${counter}`;
+                            while (processedEnums.has(newName)) {
+                                counter++;
+                                newName = `${oldName}_${counter}`;
+                            }
+
+                            enumObj.name = newName;
+                            processedEnums.set(newName, enumObj);
+                            finalEnums.push(enumObj);
+
+                            // Update references in this file's classes
+                            updateTypeReferences(data.classes, oldName, newName);
                         }
-
-                        enumObj.name = newName;
-                        processedEnums.set(newName, enumObj);
+                    } else {
+                        processedEnums.set(enumObj.name, enumObj);
                         finalEnums.push(enumObj);
-
-                        // Update references in this file's classes
-                        updateTypeReferences(data.classes, oldName, newName);
                     }
-                } else {
-                    processedEnums.set(enumObj.name, enumObj);
-                    finalEnums.push(enumObj);
                 }
             }
-        }
 
-        // Generate all enums first (unless skipEnums is enabled)
-        if (!this.skipEnums) {
+            // Generate all enums first
             lines.push('// Enums');
             for (const enumObj of finalEnums) {
                 lines.push(this.generateEnum(enumObj));
