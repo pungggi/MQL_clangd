@@ -2245,16 +2245,28 @@ function activate(context) {
             autoCheckTimer = null;
         }
 
-        await Compile(0, context); // Syntax check
+        isAutoCheckRunning = true;
+        try {
+            await Compile(0, context); // Syntax check
+        } finally {
+            isAutoCheckRunning = false;
+        }
     }));
 
     // Auto-compile once when workspace finishes loading (regardless of configuration)
     sleep(3000).then(async () => {
+        if (isAutoCheckRunning) return;
+
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             const ext = pathModule.extname(editor.document.fileName).toLowerCase();
             if (['.mq4', '.mq5', '.mqh'].includes(ext)) {
-                await Compile(0, context); // Syntax check on startup
+                isAutoCheckRunning = true;
+                try {
+                    await Compile(0, context); // Syntax check on startup
+                } finally {
+                    isAutoCheckRunning = false;
+                }
             }
         }
     });
