@@ -1,13 +1,9 @@
 # Changelog
 
-## 1.1.2
+## 1.1.14
 
 ### Improvements
-- **clangd Auto-Restart**: The `MQL: Create configuration` command now automatically restarts clangd after generating configuration files, so the new settings take effect immediately without manual intervention.
-
-## 1.1.1
-
-### Improvements
+- **clangd Auto-Restart**: The `MQL: Create configuration` command now automatically restarts clangd after generating configuration files, so the new settings take effect immediately.
 - **Stubs Quality**: Removed enum generation from stdlib stubs to avoid conflicts with real MQL5 headers. Enums are now provided by `mql_clangd_compat.h` (built-in enums) and real MQL5 headers (stdlib enums). This eliminates false positive "redefinition of enumerator" and "scoped mismatch" errors.
 - **Stub Generator**: Added `--skip-enums` flag to skip enum generation entirely
 
