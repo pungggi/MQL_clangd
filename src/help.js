@@ -4,8 +4,16 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
-const language = vscode.env.language;
 const platform = process.platform; // 'win32', 'darwin', 'linux'
+
+// Lazy-initialized language value (must not access vscode at module load time)
+let _language = null;
+function getLanguage() {
+    if (!_language) {
+        _language = vscode.env.language;
+    }
+    return _language;
+}
 
 // Map VS Code language codes to MQL5 web URL language codes
 // MQL5 documentation supports: en, ru, zh, ja, es, de (and partial support for others)
@@ -24,7 +32,7 @@ const webLangMap = {
  * @returns {string} MQL5 documentation language code (defaults to 'en')
  */
 function getMql5DocLang() {
-    return webLangMap[language] || 'en';
+    return webLangMap[getLanguage()] || 'en';
 }
 
 // Load MQL5 docs mapping

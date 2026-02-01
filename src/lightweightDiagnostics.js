@@ -2,7 +2,14 @@
 const vscode = require('vscode');
 
 // Lightweight diagnostics collection (separate from MetaEditor diagnostics)
-const lightweightDiagnostics = vscode.languages.createDiagnosticCollection('mql-lightweight');
+// NOTE: This is lazy-initialized to avoid accessing vscode APIs at module load time
+let _lightweightDiagnostics = null;
+function getLightweightDiagnostics() {
+    if (!_lightweightDiagnostics) {
+        _lightweightDiagnostics = vscode.languages.createDiagnosticCollection('mql-lightweight');
+    }
+    return _lightweightDiagnostics;
+}
 
 // Debounce timers per document
 const diagnosticTimers = new Map();
@@ -145,14 +152,14 @@ function updateDiagnostics(document) {
             clearTimeout(existingTimer);
             diagnosticTimers.delete(document.uri);
         }
-        lightweightDiagnostics.delete(document.uri);
+        getLightweightDiagnostics().delete(document.uri);
         return;
     }
     const existingTimer = diagnosticTimers.get(document.uri);
     if (existingTimer) clearTimeout(existingTimer);
     const newTimer = setTimeout(() => {
         const diagnostics = analyzeDocument(document);
-        lightweightDiagnostics.set(document.uri, diagnostics);
+        getLightweightDiagnostics().set(document.uri, diagnostics);
         diagnosticTimers.delete(document.uri);
     }, DEBOUNCE_DELAY);
     diagnosticTimers.set(document.uri, newTimer);
@@ -170,7 +177,7 @@ function clearDiagnostics(document) {
 
     }
 
-    lightweightDiagnostics.delete(document.uri);
+    getLightweightDiagnostics().delete(document.uri);
 
 }
 
@@ -208,4 +215,5 @@ function registerLightweightDiagnostics(context) {
     });
 }
 
-module.exports = { registerLightweightDiagnostics, lightweightDiagnostics };
+// Export getter function instead of the collection itself
+module.exports = { registerLightweightDiagnostics, getLightweightDiagnostics };

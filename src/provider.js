@@ -7,8 +7,23 @@ const { resolvePathRelativeToWorkspace } = require('./createProperties');
 const err_codes = require('../data/error-codes.json');
 const obj_items = require('../data/items.json');
 const colorW = require('../data/color.json');
-const language = vscode.env.language;
-const miniIconPath = vscode.Uri.file(pathModule.join(__dirname, '../', 'images', 'mql_icon_mini.png'));
+
+// Lazy-initialized VS Code-dependent values (must not access vscode at module load time)
+let _language = null;
+function getLanguage() {
+    if (!_language) {
+        _language = vscode.env.language;
+    }
+    return _language;
+}
+
+let _miniIconPath = null;
+function getMiniIconPath() {
+    if (!_miniIconPath) {
+        _miniIconPath = vscode.Uri.file(pathModule.join(__dirname, '../', 'images', 'mql_icon_mini.png'));
+    }
+    return _miniIconPath;
+}
 
 // =============================================================================
 // DOCUMENT SYMBOL EXTRACTION - For document-aware completion
@@ -226,7 +241,7 @@ function Hover_log() {
             if (!(word in obj_hover)) return undefined;
 
             const link = (typeof obj_hover[word].link == 'undefined') ? '' : obj_hover[word].link,
-                loclang = language === 'zh-tw' ? 'zh-cn' : language;
+                loclang = getLanguage() === 'zh-tw' ? 'zh-cn' : getLanguage();
 
             if (loclang in err_codes)
                 var local = err_codes[loclang][obj_hover[word].number];
@@ -274,7 +289,7 @@ function DefinitionProvider() {
 function Hover_MQL() {
     return {
         provideHover(document, position) {
-            const loclang = language === 'zh-tw' ? 'zh-cn' : language;
+            const loclang = getLanguage() === 'zh-tw' ? 'zh-cn' : getLanguage();
             const range = document.getWordRangeAtPosition(position);
             const word = document.getText(range);
 
@@ -383,7 +398,7 @@ function Hover_MQL() {
 function ItemProvider() {
     return {
         provideCompletionItems(document, position, _token, _context) {
-            const loclang = language === 'zh-tw' ? 'zh-cn' : language;
+            const loclang = getLanguage() === 'zh-tw' ? 'zh-cn' : getLanguage();
             const line = document.lineAt(position).text;
             const linePrefix = line.substring(0, position.character);
             const range = document.getWordRangeAtPosition(position);
@@ -537,7 +552,7 @@ function ItemProvider() {
                             contents.supportHtml = true;
                         }
                     }
-                    contents.appendMarkdown(`![](${miniIconPath})`);
+                    contents.appendMarkdown(`![](${getMiniIconPath()})`);
                     item.documentation = contents;
                     return item;
                 });
@@ -552,7 +567,7 @@ function ItemProvider() {
 function HelpProvider() {
     return {
         provideSignatureHelp(document, position, _token, context) {
-            const loclang = language === 'zh-tw' ? 'zh-cn' : language,
+            const loclang = getLanguage() === 'zh-tw' ? 'zh-cn' : getLanguage(),
                 line = document.lineAt(position).text.substring(0, position.character);
 
             if (line.lastIndexOf('//') >= 0)
