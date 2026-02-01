@@ -18,7 +18,7 @@ try {
   pkg.main = "./src/extension.js";
 
   // Write the updated package.json
-  fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 4));
+  fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 4) + "\n");
 
   console.log(`Reverted main to ${pkg.main}`);
 
@@ -27,16 +27,10 @@ try {
     const files = fs.readdirSync(distDir);
     for (const file of files) {
       const filePath = path.join(distDir, file);
-      const stat = fs.statSync(filePath);
-
-      if (stat.isFile()) {
-        fs.unlinkSync(filePath);
-      } else if (stat.isDirectory()) {
-        fs.rmSync(filePath, { recursive: true });
-      }
+      fs.rmSync(filePath, { recursive: true, force: true });
     }
 
-    console.log(`dist directory cleanup complete.`);
+    console.log(`dist directory contents removed.`);
   } else {
     console.log(`dist directory does not exist.`);
   }

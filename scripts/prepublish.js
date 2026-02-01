@@ -20,7 +20,7 @@ try {
   // Update main entry point
   pkg.main = "./dist/extension.js";
 
-  fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 4));
+  fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 4) + "\n");
 
   console.log(`Updated version to ${pkg.version} and main to ${pkg.main}`);
 } catch (error) {

@@ -25,11 +25,18 @@ if (!pat) {
     process.exit(1);
 }
 
-const cmd = `npx ${target === 'vsce' ? 'vsce' : 'ovsx'} publish --pat ${pat}${isPreRelease ? ' --pre-release' : ''}`;
+const cmd = `npx ${target === 'vsce' ? 'vsce' : 'ovsx'} publish${isPreRelease ? ' --pre-release' : ''}`;
 console.log(`Publishing to ${target.toUpperCase()}${isPreRelease ? ' (Pre-Release)' : ''}...`);
 
+const envWithPat = { ...process.env };
+if (target === 'vsce') {
+    envWithPat.VSCE_PAT = pat;
+} else {
+    envWithPat.OVSX_PAT = pat;
+}
+
 try {
-    execSync(cmd, { stdio: 'inherit' });
+    execSync(cmd, { stdio: 'inherit', env: envWithPat });
 } catch (e) {
     // Run afterpublish even on failure to revert main
     try {
@@ -44,7 +51,6 @@ try {
 try {
     execSync('node scripts/afterpublish.js', { stdio: 'inherit' });
 } catch (e) {
-    console.error('Failed to run afterpublish:', e.message);
-    process.exit(1);
+    console.error('WARNING: afterpublish failed:', e.message);
 }
 

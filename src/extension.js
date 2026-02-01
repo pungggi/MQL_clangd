@@ -2125,7 +2125,14 @@ function activate(context) {
             }
         }
     }));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.configurations', async () => await CreateProperties()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.configurations', async () => {
+        await CreateProperties();
+        try {
+            await vscode.commands.executeCommand('clangd.restart');
+        } catch (error) {
+            // clangd extension may not be installed - silently ignore
+        }
+    }));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Addicon', () => IconsInstallation()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Showfiles', () => ShowFiles('**/*.ex4', '**/*.ex5')));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsMQL', () => InsertMQL()));

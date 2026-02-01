@@ -43,7 +43,7 @@ When editing `.mqh` header files, the extension now intelligently determines whi
 This extension now uses **clangd** to provide state-of-the-art IntelliSense, code completion, and navigation for MQL4/5.
 
 *   **Why clangd?** It provides faster, more accurate semantic analysis and better support for complex MQL projects compared to the default Microsoft C++ engine.
-*   **Automatic Configuration**: When you run the `"MQL: Create configuration"` command, the extension automatically configures `clangd` with the correct include paths and compiler flags for your MQL version (MQL4 or MQL5).
+*   **Automatic Configuration**: When you run the `"MQL: Create configuration"` command, the extension automatically configures `clangd` with the correct include paths and compiler flags for your MQL version (MQL4 or MQL5). **clangd is automatically restarted** after configuration to immediately apply the new settings.
 *   **Conflict Prevention**: To ensure the best experience, this extension automatically disables the Microsoft C++ "IntelliSense Engine" (while keeping the extension installed for other features) to prevent duplicate errors and completion items.
 
 ---

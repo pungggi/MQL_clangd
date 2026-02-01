@@ -42,6 +42,7 @@ const STDLIB_CATEGORIES = {
 let contextWatcher = null;
 let debounceTimer = null;
 let isWriting = false;
+let pendingUpdate = false;
 const DEFAULT_DEBOUNCE_MS = 12000;
 
 // Track warnings shown to avoid repeated notifications (Comment 3)
@@ -573,9 +574,10 @@ async function writeContextFile(workspaceFolder) {
     const { format: resolvedFormat } = validateAndResolveFormat(fileName, format);
     const filePath = validation.resolvedPath;
 
-    // Guard against concurrent writes
+    // Guard against concurrent writes - queue update instead of dropping it
     if (isWriting) {
-        console.log('[MQL Context] Write already in progress, skipping...');
+        console.log('[MQL Context] Write already in progress, queuing update...');
+        pendingUpdate = true;
         return;
     }
     isWriting = true;
@@ -630,6 +632,14 @@ async function writeContextFile(workspaceFolder) {
         console.error(`[MQL Context] Error writing context file: ${err.message}`);
     } finally {
         isWriting = false;
+        
+        // Process any pending updates by re-invoking writeContextFile
+        // This avoids code duplication while ensuring sequential writes
+        if (pendingUpdate) {
+            pendingUpdate = false;
+            console.log('[MQL Context] Processing pending update...');
+            await writeContextFile(workspaceFolder);
+        }
     }
 }
 

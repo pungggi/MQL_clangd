@@ -26,6 +26,13 @@ const readline = require('readline');
 const { MqlParser } = require('./parser');
 const { StubGenerator } = require('./generator');
 
+// Default standard MQL5 library directories (excludes custom user code)
+const DEFAULT_DIRS = [
+    'Arrays', 'Canvas', 'ChartObjects', 'Charts', 'Controls',
+    'Expert', 'Files', 'Generic', 'Graphics', 'Indicators',
+    'Math', 'OpenCL', 'Strings', 'Trade', 'WinAPI'
+];
+
 // Helper to prompt user for input
 function prompt(question) {
     const rl = readline.createInterface({
@@ -43,12 +50,6 @@ function prompt(question) {
 // Parse command line arguments
 function parseArgs() {
     const args = process.argv.slice(2);
-    // Default standard MQL5 library directories (excludes custom user code)
-    const DEFAULT_DIRS = [
-        'Arrays', 'Canvas', 'ChartObjects', 'Charts', 'Controls',
-        'Expert', 'Files', 'Generic', 'Graphics', 'Indicators',
-        'Math', 'OpenCL', 'Strings', 'Trade', 'WinAPI'
-    ];
 
     const options = {
         input: null,
@@ -58,6 +59,7 @@ function parseArgs() {
         verbose: false,
         dryRun: false,
         forwardOnly: false,
+        skipEnums: false,
         merge: false,
         force: false,
         fallback: false
@@ -102,6 +104,9 @@ function parseArgs() {
             case '--fallback':
                 options.fallback = true;
                 break;
+            case '--skip-enums':
+                options.skipEnums = true;
+                break;
             case '-h':
             case '--help':
                 printHelp();
@@ -113,6 +118,7 @@ function parseArgs() {
 }
 
 function printHelp() {
+    const defaultDirsFormatted = DEFAULT_DIRS.join(',');
     console.log(`
 MQL5 Stub Generator - Generate clangd-compatible stubs from MQL5 headers
 
@@ -123,17 +129,17 @@ Options:
   -i, --input        Path to MQL5 Include directory (required)
   -o, --output       Output file path (default: generated_stubs.h)
   -d, --dirs         Subdirectories to parse (comma-separated)
-                     Default: Arrays,Canvas,ChartObjects,Charts,Controls,
-                              Expert,Files,Generic,Graphics,Indicators,
-                              Math,OpenCL,Strings,Trade,WinAPI
+                     Default: ${defaultDirsFormatted}
   -f, --forward-only Generate forward declarations only (no class definitions)
                      Use this to avoid conflicts with real MQL5 headers
+  --skip-enums       Skip enum generation entirely (enums come from real MQL5 headers)
+                     Recommended to avoid scoped/unscoped enum conflicts
   -m, --merge        Merge with existing output file (add new, keep existing)
-   --force            Overwrite existing file without prompting
-   --fallback         Automatically use all files when directory filter matches nothing
-   -v, --verbose      Enable verbose output
-   --dry-run          Parse files but don't write output
-   -h, --help         Show this help message
+  --force            Overwrite existing file without prompting
+  --fallback         Automatically use all files when directory filter matches nothing
+  -v, --verbose      Enable verbose output
+  --dry-run          Parse files but don't write output
+  -h, --help         Show this help message
 
 Examples:
   # Parse all headers in MQL5 Include
@@ -385,7 +391,8 @@ async function main() {
         const generator = new StubGenerator({
             includeProtected: true,
             includePrivate: false,
-            forwardDeclOnly: options.forwardOnly
+            forwardDeclOnly: options.forwardOnly,
+            skipEnums: options.skipEnums
         });
 
         let output = generator.generateHeader(parsedData);
@@ -445,8 +452,8 @@ async function main() {
                 existingStructs.add(match[1]);
             }
 
-            // Match enum declarations: enum EnumName {
-            const enumPattern = /^enum\s+(\w+)\s*\{/gm;
+            // Match enum declarations: enum EnumName { or enum class EnumName {
+            const enumPattern = /^enum\s+(?:class\s+)?(\w+)\s*\{/gm;
             while ((match = enumPattern.exec(existingContent)) !== null) {
                 existingEnums.add(match[1]);
             }

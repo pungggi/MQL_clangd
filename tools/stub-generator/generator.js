@@ -13,6 +13,8 @@ class StubGenerator {
         this.addDocComments = options.addDocComments || false;
         // When true, only generate forward declarations (avoids conflicts with real headers)
         this.forwardDeclOnly = options.forwardDeclOnly || false;
+        // When true, skip enum generation entirely (enums come from real MQL5 headers)
+        this.skipEnums = options.skipEnums || false;
     }
 
     /**
@@ -28,10 +30,12 @@ class StubGenerator {
         lines.push(`// Generated: ${new Date().toISOString()}`);
         lines.push('');
 
-        // Generate enums
-        for (const enumObj of parsedData.enums) {
-            lines.push(this.generateEnum(enumObj));
-            lines.push('');
+        // Generate enums (unless skipEnums is enabled)
+        if (!this.skipEnums) {
+            for (const enumObj of parsedData.enums) {
+                lines.push(this.generateEnum(enumObj));
+                lines.push('');
+            }
         }
 
         // Generate classes (sorted by dependency)
@@ -46,10 +50,12 @@ class StubGenerator {
 
     /**
      * Generate enum declaration
+     * Uses 'enum class' (scoped enum) to match MQL5's scoped enum behavior
+     * and avoid enumerator name collisions in the global namespace
      */
     generateEnum(enumObj) {
         const lines = [];
-        lines.push(`enum ${enumObj.name} {`);
+        lines.push(`enum class ${enumObj.name} {`);
 
         const values = enumObj.values.map((v, i) => {
             const val = v.value !== null ? ` = ${v.value}` : '';
@@ -376,11 +382,13 @@ class StubGenerator {
             }
         }
 
-        // Generate all enums first
-        lines.push('// Enums');
-        for (const enumObj of finalEnums) {
-            lines.push(this.generateEnum(enumObj));
-            lines.push('');
+        // Generate all enums first (unless skipEnums is enabled)
+        if (!this.skipEnums) {
+            lines.push('// Enums');
+            for (const enumObj of finalEnums) {
+                lines.push(this.generateEnum(enumObj));
+                lines.push('');
+            }
         }
 
         // Generate class definitions (unless forwardDeclOnly mode)

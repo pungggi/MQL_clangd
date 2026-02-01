@@ -462,8 +462,17 @@ async function CreateProperties(force = false) {
                     const choice = await vscode.window.showWarningMessage(
                         'An existing .clangd file was found. Do you want to preserve your custom diagnostic suppressions?',
                         'Merge Suppressions',
-                        'Overwrite'
+                        'Overwrite',
+                        'Configure...'
                     );
+                    if (choice === 'Configure...') {
+                        await vscode.commands.executeCommand(
+                            'workbench.action.openSettings',
+                            'mql_tools.Clangd.PreserveSuppressions'
+                        );
+                        // Don't modify the file when user chooses to configure
+                        return;
+                    }
                     shouldPreserve = choice === 'Merge Suppressions';
                 }
             }
