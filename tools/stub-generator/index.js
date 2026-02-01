@@ -13,7 +13,7 @@
  *   -i, --input     Path to MQL5 Include directory
  *   -o, --output    Output file path (default: generated_stubs.h)
  *   -p, --pattern   Glob pattern for files to parse (default: ** /*.mqh)
- *   -d, --dirs      Specific subdirectories to parse (comma-separated)
+ *   -d, --dirs      Subdirectories to parse (default: standard MQL5 library dirs)
  *   -v, --verbose   Enable verbose output
  *   --dry-run       Parse files but don't write output
  */
@@ -43,11 +43,18 @@ function prompt(question) {
 // Parse command line arguments
 function parseArgs() {
     const args = process.argv.slice(2);
+    // Default standard MQL5 library directories (excludes custom user code)
+    const DEFAULT_DIRS = [
+        'Arrays', 'Canvas', 'ChartObjects', 'Charts', 'Controls',
+        'Expert', 'Files', 'Generic', 'Graphics', 'Indicators',
+        'Math', 'OpenCL', 'Strings', 'Trade', 'WinAPI'
+    ];
+
     const options = {
         input: null,
         output: 'generated_stubs.h',
         pattern: '**/*.mqh',
-        dirs: null,
+        dirs: DEFAULT_DIRS,
         verbose: false,
         dryRun: false,
         forwardOnly: false,
@@ -115,8 +122,10 @@ Usage:
 Options:
   -i, --input        Path to MQL5 Include directory (required)
   -o, --output       Output file path (default: generated_stubs.h)
-  -d, --dirs         Specific subdirectories to parse (comma-separated)
-                     Example: -d "Trade,Controls,Arrays"
+  -d, --dirs         Subdirectories to parse (comma-separated)
+                     Default: Arrays,Canvas,ChartObjects,Charts,Controls,
+                              Expert,Files,Generic,Graphics,Indicators,
+                              Math,OpenCL,Strings,Trade,WinAPI
   -f, --forward-only Generate forward declarations only (no class definitions)
                      Use this to avoid conflicts with real MQL5 headers
   -m, --merge        Merge with existing output file (add new, keep existing)

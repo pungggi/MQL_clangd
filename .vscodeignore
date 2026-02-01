@@ -2,9 +2,14 @@
 .vscode/**
 .gitignore
 .gitattributes
+# Webpack bundles all dependencies - exclude node_modules entirely
 node_modules/**
+# Exclude source files - only ship bundled dist
+src/**
 test/**
 scripts/**
 .agent/**
 package-lock.json
 *.log
+# Exclude webpack config from package
+webpack.config.js

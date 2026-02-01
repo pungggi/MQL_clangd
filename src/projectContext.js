@@ -41,6 +41,7 @@ const STDLIB_CATEGORIES = {
 
 let contextWatcher = null;
 let debounceTimer = null;
+let isWriting = false;
 const DEFAULT_DEBOUNCE_MS = 12000;
 
 // Track warnings shown to avoid repeated notifications (Comment 3)
@@ -572,15 +573,26 @@ async function writeContextFile(workspaceFolder) {
     const { format: resolvedFormat } = validateAndResolveFormat(fileName, format);
     const filePath = validation.resolvedPath;
 
+    // Guard against concurrent writes
+    if (isWriting) {
+        console.log('[MQL Context] Write already in progress, skipping...');
+        return;
+    }
+    isWriting = true;
+
     try {
+
         const content = await generateContextContent(workspaceFolder, config, resolvedFormat);
 
         // Check if file exists and compare content (excluding timestamp)
         let existingContent = '';
         try {
             existingContent = await fs.promises.readFile(filePath, 'utf-8');
-        } catch {
-            // File doesn't exist, will be created
+        } catch (err) {
+            // Only silently ignore ENOENT (file not found); log other errors
+            if (err.code !== 'ENOENT') {
+                console.warn(`[MQL Context] Could not read existing file: ${err.message}`);
+            }
         }
 
         // Compare content without timestamps
@@ -616,6 +628,8 @@ async function writeContextFile(workspaceFolder) {
         console.log(`[MQL Context] Updated: ${filePath} (${tokens} tokens)`);
     } catch (err) {
         console.error(`[MQL Context] Error writing context file: ${err.message}`);
+    } finally {
+        isWriting = false;
     }
 }
 

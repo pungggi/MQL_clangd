@@ -31,6 +31,20 @@ console.log(`Publishing to ${target.toUpperCase()}${isPreRelease ? ' (Pre-Releas
 try {
     execSync(cmd, { stdio: 'inherit' });
 } catch (e) {
+    // Run afterpublish even on failure to revert main
+    try {
+        execSync('node scripts/afterpublish.js', { stdio: 'inherit' });
+    } catch (afterErr) {
+        console.error('Failed to run afterpublish:', afterErr.message);
+    }
+    process.exit(1);
+}
+
+// Run afterpublish to revert main back to src/extension.js
+try {
+    execSync('node scripts/afterpublish.js', { stdio: 'inherit' });
+} catch (e) {
+    console.error('Failed to run afterpublish:', e.message);
     process.exit(1);
 }
 
