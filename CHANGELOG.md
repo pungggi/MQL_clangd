@@ -7,6 +7,8 @@
   - `PrintLive()` now accepts up to 12 string arguments (was 8)
   - New `LIVELOG_REDIRECT` macro: Add `#define LIVELOG_REDIRECT` before `#include <LiveLog.mqh>` to automatically redirect all `Print()` and `PrintFormat()` calls to `PrintLive()` and `PrintFormatLive()`
   - LiveLog.txt is cleared when starting a new tail session for a fresh start
+- **Standard Library Stubs**: Added MQL5 Standard Library stubs and a generator tool for improved clangd support.
+
 
 ## 1.1.14
 

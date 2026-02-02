@@ -163,6 +163,20 @@ class StubGenerator {
                     lines.push(this.indent + 'CObject *At(const int index) const;');
                 }
             }
+            if (classObj.name === 'CDictionary_String_Obj') {
+                // Check if getter exists, if not add it (parser often skips overloads with same name)
+                if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
+                    lines.push(this.indent + 'CObject *Value();');
+                }
+            }
+            if (classObj.name === 'CDictionary_Obj_Obj') {
+                if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
+                    lines.push(this.indent + 'CObject *Value();');
+                }
+                if (!publicMethods.some(m => m.name === 'Key' && (!m.params || m.params.length === 0))) {
+                    lines.push(this.indent + 'CObject *Key();');
+                }
+            }
             if (classObj.name === 'CFileBin') {
                 // Template methods are not currently parsed correctly
                 lines.push(this.indent + 'template<typename T> uint WriteStruct(T &data);');

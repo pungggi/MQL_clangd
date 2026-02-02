@@ -7326,7 +7326,9 @@ class CDictionary_Obj_Obj : public CObject {
 public:
     CDictionary_Obj_Obj(void);
     ~CDictionary_Obj_Obj();
+    CObject *Key();
     void Key(CObject * key);
+    CObject *Value();
     void Value(CObject * value);
     void SetAll(CObject * key, CObject * value);
 };
@@ -7337,6 +7339,7 @@ public:
     ~CDictionary_String_Obj();
     string Key();
     void Key(const string key);
+    CObject *Value();
     void Value(CObject * value);
     void SetAll(const string key, CObject * value);
 };
