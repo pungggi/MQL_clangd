@@ -6,16 +6,9 @@
 - **LiveLog Enhancements**:
   - `PrintLive()` now accepts up to 12 string arguments (was 8)
   - New `LIVELOG_REDIRECT` macro: Add `#define LIVELOG_REDIRECT` before `#include <LiveLog.mqh>` to automatically redirect all `Print()` and `PrintFormat()` calls to `PrintLive()` and `PrintFormatLive()`
-  - LiveLog.txt is now cleared when starting a new tail session for a fresh start
-
-### Improvements
-- **MQL181 Warning Suppression**: "Implicit conversion from 'number' to 'string'" warnings are now automatically hidden from the Output panel. These warnings are noise since Print functions accept any type via implicit conversion.
-
-### Bug Fixes
-- **LiveLog Tailing**: Fixed bug where livelog mode incorrectly switched to date-based log files instead of staying on LiveLog.txt
+  - LiveLog.txt is cleared when starting a new tail session for a fresh start
 
 ## 1.1.14
-
 
 ### Improvements
 - **clangd Auto-Restart**: The `MQL: Create configuration` command now automatically restarts clangd after generating configuration files, so the new settings take effect immediately.

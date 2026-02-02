@@ -181,24 +181,28 @@ class MqlLogTailer {
             this.outputChannel.appendLine('[Info] Add: #include <LiveLog.mqh>');
         }
 
-        // In livelog mode, clear the file to start fresh
+        // Set initial size and start tailing before any file operations
+        this.lastSize = 0;
+        this.isTailing = true;
+
+        // In livelog mode, set up watcher first, then clear the file
+        // This prevents missing writes that occur between clear and watcher setup
         if (this.mode === 'livelog' && fs.existsSync(this.currentFilePath)) {
+            this.setupWatcher(); // Set up watcher BEFORE truncating
             try {
                 fs.writeFileSync(this.currentFilePath, '');
+                this.lastSize = 0; // Reset after truncation so watcher treats it as cleared
                 this.outputChannel.appendLine('[Info] Cleared previous log content');
             } catch (err) {
                 this.outputChannel.appendLine(`[Warning] Could not clear log file: ${err.message}`);
             }
         }
 
-        // Set initial size (0 since we just cleared it, or 0 if file doesn't exist)
-        this.lastSize = 0;
         if (!fs.existsSync(this.currentFilePath)) {
             const fileName = path.basename(this.currentFilePath);
             this.outputChannel.appendLine(`[Warning] Log file ${fileName} does not exist yet. Waiting for activity...`);
         }
 
-        this.isTailing = true;
         this.setupWatcher(); // Set up native file watcher for instant updates
         this.poll(); // Start backup polling for edge cases
     }

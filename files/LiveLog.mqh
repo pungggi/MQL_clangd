@@ -84,32 +84,55 @@ void LiveLogRotate() {
   long size = (long)FileTell(__llHandle);
   if (size > LIVELOG_MAX_SIZE) {
     FileClose(__llHandle);
+    __llHandle = INVALID_HANDLE;
 
-    string newName = "LiveLog_" + TimeToString(TimeLocal(), TIME_DATE) + ".txt";
+    // Build unique rotated name with timestamp to avoid collisions
+    string newName = "LiveLog_" + TimeToString(TimeLocal(), TIME_DATE | TIME_SECONDS) + ".txt";
     StringReplace(newName, ".", "_");
     StringReplace(newName, ":", "_");
 
-    FileMove(LIVELOG_FILENAME, 0, newName, FILE_REWRITE);
+    // Check FileMove return value before proceeding
+    if (FileMove(LIVELOG_FILENAME, 0, newName, FILE_REWRITE)) {
+      __llHandle = FileOpen(LIVELOG_FILENAME, FILE_WRITE | FILE_TXT | FILE_ANSI |
+                                             FILE_SHARE_READ | FILE_SHARE_WRITE);
 
-    __llHandle =
-        FileOpen(LIVELOG_FILENAME, FILE_WRITE | FILE_TXT | FILE_ANSI |
-                                       FILE_SHARE_READ | FILE_SHARE_WRITE);
-
-    if (__llHandle != INVALID_HANDLE) {
-      FileWriteString(__llHandle, "=== LiveLog Rotated ===\n");
-      FileFlush(__llHandle);
+      if (__llHandle != INVALID_HANDLE) {
+        FileWriteString(__llHandle, "=== LiveLog Rotated ===\n");
+        FileFlush(__llHandle);
+        // Only set __llInit true if __llHandle is valid
+        __llInit = true;
+      } else {
+        // Reopen failed - reset state and log error
+        PrintFormat("LiveLog: Failed to reopen file after rotation. Error: %d", GetLastError());
+        __llHandle = INVALID_HANDLE;
+        __llInit = false;
+      }
+    } else {
+      // FileMove failed - reset state and log error
+      PrintFormat("LiveLog: Failed to move file. Error: %d", GetLastError());
+      __llHandle = INVALID_HANDLE;
+      __llInit = false;
     }
   }
 }
 
 //+------------------------------------------------------------------+
 //| Get timestamp with milliseconds                                  |
+//|                                                                  |
+//| Note: MQL5 uses GetMicrosecondCount()/1000 for accurate time-    |
+//| based milliseconds. MQL4 lacks this function, so milliseconds    |
+//| are set to 000 (GetTickCount() measures uptime, not clock time). |
 //+------------------------------------------------------------------+
 string LiveLogTime() {
   MqlDateTime dt;
   TimeToStruct(TimeLocal(), dt);
-  return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
-                      dt.day, dt.hour, dt.min, dt.sec, GetTickCount() % 1000);
+  #ifdef __MQL5__
+    return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
+                        dt.day, dt.hour, dt.min, dt.sec, GetMicrosecondCount()/1000);
+  #else
+    return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
+                        dt.day, dt.hour, dt.min, dt.sec, 0);
+  #endif
 }
 
 //+------------------------------------------------------------------+
@@ -133,7 +156,9 @@ void LiveLogWrite(string msg) {
 //+------------------------------------------------------------------+
 void LL(string msg) {
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 //+------------------------------------------------------------------+
@@ -145,57 +170,75 @@ void LLF(string fmt, string a1 = "", string a2 = "", string a3 = "",
          string a8 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4, a5, a6, a7, a8);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 // Integer overloads for common cases
 void LLF(string fmt, int a1, string a2 = "", string a3 = "", string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 void LLF(string fmt, double a1, string a2 = "", string a3 = "",
          string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 void LLF(string fmt, int a1, int a2, string a3 = "", string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 void LLF(string fmt, double a1, double a2, string a3 = "", string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 void LLF(string fmt, string a1, double a2, string a3 = "", string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 void LLF(string fmt, string a1, int a2, string a3 = "", string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 void LLF(string fmt, int a1, double a2, string a3 = "", string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 void LLF(string fmt, double a1, int a2, string a3 = "", string a4 = "") {
   string msg = StringFormat(fmt, a1, a2, a3, a4);
   LiveLogWrite(msg);
+  #ifndef LIVELOG_REDIRECT
   Print(msg);
+  #endif
 }
 
 //+------------------------------------------------------------------+
