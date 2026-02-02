@@ -22,8 +22,11 @@
             "command": "node scripts/bump-version.js",
             "presentation": {
                 "reveal": "always",
-                "panel": "shared"
-            }
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
         },
         {
             "label": "VSCE Publish",
