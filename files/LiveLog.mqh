@@ -119,16 +119,16 @@ void LiveLogRotate() {
 //+------------------------------------------------------------------+
 //| Get timestamp with milliseconds                                  |
 //|                                                                  |
-//| Note: MQL5 uses GetMicrosecondCount()/1000 for accurate time-    |
-//| based milliseconds. MQL4 lacks this function, so milliseconds    |
-//| are set to 000 (GetTickCount() measures uptime, not clock time). |
+//| Note: MQL5 uses (GetMicrosecondCount()/1000)%1000 for sub-second |
+//| ordering only (not true wall-clock milliseconds). MQL4 lacks     |
+//| this function, so milliseconds are set to 000.                   |
 //+------------------------------------------------------------------+
 string LiveLogTime() {
   MqlDateTime dt;
   TimeToStruct(TimeLocal(), dt);
   #ifdef __MQL5__
     return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
-                        dt.day, dt.hour, dt.min, dt.sec, GetMicrosecondCount()/1000);
+                        dt.day, dt.hour, dt.min, dt.sec, (GetMicrosecondCount()/1000)%1000);
   #else
     return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
                         dt.day, dt.hour, dt.min, dt.sec, 0);

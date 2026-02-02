@@ -203,7 +203,10 @@ class MqlLogTailer {
             this.outputChannel.appendLine(`[Warning] Log file ${fileName} does not exist yet. Waiting for activity...`);
         }
 
-        this.setupWatcher(); // Set up native file watcher for instant updates
+        // Only set up watcher if not already done (prevents race with livelog mode watcher)
+        if (!this.watcher) {
+            this.setupWatcher();
+        }
         this.poll(); // Start backup polling for edge cases
     }
 
