@@ -167,6 +167,7 @@ function findMqhFiles(dir, baseDir = dir) {
             const fullPath = path.join(dir, entry.name);
 
             if (entry.isDirectory()) {
+                if (entry.name.toLowerCase() === 'alglib') continue;
                 files.push(...findMqhFiles(fullPath, baseDir));
             } else if (entry.isFile() && entry.name.endsWith('.mqh')) {
                 files.push(fullPath);
