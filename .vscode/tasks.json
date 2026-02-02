@@ -17,6 +17,15 @@
             }
         },
         {
+            "label": "Bump Version",
+            "type": "shell",
+            "command": "node scripts/bump-version.js",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
             "label": "VSCE Publish",
             "type": "shell",
             "command": "node scripts/publish.js vsce",
@@ -41,12 +50,27 @@
             "problemMatcher": []
         },
         {
-            "label": "Publish to Marketplaces",
+            "label": "Publish to Marketplaces (Internal)",
             "dependsOn": [
                 "OVSX Publish",
                 "VSCE Publish"
             ],
             "dependsOrder": "parallel",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Publish to Marketplaces",
+            "dependsOn": [
+                "Bump Version",
+                "Publish to Marketplaces (Internal)"
+            ],
+            "dependsOrder": "sequence",
             "presentation": {
                 "reveal": "always",
                 "panel": "shared",
@@ -80,12 +104,27 @@
             "problemMatcher": []
         },
         {
-            "label": "Publish to Marketplaces (Pre-Release)",
+            "label": "Publish to Marketplaces (Pre-Release) (Internal)",
             "dependsOn": [
                 "OVSX Publish (Pre-Release)",
                 "VSCE Publish (Pre-Release)"
             ],
             "dependsOrder": "parallel",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Publish to Marketplaces (Pre-Release)",
+            "dependsOn": [
+                "Bump Version",
+                "Publish to Marketplaces (Pre-Release) (Internal)"
+            ],
+            "dependsOrder": "sequence",
             "presentation": {
                 "reveal": "always",
                 "panel": "shared",
