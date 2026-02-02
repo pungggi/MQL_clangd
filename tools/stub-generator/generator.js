@@ -156,6 +156,22 @@ class StubGenerator {
             for (const method of publicMethods) {
                 lines.push(this.generateMethod(method));
             }
+
+            // Manual fixes for methods that might be missed by parser or require templates
+            if (classObj.name === 'CArrayObj') {
+                if (!publicMethods.some(m => m.name === 'At')) {
+                    lines.push(this.indent + 'CObject *At(const int index) const;');
+                }
+            }
+            if (classObj.name === 'CFileBin') {
+                // Template methods are not currently parsed correctly
+                lines.push(this.indent + 'template<typename T> uint WriteStruct(T &data);');
+                lines.push(this.indent + 'template<typename T> uint WriteArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
+                lines.push(this.indent + 'template<typename T> uint WriteEnum(const T value);');
+                lines.push(this.indent + 'template<typename T> uint ReadArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
+                lines.push(this.indent + 'template<typename T> bool ReadStruct(T &data);');
+                lines.push(this.indent + 'template<typename T> bool ReadEnum(T &value);');
+            }
         }
 
         // Protected section

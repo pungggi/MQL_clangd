@@ -1691,6 +1691,7 @@ public:
     bool Insert(CObject * element, const int pos);
     bool InsertArray(const CArrayObj * src, const int pos);
     bool AssignArray(const CArrayObj * src);
+    CObject *At(const int index) const;
     bool Update(const int index, CObject * element);
     bool Shift(const int index, const int shift);
     bool Delete(const int index);
@@ -5045,6 +5046,11 @@ public:
     uint WriteLongArray(const long & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
     uint WriteFloatArray(const float & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
     uint WriteDoubleArray(const double & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    template <typename T>
+    uint WriteArray(T &array, const int start_item = 0,
+                    const int items_count = WHOLE_ARRAY);
+    template <typename T> uint WriteStruct(T &data);
+    template <typename T> uint WriteEnum(const T value);
     bool WriteObject(CObject * object);
     bool ReadChar(char & value);
     bool ReadShort(short & value);
@@ -5060,6 +5066,11 @@ public:
     uint ReadLongArray(long & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
     uint ReadFloatArray(float & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
     uint ReadDoubleArray(double & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    template <typename T>
+    uint ReadArray(T &array, const int start_item = 0,
+                   const int items_count = WHOLE_ARRAY);
+    template <typename T> bool ReadStruct(T &data);
+    template <typename T> bool ReadEnum(T &value);
     bool ReadObject(CObject * object);
 };
 
