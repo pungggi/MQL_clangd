@@ -767,7 +767,12 @@ function replaceLog(str, f) {
 
                         // Filter out MQL181 (implicit conversion from number to string)
                         // These are noise since Print/PrintLive accept any type via implicit conversion
-                        if (gh === '181' && name_res.includes("implicit conversion from 'number' to 'string'")) {
+                        // Broadened check to catch various formats of this warning
+                        const isMQL181 = gh === '181' ||
+                            name_res.toLowerCase().includes('implicit conversion') &&
+                            (name_res.includes("'number'") || name_res.includes("number")) &&
+                            (name_res.includes("'string'") || name_res.includes("string"));
+                        if (isMQL181) {
                             continue; // Skip this warning entirely
                         }
 
