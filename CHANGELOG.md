@@ -1,11 +1,27 @@
 # Changelog
 
+## 1.1.15
+
+### Features
+- **LiveLog Enhancements**:
+  - `PrintLive()` now accepts up to 12 string arguments (was 8)
+  - New `LIVELOG_REDIRECT` macro: Add `#define LIVELOG_REDIRECT` before `#include <LiveLog.mqh>` to automatically redirect all `Print()` and `PrintFormat()` calls to `PrintLive()` and `PrintFormatLive()`
+  - LiveLog.txt is now cleared when starting a new tail session for a fresh start
+
+### Improvements
+- **MQL181 Warning Suppression**: "Implicit conversion from 'number' to 'string'" warnings are now automatically hidden from the Output panel. These warnings are noise since Print functions accept any type via implicit conversion.
+
+### Bug Fixes
+- **LiveLog Tailing**: Fixed bug where livelog mode incorrectly switched to date-based log files instead of staying on LiveLog.txt
+
 ## 1.1.14
+
 
 ### Improvements
 - **clangd Auto-Restart**: The `MQL: Create configuration` command now automatically restarts clangd after generating configuration files, so the new settings take effect immediately.
 - **Stubs Quality**: Removed enum generation from stdlib stubs to avoid conflicts with real MQL5 headers. Enums are now provided by `mql_clangd_compat.h` (built-in enums) and real MQL5 headers (stdlib enums). This eliminates false positive "redefinition of enumerator" and "scoped mismatch" errors.
 - **Stub Generator**: Added `--skip-enums` flag to skip enum generation entirely
+- **Alglib False Positives**: Added default suppressions for `member_def_does_not_match_ret_type`, `member_decl_does_not_match`, `ovl_no_oper`, and `typecheck_assign_const` diagnostics. These are false positives from stub mismatches and MQL's const semantics differing from C++.
 
 ### Bug Fixes
 - **Project Context**: Fixed race condition in parallel processing that caused incomplete symbol extraction (missing defines/enums/classes)

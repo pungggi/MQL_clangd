@@ -3,15 +3,22 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
+// LiveLog configuration
+const LIVELOG_FILENAME = 'LiveLog.txt';
+const LIVELOG_MQH_FILENAME = 'LiveLog.mqh';
+
 class MqlLogTailer {
     constructor() {
         this.outputChannel = null;
         this.currentFilePath = null;
         this.lastSize = 0;
         this.timer = null;
+        this.watcher = null; // Native file watcher for instant updates
         this.isTailing = false;
         this.mqlVersion = null; // 'mql4' or 'mql5'
         this.statusBarItem = null;
+        this.mode = 'livelog'; // 'standard' or 'livelog' - default to livelog for real-time updates
+        this.basePath = null; // Base MQL folder path
     }
 
     /**
@@ -39,8 +46,13 @@ class MqlLogTailer {
 
     /**
      * Starts tailing the log file.
+     * @param {string} [mode] - 'livelog' or 'standard'. Defaults to this.mode
      */
-    async start() {
+    async start(mode = null) {
+        if (mode) {
+            this.mode = mode;
+        }
+
         const config = vscode.workspace.getConfiguration('mql_tools');
 
         // Fully automated version and path inference
@@ -77,44 +89,160 @@ class MqlLogTailer {
             rawIncDir = rawIncDir.replace(/\$\{workspaceFolder\}/g, workspaceFolder);
         }
 
-        // Find the Logs folder
+        // Find the base MQL folder
         let basePath = rawIncDir;
         if (path.basename(basePath).toLowerCase() === 'include') {
             basePath = path.dirname(basePath);
         }
+        this.basePath = basePath;
 
-        const logsDir = path.join(basePath, 'Logs');
-        if (!fs.existsSync(logsDir)) {
-            vscode.window.showErrorMessage(`Logs folder not found at: ${logsDir}. Make sure your Include path points into the MQL4/MQL5 data folder.`, 'Configure')
-                .then(selection => {
-                    if (selection === 'Configure') {
-                        vscode.commands.executeCommand('workbench.action.openSettings', `mql_tools.Metaeditor.Include${version === 'mql4' ? '4' : '5'}Dir`);
+        // Determine log file path based on mode
+        let logFilePath;
+        let logDescription;
+
+        if (this.mode === 'livelog') {
+            // LiveLog mode: tail Files/LiveLog.txt (written by LiveLog.mqh with FileFlush)
+            const filesDir = path.join(basePath, 'Files');
+            logFilePath = path.join(filesDir, LIVELOG_FILENAME);
+            logDescription = 'LiveLog (real-time)';
+
+            // Check if LiveLog.mqh is installed, offer to install if not
+            const includeDir = path.join(basePath, 'Include');
+            const liveLogMqhPath = path.join(includeDir, LIVELOG_MQH_FILENAME);
+
+            if (!fs.existsSync(liveLogMqhPath)) {
+                const answer = await vscode.window.showInformationMessage(
+                    'LiveLog library not found. Install it to enable real-time logging?',
+                    'Install LiveLog.mqh',
+                    'Use Standard Logs'
+                );
+
+                if (answer === 'Install LiveLog.mqh') {
+                    const installed = await this.deployLiveLogLibrary();
+                    if (!installed) {
+                        return; // Deployment failed, error already shown
                     }
-                });
-            return;
+                    vscode.window.showInformationMessage(
+                        'LiveLog.mqh installed! Add `#include <LiveLog.mqh>` to your EA and use PrintLive() for real-time output.',
+                        'OK'
+                    );
+                } else if (answer === 'Use Standard Logs') {
+                    // Fall back to standard mode
+                    this.mode = 'standard';
+                } else {
+                    return; // User cancelled
+                }
+            }
+
+            // If still in livelog mode after potential fallback
+            if (this.mode === 'livelog') {
+                // Ensure Files directory exists
+                if (!fs.existsSync(filesDir)) {
+                    try {
+                        fs.mkdirSync(filesDir, { recursive: true });
+                    } catch (err) {
+                        vscode.window.showErrorMessage(`Failed to create Files folder: ${err.message}`);
+                        return;
+                    }
+                }
+            }
         }
+
+        if (this.mode === 'standard') {
+            // Standard mode: tail Logs/YYYYMMDD.log
+            const logsDir = path.join(basePath, 'Logs');
+            if (!fs.existsSync(logsDir)) {
+                vscode.window.showErrorMessage(`Logs folder not found at: ${logsDir}. Make sure your Include path points into the MQL4/MQL5 data folder.`, 'Configure')
+                    .then(selection => {
+                        if (selection === 'Configure') {
+                            vscode.commands.executeCommand('workbench.action.openSettings', `mql_tools.Metaeditor.Include${version === 'mql4' ? '4' : '5'}Dir`);
+                        }
+                    });
+                return;
+            }
+            const fileName = this.getLogFileName();
+            logFilePath = path.join(logsDir, fileName);
+            logDescription = 'Standard Journal';
+        }
+
+        this.currentFilePath = logFilePath;
 
         if (!this.outputChannel) {
-            this.outputChannel = vscode.window.createOutputChannel(`MQL ${version.toUpperCase()} Runtime Log`);
+            this.outputChannel = vscode.window.createOutputChannel(`MQL ${version.toUpperCase()} Runtime Log`, 'mql-output');
         }
 
-        const fileName = this.getLogFileName();
-        this.currentFilePath = path.join(logsDir, fileName);
-
         this.outputChannel.show(true);
-        this.outputChannel.appendLine(`--- Starting Live Tail: ${this.currentFilePath} ---`);
-        this.outputChannel.appendLine(`[Info] Tailing MQL logs from ${logsDir}`);
+        this.outputChannel.appendLine(`--- Starting ${logDescription} Tail ---`);
+        this.outputChannel.appendLine(`[Info] Mode: ${this.mode.toUpperCase()}`);
+        this.outputChannel.appendLine(`[Info] Tailing: ${this.currentFilePath}`);
 
-        // Set initial size to end of file to prevent dump of historical logs
-        if (fs.existsSync(this.currentFilePath)) {
-            this.lastSize = fs.statSync(this.currentFilePath).size;
-        } else {
-            this.lastSize = 0;
-            this.outputChannel.appendLine(`[Warning] Log file ${fileName} does not exist yet. Waiting for terminal activity...`);
+        if (this.mode === 'livelog') {
+            this.outputChannel.appendLine('[Info] For real-time logs, use PrintLive() instead of Print() in your EA');
+            this.outputChannel.appendLine('[Info] Add: #include <LiveLog.mqh>');
+        }
+
+        // In livelog mode, clear the file to start fresh
+        if (this.mode === 'livelog' && fs.existsSync(this.currentFilePath)) {
+            try {
+                fs.writeFileSync(this.currentFilePath, '');
+                this.outputChannel.appendLine('[Info] Cleared previous log content');
+            } catch (err) {
+                this.outputChannel.appendLine(`[Warning] Could not clear log file: ${err.message}`);
+            }
+        }
+
+        // Set initial size (0 since we just cleared it, or 0 if file doesn't exist)
+        this.lastSize = 0;
+        if (!fs.existsSync(this.currentFilePath)) {
+            const fileName = path.basename(this.currentFilePath);
+            this.outputChannel.appendLine(`[Warning] Log file ${fileName} does not exist yet. Waiting for activity...`);
         }
 
         this.isTailing = true;
-        this.poll();
+        this.setupWatcher(); // Set up native file watcher for instant updates
+        this.poll(); // Start backup polling for edge cases
+    }
+
+    /**
+     * Deploys the LiveLog.mqh library to the user's Include folder.
+     * @returns {Promise<boolean>} True if deployment succeeded
+     */
+    async deployLiveLogLibrary() {
+        if (!this.basePath) {
+            vscode.window.showErrorMessage('Cannot deploy LiveLog: MQL folder path not determined');
+            return false;
+        }
+
+        const includeDir = path.join(this.basePath, 'Include');
+        const targetPath = path.join(includeDir, LIVELOG_MQH_FILENAME);
+
+        // Find source file in extension resources
+        const extensionPath = vscode.extensions.getExtension('ngsoftware.mql-clangd')?.extensionPath;
+        if (!extensionPath) {
+            vscode.window.showErrorMessage('Cannot find MQL Tools extension path');
+            return false;
+        }
+
+        const sourcePath = path.join(extensionPath, 'files', LIVELOG_MQH_FILENAME);
+        if (!fs.existsSync(sourcePath)) {
+            vscode.window.showErrorMessage(`LiveLog.mqh template not found at: ${sourcePath}`);
+            return false;
+        }
+
+        try {
+            // Ensure Include directory exists
+            if (!fs.existsSync(includeDir)) {
+                fs.mkdirSync(includeDir, { recursive: true });
+            }
+
+            // Copy file
+            fs.copyFileSync(sourcePath, targetPath);
+            this.outputChannel?.appendLine(`[Info] Installed LiveLog.mqh to: ${targetPath}`);
+            return true;
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to install LiveLog.mqh: ${err.message}`);
+            return false;
+        }
     }
 
     /**
@@ -122,6 +250,10 @@ class MqlLogTailer {
      */
     stop() {
         this.isTailing = false;
+        if (this.watcher) {
+            this.watcher.close();
+            this.watcher = null;
+        }
         if (this.timer) {
             clearTimeout(this.timer);
             this.timer = null;
@@ -231,9 +363,12 @@ class MqlLogTailer {
     updateStatusBar() {
         if (!this.statusBarItem) return;
         if (this.isTailing) {
-            this.statusBarItem.text = `$(sync~spin) MQL Log: ${this.mqlVersion.toUpperCase()}`;
-            this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-            this.statusBarItem.tooltip = 'Click to stop live log tailing';
+            const modeLabel = this.mode === 'livelog' ? 'LIVE' : 'STD';
+            this.statusBarItem.text = `$(sync~spin) MQL Log: ${this.mqlVersion?.toUpperCase() || 'MQL'} (${modeLabel})`;
+            this.statusBarItem.backgroundColor = this.mode === 'livelog'
+                ? new vscode.ThemeColor('statusBarItem.prominentBackground')
+                : new vscode.ThemeColor('statusBarItem.warningBackground');
+            this.statusBarItem.tooltip = `Click to stop log tailing (${this.mode === 'livelog' ? 'Real-time mode' : 'Standard journal'})`;
         } else {
             this.statusBarItem.text = '$(primitive-square) MQL Log: Off';
             this.statusBarItem.backgroundColor = undefined;
@@ -243,21 +378,44 @@ class MqlLogTailer {
     }
 
     /**
-     * Polling loop for file changes.
+     * Sets up a native file watcher for instant change detection.
      */
-    poll() {
+    setupWatcher() {
+        // Close existing watcher if any
+        if (this.watcher) {
+            this.watcher.close();
+            this.watcher = null;
+        }
+
+        if (!fs.existsSync(this.currentFilePath)) {
+            return; // File doesn't exist yet, poll will handle it
+        }
+
+        try {
+            this.watcher = fs.watch(this.currentFilePath, (eventType) => {
+                if (!this.isTailing) return;
+                if (eventType === 'change') {
+                    this.checkForNewContent();
+                }
+            });
+
+            this.watcher.on('error', (err) => {
+                console.error('MQL Tailer watcher error:', err);
+                // Watcher died, poll will recreate it
+                this.watcher = null;
+            });
+        } catch (err) {
+            console.error('Failed to create file watcher:', err);
+        }
+    }
+
+    /**
+     * Checks for new content in the log file.
+     */
+    checkForNewContent() {
         if (!this.isTailing) return;
 
         try {
-            // Check for file rotation at midnight
-            const expectedFile = this.getLogFileName();
-            if (path.basename(this.currentFilePath) !== expectedFile) {
-                const newPath = path.join(path.dirname(this.currentFilePath), expectedFile);
-                this.outputChannel.appendLine(`[Info] Day changed. Switching to ${expectedFile}`);
-                this.currentFilePath = newPath;
-                this.lastSize = 0;
-            }
-
             if (fs.existsSync(this.currentFilePath)) {
                 const stats = fs.statSync(this.currentFilePath);
 
@@ -270,15 +428,48 @@ class MqlLogTailer {
                 }
             }
         } catch (err) {
-            console.error('MQL Tailer error:', err);
+            console.error('MQL Tailer content check error:', err);
+        }
+    }
+
+    /**
+     * Backup polling loop for edge cases (file rotation, watcher not set up).
+     * Runs less frequently since watcher handles most updates.
+     */
+    poll() {
+        if (!this.isTailing) return;
+
+        try {
+            // Check for file rotation at midnight (only for standard mode with date-based logs)
+            if (this.mode === 'standard') {
+                const expectedFile = this.getLogFileName();
+                if (path.basename(this.currentFilePath) !== expectedFile) {
+                    const newPath = path.join(path.dirname(this.currentFilePath), expectedFile);
+                    this.outputChannel.appendLine(`[Info] Day changed. Switching to ${expectedFile}`);
+                    this.currentFilePath = newPath;
+                    this.lastSize = 0;
+                    this.setupWatcher(); // Set up watcher for new file
+                }
+            }
+
+            // Ensure watcher is running (recreate if file now exists or watcher died)
+            if (!this.watcher && fs.existsSync(this.currentFilePath)) {
+                this.setupWatcher();
+            }
+
+            // Also check for content in case watcher missed something
+            this.checkForNewContent();
+        } catch (err) {
+            console.error('MQL Tailer poll error:', err);
         }
 
-        this.timer = setTimeout(() => this.poll(), 1000);
+        // Slower poll interval since watcher handles real-time updates
+        this.timer = setTimeout(() => this.poll(), 5000);
     }
 
     /**
      * Reads new content from the log file.
-     * MQL logs are encoded in UTF-16LE.
+     * LiveLog files are ANSI (utf8), standard MQL logs are UTF-16LE.
      */
     readNewLines(newSize) {
         const fd = fs.openSync(this.currentFilePath, 'r');
@@ -288,8 +479,13 @@ class MqlLogTailer {
         fs.readSync(fd, buffer, 0, length, this.lastSize);
         fs.closeSync(fd);
 
-        // MetaTrader logs are UTF-16LE (UCS2)
-        const content = buffer.toString('utf16le');
+        // LiveLog uses ANSI/UTF-8, standard MetaTrader logs use UTF-16LE
+        let content;
+        if (this.mode === 'livelog') {
+            content = buffer.toString('utf8');
+        } else {
+            content = buffer.toString('utf16le');
+        }
 
         // Trim BOM if present in the middle of a stream (unlikely but safe)
         const cleanContent = content.replace(/\uFEFF/g, '');

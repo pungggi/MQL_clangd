@@ -765,6 +765,12 @@ function replaceLog(str, f) {
                         const col = parseInt(mPos[2]) - 1;
                         const severity = item.toLowerCase().includes('error') ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning;
 
+                        // Filter out MQL181 (implicit conversion from number to string)
+                        // These are noise since Print/PrintLive accept any type via implicit conversion
+                        if (gh === '181' && name_res.includes("implicit conversion from 'number' to 'string'")) {
+                            continue; // Skip this warning entirely
+                        }
+
                         if (severity === vscode.DiagnosticSeverity.Error) ye = true;
 
                         diagnostics.push({
@@ -787,6 +793,7 @@ function replaceLog(str, f) {
                     } else {
                         text += name_res + '\n';
                     }
+
                 }
                 else {
                     text += name_res + (gh ? ` ${gh}` : '') + '\n';
@@ -972,6 +979,12 @@ class MqlCodeActionProvider {
             if (errorCode === 'MQL262' || diagnostic.message.toLowerCase().includes('cannot convert')) {
                 const enumActions = this._createEnumSuggestionActions(document, diagnostic);
                 actions.push(...enumActions);
+            }
+
+            // Phase 4: Handle "implicit conversion from 'number' to 'string'" warning (MQL181)
+            if (errorCode === 'MQL181' && diagnostic.message.includes("implicit conversion from 'number' to 'string'")) {
+                const conversionActions = this._createStringConversionActions(document, diagnostic);
+                actions.push(...conversionActions);
             }
 
         }
@@ -1956,6 +1969,87 @@ class MqlCodeActionProvider {
 
         return actions;
     }
+
+    /**
+     * Phase 4: Create actions to fix implicit number to string conversion
+     *
+     * QuickFix Title Pattern: "MQL: Wrap with IntegerToString()" or "MQL: Wrap with DoubleToString()"
+     * - Machine-recognizable prefix: "MQL: Wrap with"
+     * - Action: Wraps the numeric value at the diagnostic location with a conversion function
+     * - Safe: Yes (wraps existing code)
+     *
+     * @param {vscode.TextDocument} document
+     * @param {vscode.Diagnostic} diagnostic
+     * @returns {vscode.CodeAction[]}
+     */
+    _createStringConversionActions(document, diagnostic) {
+        const actions = [];
+        const range = diagnostic.range;
+
+        // Get the text at the diagnostic range
+        const problematicText = document.getText(range);
+
+        // Skip if already wrapped in a conversion function
+        if (problematicText.includes('ToString(')) {
+            return actions;
+        }
+
+        // Expand range to capture the full expression if it's short (single character like a number)
+        let expandedRange = range;
+
+        // If range is very small, try to find the full identifier/number
+        if (range.end.character - range.start.character <= 1) {
+            // Find word boundaries around the position
+            const wordRange = document.getWordRangeAtPosition(range.start, /[\w.]+/);
+            if (wordRange) {
+                expandedRange = wordRange;
+            }
+        }
+
+        const valueToWrap = document.getText(expandedRange);
+
+        // Skip empty or already wrapped values
+        if (!valueToWrap || valueToWrap.includes('ToString(')) {
+            return actions;
+        }
+
+        // Create IntegerToString action
+        const intAction = new vscode.CodeAction(
+            'MQL: Wrap with IntegerToString()',
+            vscode.CodeActionKind.QuickFix
+        );
+        intAction.edit = new vscode.WorkspaceEdit();
+        intAction.edit.replace(
+            document.uri,
+            expandedRange,
+            `IntegerToString(${valueToWrap})`
+        );
+        intAction.diagnostics = [diagnostic];
+        actions.push(intAction);
+
+        // Create DoubleToString action
+        const doubleAction = new vscode.CodeAction(
+            'MQL: Wrap with DoubleToString()',
+            vscode.CodeActionKind.QuickFix
+        );
+        doubleAction.edit = new vscode.WorkspaceEdit();
+        doubleAction.edit.replace(
+            document.uri,
+            expandedRange,
+            `DoubleToString(${valueToWrap}, 8)`
+        );
+        doubleAction.diagnostics = [diagnostic];
+        actions.push(doubleAction);
+
+        // If it looks like an integer (no decimal point), prefer IntegerToString
+        if (/^\d+$/.test(valueToWrap) || /^[A-Z_][A-Z0-9_]*$/.test(valueToWrap)) {
+            intAction.isPreferred = true;
+        } else if (valueToWrap.includes('.')) {
+            doubleAction.isPreferred = true;
+        }
+
+        return actions;
+    }
 }
 
 function activate(context) {
@@ -2147,6 +2241,59 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', () => OpenTradingTerminal()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));
+
+    // LiveLog commands for real-time logging
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.installLiveLog', async () => {
+        // Manually trigger LiveLog library deployment
+        const version = logTailer.detectMqlVersion() || 'mql5';
+        const config = vscode.workspace.getConfiguration('mql_tools');
+        const logFolderName = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
+        let rawIncDir = config.get(`Metaeditor.${logFolderName}`);
+
+        if (!rawIncDir) {
+            rawIncDir = logTailer.inferDataFolder(version);
+        }
+
+        if (!rawIncDir) {
+            vscode.window.showErrorMessage('Cannot determine MQL folder path. Please configure Include directory settings.');
+            return;
+        }
+
+        let basePath = rawIncDir;
+        if (pathModule.basename(basePath).toLowerCase() === 'include') {
+            basePath = pathModule.dirname(basePath);
+        }
+        logTailer.basePath = basePath;
+
+        const success = await logTailer.deployLiveLogLibrary();
+        if (success) {
+            vscode.window.showInformationMessage(
+                'LiveLog.mqh installed! Add `#include <LiveLog.mqh>` to your EA and use PrintLive() for real-time output.'
+            );
+        }
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.switchLogMode', async () => {
+        const current = logTailer.mode;
+        const items = [
+            { label: 'LiveLog (Real-time)', description: 'Tail MQL5/Files/LiveLog.txt - requires PrintLive() in EA', mode: 'livelog' },
+            { label: 'Standard Journal', description: 'Tail MQL5/Logs/YYYYMMDD.log - uses Print() output (not real-time)', mode: 'standard' }
+        ];
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: `Current: ${current === 'livelog' ? 'LiveLog (Real-time)' : 'Standard Journal'}`
+        });
+
+        if (selected && selected.mode !== current) {
+            logTailer.mode = selected.mode;
+            if (logTailer.isTailing) {
+                logTailer.stop();
+                await logTailer.start();
+            }
+            logTailer.updateStatusBar();
+            vscode.window.showInformationMessage(`Switched to ${selected.label} mode`);
+        }
+    }));
 
     logTailer.initStatusBar();
 

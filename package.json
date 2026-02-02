@@ -424,6 +424,16 @@
                 "category": "MQL"
             },
             {
+                "command": "mql_tools.installLiveLog",
+                "title": "Install LiveLog Library",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.switchLogMode",
+                "title": "Switch Log Tail Mode (Live/Standard)",
+                "category": "MQL"
+            },
+            {
                 "command": "mql_tools.activateProjectContext",
                 "title": "Activate Project Context",
                 "category": "MQL"

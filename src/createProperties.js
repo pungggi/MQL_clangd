@@ -613,7 +613,13 @@ async function CreateProperties(force = false) {
             'expected_arrow_after_this',
             'err_expected_arrow_after_this',
             'extraneous_token_before_semi',
-            'expected_semi_after_expr'
+            'expected_semi_after_expr',
+            // Alglib / Standard Library false positives (stub mismatches)
+            'member_def_does_not_match_ret_type',
+            'member_decl_does_not_match',
+            'ovl_no_oper',
+            // MQL const semantics differ from C++ - const params can be reassigned
+            'typecheck_assign_const'
         ];
 
         let finalSuppressions = baseSuppressions;

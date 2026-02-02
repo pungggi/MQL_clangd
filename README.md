@@ -135,14 +135,72 @@ When `mql_tools.Wine.Enabled` is `true` on macOS/Linux:
 Monitor your MQL4/MQL5 terminal logs in real-time directly within VS Code—no need to switch to MetaTrader or open external log files.
 
 **Features:**
-- **Real-time log tailing**: See `Print()` statements and terminal messages as they happen
+- **Real-time log tailing**: See log messages as they happen
 - **Status bar integration**: Click the status bar item to toggle log monitoring on/off
+- **Two tailing modes**: Choose between standard journal logs or real-time LiveLog output
+
+#### Log Modes
+
+| Mode | Description | Latency |
+|------|-------------|---------|
+| **LiveLog (Real-time)** | Tails `MQL5/Files/LiveLog.txt` - uses `PrintLive()` with immediate disk flush | **Instant** ⚡ |
+| **Standard Journal** | Tails `MQL5/Logs/YYYYMMDD.log` - uses standard `Print()` output | Delayed (MetaTrader buffering) |
+
+**Why two modes?**
+MetaTrader's standard `Print()` function buffers output and doesn't flush to disk immediately, which causes delays in the VS Code log viewer. The **LiveLog** mode solves this by using a custom logging library (`LiveLog.mqh`) that writes directly to a file with immediate flush.
+
+#### Setting up LiveLog (Real-time) Mode
+
+1. **Install the library**:
+   Run `MQL: Install LiveLog Library` from the Command Palette, or start tailing and accept the prompt to install.
+
+2. **Include in your EA**:
+   ```mql5
+   #include <LiveLog.mqh>
+   ```
+
+3. **Use `PrintLive()` instead of `Print()`**:
+   ```mql5
+   PrintLive("Hello, World!");
+   PrintFormatLive("Value: %d, Price: %.5f", 42, 1.23456);
+   
+   // Or use the convenience functions:
+   LogDebug("Debug message");
+   LogInfo("Info message");
+   LogWarn("Warning message");
+   LogError("Error message");
+   ```
+
+4. **Optional - Replace Print globally**:
+   Add these macros at the top of your file to automatically redirect all `Print()` calls:
+   ```mql5
+   #define PrintLive Print
+   #define PrintFormat printf
+   #define PrintFormatLive PrintFormat
+   #define LogDebugLive LogDebug
+   #define LogInfoLive LogInfo
+   #define LogWarnLive LogWarn
+   #define LogErrorLive LogError
+   ```
+   If you want a clean session end marker in your logs, you can optionally call LiveLogClose() from your own OnDeinit:
+   ```mql5
+   void OnDeinit(const int reason)
+   {
+      LiveLogClose();  // Optional - writes "Session Ended" marker
+      // ... your other cleanup code ...
+   }
+   ```
+
+**Commands:**
+- `MQL: Toggle Live Runtime Log` — Start/stop log tailing
+- `MQL: Install LiveLog Library` — Deploy `LiveLog.mqh` to your Include folder
+- `MQL: Switch Log Tail Mode (Live/Standard)` — Switch between real-time and standard modes
 
 **Notes:**
 - The extension automatically detects MQL version from your active file, workspace folder name, or configured settings
 - If the data folder path is not configured, the extension will attempt to infer it from your workspace structure
 - Only new log entries are shown (historical logs are not dumped on start)
-- The log file path follows MetaTrader's naming convention: `YYYYMMDD.log`
+- LiveLog files auto-rotate at 10MB to prevent disk space issues
 
 ---
 
