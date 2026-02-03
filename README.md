@@ -206,38 +206,7 @@ MetaTrader's standard `Print()` function buffers output and doesn't flush to dis
 
 ---
 
-### MQL Project Context & AI Bridge
 
-Generate an AI-friendly project context file that provides a condensed summary of your MQL project's structure, custom symbols, and standard library functions.
-
-**Features:**
-- **Symbol Table**: Extracts all `#define` macros, `enum` types, `class/struct` definitions, and function signatures from your `.mqh` files
-- **Standard Library Summary**: Includes a curated list of high-frequency MQL built-in functions with signatures
-- **Auto-Update**: Watches for file changes and regenerates the context file automatically (with 12s debounce)
-- **Persistent Activation**: Once activated, the watcher persists across VS Code sessions
-
-**Usage:**
-1. Run `MQL: Activate Project Context` from the command palette
-2. A `.mql-context.toml` file is created at your project root (or `.md` if using markdown format)
-3. Keep this file in your project—AI assistants will use it as background knowledge
-
-**Configuration:**
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `mql_tools.ProjectContext.FileName` | string | `.mql-context.toml` | Output file name. The extension determines the format (takes precedence over `Format`. `.toml` → TOML, `.md`/`.markdown` → Markdown) |
-| `mql_tools.ProjectContext.Format` | enum | `toml` | Output format (`toml` or `markdown`). Note: `FileName` extension takes precedence; a warning is shown if there's a conflict |
-| `mql_tools.ProjectContext.EnableAutoUpdate` | boolean | `true` | Auto-regenerate on file changes |
-| `mql_tools.ProjectContext.ScanMode` | enum | `IncludesOnly` | Which files to index (`IncludesOnly` or `FullWorkspace`) |
-| `mql_tools.ProjectContext.IncludeStdLib` | boolean | `true` | Include MQL standard library summary |
-| `mql_tools.ProjectContext.ExcludePatterns` | array | `[]` | Glob patterns to exclude |
-| `mql_tools.ProjectContext.MaxTokens` | number | `100000` | Token count warning threshold (0 to disable) |
-
-**Why use this?**
-- **For AI Assistants**: Provides a high-density "anchor" that prevents hallucinations about MQL-specific APIs and helps AI understand your custom types and functions
-- **For Manual Users**: Serves as a quick-reference "map" of your project's include hierarchy and API surface
-
----
 
 ### Troubleshooting clangd diagnostics (MQL-specific)
 

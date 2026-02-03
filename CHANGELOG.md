@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.20 (pre-release)
+
+### Removals
+- **Project Context**: Removed the "Project Context" feature and its associated commands/settings to streamline the extension.
+
 ## 1.1.18
 
 ### Features
