@@ -275,16 +275,22 @@ async function refreshClangdDiagnostics() {
  * Build command arguments for MetaEditor on Windows.
  * Returns an object with executable and args array for use with child_process.spawn.
  * MetaEditor requires: /compile:"path" (quotes are part of the argument value)
+ *
+ * Only processes known MetaEditor flags (/compile:, /log:, /inc:) to avoid corrupting
+ * Windows paths like C:\foo. Skips values already wrapped in quotes to avoid double-quoting.
  */
 function buildMetaEditorCmd(executable, args) {
+    const metaEditorFlags = ['/compile:', '/log:', '/inc:'];
     const processedArgs = args.map(arg => {
-        const colonIdx = arg.indexOf(':');
-        if (colonIdx > 0) {
-            const prefix = arg.substring(0, colonIdx + 1);
-            const value = arg.substring(colonIdx + 1);
-            return `${prefix}"${value}"`;
+        const matchingFlag = metaEditorFlags.find(flag => arg.toLowerCase().startsWith(flag));
+        if (!matchingFlag) {
+            return arg;
         }
-        return arg;
+        const value = arg.substring(matchingFlag.length);
+        if (value.startsWith('"') && value.endsWith('"')) {
+            return arg;
+        }
+        return `${matchingFlag}"${value}"`;
     });
     return { executable, args: processedArgs };
 }
@@ -789,8 +795,8 @@ function replaceLog(str, f) {
                         // Broadened check to catch various formats of this warning
                         const isMQL181 = gh === '181' ||
                             name_res.toLowerCase().includes('implicit conversion') &&
-                            (name_res.includes("'number'") || name_res.includes("number")) &&
-                            (name_res.includes("'string'") || name_res.includes("string"));
+                            (name_res.includes("'number'") || name_res.includes('number')) &&
+                            (name_res.includes("'string'") || name_res.includes('string'));
                         if (isMQL181) {
                             continue; // Skip this warning entirely
                         }
