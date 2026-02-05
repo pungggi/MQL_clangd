@@ -546,9 +546,10 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         });
                 } else {
-                    // Direct execution on Windows - use spawn() to avoid shell injection
+                    // Direct execution on Windows - use exec() to properly handle paths with spaces
                     const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
-                    childProcess.spawn(executable, args, { shell: false })
+                    const cmdString = `"${executable}" ${args.map(arg => `"${arg}"`).join(' ')}`;
+                    childProcess.exec(cmdString)
                         .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
@@ -569,9 +570,10 @@ async function compilePath(rt, pathToCompile, _context) {
         if (useWine) {
             proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
         } else {
-            // Windows: use spawn() to avoid shell injection while handling paths with spaces
+            // Windows: use exec() to properly handle paths with spaces without quote escaping issues
             const { executable, args } = buildMetaEditorCmd(command, execArgs);
-            proc = childProcess.spawn(executable, args, { shell: false });
+            const cmdString = `"${executable}" ${args.map(arg => `"${arg}"`).join(' ')}`;
+            proc = childProcess.exec(cmdString);
         }
         let stderrData = '';
         let timeoutId = null;
