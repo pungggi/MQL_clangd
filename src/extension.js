@@ -274,7 +274,6 @@ async function refreshClangdDiagnostics() {
 /**
  * Build command arguments for MetaEditor on Windows.
  * Returns an object with executable and args array for use with child_process.spawn.
- * This avoids shell interpretation and command injection vulnerabilities.
  * MetaEditor requires: /compile:"path" (quotes are part of the argument value)
  */
 function buildMetaEditorCmd(executable, args) {
@@ -544,10 +543,9 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         });
                 } else {
-                    // Direct execution on Windows - use exec() to properly handle paths with spaces
+                    // Direct execution on Windows - use spawn with shell: false to safely handle paths with spaces
                     const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
-                    const cmdString = `"${executable}" ${args.map(arg => `"${arg}"`).join(' ')}`;
-                    childProcess.exec(cmdString)
+                    childProcess.spawn(executable, args, { shell: false })
                         .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
@@ -568,10 +566,9 @@ async function compilePath(rt, pathToCompile, _context) {
         if (useWine) {
             proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
         } else {
-            // Windows: use exec() to properly handle paths with spaces without quote escaping issues
+            // Windows: use spawn with shell: false to safely handle paths with spaces
             const { executable, args } = buildMetaEditorCmd(command, execArgs);
-            const cmdString = `"${executable}" ${args.map(arg => `"${arg}"`).join(' ')}`;
-            proc = childProcess.exec(cmdString);
+            proc = childProcess.spawn(executable, args, { shell: false });
         }
         let stderrData = '';
         let timeoutId = null;
