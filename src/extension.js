@@ -272,12 +272,13 @@ async function refreshClangdDiagnostics() {
 
 
 /**
- * Build a shell command string for MetaEditor on Windows.
- * Quotes the value portion of /flag:value arguments to handle paths with spaces.
- * MetaEditor requires: /compile:"path" (not "/compile:path")
+ * Build command arguments for MetaEditor on Windows.
+ * Returns an object with executable and args array for use with child_process.spawn.
+ * This avoids shell interpretation and command injection vulnerabilities.
+ * MetaEditor requires: /compile:"path" (quotes are part of the argument value)
  */
 function buildMetaEditorCmd(executable, args) {
-    const quotedArgs = args.map(arg => {
+    const processedArgs = args.map(arg => {
         const colonIdx = arg.indexOf(':');
         if (colonIdx > 0) {
             const prefix = arg.substring(0, colonIdx + 1);
@@ -286,7 +287,7 @@ function buildMetaEditorCmd(executable, args) {
         }
         return arg;
     });
-    return `"${executable}" ${quotedArgs.join(' ')}`;
+    return { executable, args: processedArgs };
 }
 
 /**
@@ -543,9 +544,9 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         });
                 } else {
-                    // Direct execution on Windows - use exec() for proper path quoting
-                    const cmdString = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
-                    childProcess.exec(cmdString, { maxBuffer: 10 * 1024 * 1024 })
+                    // Direct execution on Windows - use spawn() to avoid shell injection
+                    const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
+                    childProcess.spawn(executable, args, { shell: false })
                         .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
@@ -566,9 +567,9 @@ async function compilePath(rt, pathToCompile, _context) {
         if (useWine) {
             proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
         } else {
-            // Windows: use exec() so MetaEditor gets properly quoted paths with spaces
-            const cmdString = buildMetaEditorCmd(command, execArgs);
-            proc = childProcess.exec(cmdString, { maxBuffer: 10 * 1024 * 1024 });
+            // Windows: use spawn() to avoid shell injection while handling paths with spaces
+            const { executable, args } = buildMetaEditorCmd(command, execArgs);
+            proc = childProcess.spawn(executable, args, { shell: false });
         }
         let stderrData = '';
         let timeoutId = null;
