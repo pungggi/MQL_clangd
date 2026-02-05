@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.21
+
+### Bug Fixes
+- **Windows Compilation with Spaces in Paths**: Fixed compilation failure when file or folder paths contain spaces (e.g., `RB v20.mq5`). Now uses `exec()` instead of `spawn()` on Windows to properly quote MetaEditor flag arguments.
+
 ## 1.1.20 (pre-release)
 
 ### Removals
