@@ -271,6 +271,29 @@ async function refreshClangdDiagnostics() {
 }
 
 
+/**
+ * Build command arguments for MetaEditor on Windows.
+ * Returns an object with executable and args array for use with child_process.spawn.
+ * MetaEditor requires: /compile:"path" (quotes are part of the argument value)
+ *
+ * Only processes known MetaEditor flags (/compile:, /log:, /inc:) to avoid corrupting
+ * Windows paths like C:\foo. Skips values already wrapped in quotes to avoid double-quoting.
+ */
+function buildMetaEditorCmd(executable, args) {
+    const metaEditorFlags = ['/compile:', '/log:', '/inc:'];
+    const processedArgs = args.map(arg => {
+        const matchingFlag = metaEditorFlags.find(flag => arg.toLowerCase().startsWith(flag));
+        if (!matchingFlag) {
+            return arg;
+        }
+        const value = arg.substring(matchingFlag.length);
+        if (value.startsWith('"') && value.endsWith('"')) {
+            return arg;
+        }
+        return `${matchingFlag}"${value}"`;
+    });
+    return { executable, args: processedArgs };
+}
 
 /**
  * Compile a single file path
@@ -526,9 +549,9 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         });
                 } else {
-                    // Direct execution on Windows
-                    const args = [`/compile:${compileArg}`];
-                    childProcess.spawn(MetaDir, args, { shell: false })
+                    // Direct execution on Windows - use spawn with shell: false to safely handle paths with spaces
+                    const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
+                    childProcess.spawn(executable, args, { shell: false })
                         .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
@@ -544,13 +567,15 @@ async function compilePath(rt, pathToCompile, _context) {
             }
         };
 
-        // Execute command with timeout for Wine processes
-        const spawnOptions = { shell: false };
+        // Execute compilation command
+        let proc;
         if (useWine) {
-            spawnOptions.env = getWineEnv(config);
+            proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
+        } else {
+            // Windows: use spawn with shell: false to safely handle paths with spaces
+            const { executable, args } = buildMetaEditorCmd(command, execArgs);
+            proc = childProcess.spawn(executable, args, { shell: false });
         }
-
-        const proc = childProcess.spawn(command, execArgs, spawnOptions);
         let stderrData = '';
         let timeoutId = null;
 
@@ -769,9 +794,9 @@ function replaceLog(str, f) {
                         // These are noise since Print/PrintLive accept any type via implicit conversion
                         // Broadened check to catch various formats of this warning
                         const isMQL181 = gh === '181' ||
-                            name_res.toLowerCase().includes('implicit conversion') &&
-                            (name_res.includes("'number'") || name_res.includes("number")) &&
-                            (name_res.includes("'string'") || name_res.includes("string"));
+                            (name_res.toLowerCase().includes('implicit conversion') &&
+                             ((name_res.includes("'number'") || name_res.includes('number')) &&
+                              (name_res.includes("'string'") || name_res.includes('string'))));
                         if (isMQL181) {
                             continue; // Skip this warning entirely
                         }
