@@ -18,6 +18,8 @@ const btnCode = document.getElementById('btn-code');
 const statusEl = document.getElementById('status-msg');
 const chartContainer = document.getElementById('chart-container');
 const mqlOutput = document.getElementById('mql-output');
+const btnScan = document.getElementById('btn-scan');
+const codebaseList = document.getElementById('codebase-list');
 
 // Event Listeners
 btnVisualize.addEventListener('click', handleVisualize);
@@ -28,6 +30,17 @@ inputEl.addEventListener('keydown', (e) => {
     }
 });
 
+if (btnScan) {
+    btnScan.addEventListener('click', () => {
+        if (vscode) {
+            btnScan.textContent = "Scanning...";
+            vscode.postMessage({ command: 'scanCodebase' });
+        } else {
+            alert("This feature requires the VS Code Extension.");
+        }
+    });
+}
+
 // Handle window resize
 window.addEventListener('resize', () => {
     if (currentChart) {
@@ -35,16 +48,53 @@ window.addEventListener('resize', () => {
     }
 });
 
+// VS Code API Access
+let vscode = null;
+try {
+    vscode = acquireVsCodeApi();
+} catch (e) {
+    console.log("Not running in VS Code Webview");
+}
+
 async function loadData() {
-    try {
-        // Fetch from root as configured in Webpack
-        const response = await fetch('/market_data.json');
-        if (!response.ok) throw new Error('Network response was not ok');
-        const data = await response.json();
-        return data;
-    } catch (e) {
-        console.warn('Could not load market_data.json, using mock data.', e);
-        return mockData;
+    if (vscode) {
+        // Request data from Extension
+        statusEl.textContent = "Requesting data from VS Code Extension...";
+        vscode.postMessage({ command: 'requestData' });
+
+        // Wait for response
+        return new Promise((resolve, reject) => {
+            const listen = (event) => {
+                const message = event.data;
+                if (message.command === 'receiveData') {
+                    window.removeEventListener('message', listen);
+                    if (message.error) {
+                        reject(message.error);
+                    } else {
+                        resolve(message.data);
+                    }
+                } else if (message.command === 'codebaseScanned') {
+                    // Update the UI with found files
+                    if (codebaseList) {
+                        codebaseList.innerHTML = message.files.length > 0
+                            ? message.files.map(f => `<li>${f}</li>`).join('')
+                            : "<li>No .mqh files found</li>";
+                    }
+                    if (btnScan) btnScan.textContent = "Scan";
+                }
+            };
+            window.addEventListener('message', listen);
+        });
+    } else {
+        // Fallback: Fetch from root (Standalone/Dev Server)
+        try {
+            const response = await fetch('/market_data.json');
+            if (!response.ok) throw new Error('Network response was not ok');
+            return await response.json();
+        } catch (e) {
+            console.warn('Could not load market_data.json, using mock data.', e);
+            return mockData;
+        }
     }
 }
 
@@ -56,7 +106,14 @@ async function handleVisualize() {
     }
 
     statusEl.textContent = "Loading data...";
-    const data = await loadData();
+
+    let data;
+    try {
+        data = await loadData();
+    } catch (e) {
+        statusEl.textContent = "Error loading data: " + e;
+        return;
+    }
 
     statusEl.textContent = "Generating visualization...";
 

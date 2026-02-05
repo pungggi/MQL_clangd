@@ -1,0 +1,33 @@
+{
+    "name": "rapid-ea-extension",
+    "displayName": "Rapid EA",
+    "description": "Visual Strategy Builder for MQL5",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "rapid-ea.start",
+                "title": "Rapid EA: Start",
+                "category": "Rapid EA"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.80.0",
+        "@types/node": "^16.x",
+        "typescript": "^5.0.0"
+    }
+}
