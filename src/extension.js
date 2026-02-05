@@ -273,6 +273,23 @@ async function refreshClangdDiagnostics() {
 }
 
 
+/**
+ * Build a shell command string for MetaEditor on Windows.
+ * Quotes the value portion of /flag:value arguments to handle paths with spaces.
+ * MetaEditor requires: /compile:"path" (not "/compile:path")
+ */
+function buildMetaEditorCmd(executable, args) {
+    const quotedArgs = args.map(arg => {
+        const colonIdx = arg.indexOf(':');
+        if (colonIdx > 0) {
+            const prefix = arg.substring(0, colonIdx + 1);
+            const value = arg.substring(colonIdx + 1);
+            return `${prefix}"${value}"`;
+        }
+        return arg;
+    });
+    return `"${executable}" ${quotedArgs.join(' ')}`;
+}
 
 /**
  * Compile a single file path
@@ -528,9 +545,9 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         });
                 } else {
-                    // Direct execution on Windows
-                    const args = [`/compile:${compileArg}`];
-                    childProcess.spawn(MetaDir, args, { shell: false })
+                    // Direct execution on Windows - use exec() for proper path quoting
+                    const cmdString = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
+                    childProcess.exec(cmdString, { maxBuffer: 10 * 1024 * 1024 })
                         .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
@@ -546,13 +563,15 @@ async function compilePath(rt, pathToCompile, _context) {
             }
         };
 
-        // Execute command with timeout for Wine processes
-        const spawnOptions = { shell: false };
+        // Execute compilation command
+        let proc;
         if (useWine) {
-            spawnOptions.env = getWineEnv(config);
+            proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
+        } else {
+            // Windows: use exec() so MetaEditor gets properly quoted paths with spaces
+            const cmdString = buildMetaEditorCmd(command, execArgs);
+            proc = childProcess.exec(cmdString, { maxBuffer: 10 * 1024 * 1024 });
         }
-
-        const proc = childProcess.spawn(command, execArgs, spawnOptions);
         let stderrData = '';
         let timeoutId = null;
 
