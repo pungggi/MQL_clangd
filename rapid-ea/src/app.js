@@ -1,21 +1,98 @@
 import * as echarts from 'echarts';
+
+console.log('[Rapid-EA] Bundle loaded');
+
+// Generate realistic mock OHLC data using random walk with trend and volatility clustering
+function generateRealisticMockData(length = 1000) {
+    const data = [];
+
+    // Starting price (forex-like, e.g., EURUSD around 1.08)
+    let price = 1.08500;
+
+    // Volatility and trend state
+    let volatility = 0.0003; // Base volatility (30 pips)
+    let trend = 0; // Current trend bias (-1 to 1)
+    let trendDuration = 0;
+
+    // Volume state
+    let baseVolume = 5000;
+
+    for (let i = 0; i < length; i++) {
+        // Update trend occasionally (persistence)
+        if (trendDuration <= 0 || Math.random() < 0.02) {
+            trend = (Math.random() - 0.5) * 0.6; // Slight trend bias
+            trendDuration = Math.floor(20 + Math.random() * 80); // 20-100 bars
+        }
+        trendDuration--;
+
+        // Volatility clustering (GARCH-like behavior)
+        const volShock = Math.random();
+        if (volShock > 0.95) {
+            volatility = Math.min(0.001, volatility * 1.5); // Volatility spike
+        } else if (volShock < 0.3) {
+            volatility = Math.max(0.00015, volatility * 0.95); // Mean reversion
+        }
+
+        // Price movement with trend component
+        const drift = trend * volatility * 2;
+        const randomWalk = (Math.random() - 0.5) * volatility * 2;
+        const priceChange = drift + randomWalk;
+
+        // Generate OHLC with realistic wicks
+        const open = price;
+        const bodySize = Math.abs(priceChange);
+        const wickMultiplier = 0.3 + Math.random() * 0.7; // Wicks 30-100% of body
+
+        let close, high, low;
+
+        if (priceChange >= 0) {
+            // Bullish candle
+            close = open + bodySize;
+            high = close + bodySize * wickMultiplier * Math.random();
+            low = open - bodySize * wickMultiplier * Math.random();
+        } else {
+            // Bearish candle
+            close = open - bodySize;
+            high = open + bodySize * wickMultiplier * Math.random();
+            low = close - bodySize * wickMultiplier * Math.random();
+        }
+
+        // Ensure high >= max(open, close) and low <= min(open, close)
+        high = Math.max(high, open, close);
+        low = Math.min(low, open, close);
+
+        // Volume with patterns (higher on volatile moves)
+        const volFactor = 1 + (Math.abs(priceChange) / volatility) * 0.5;
+        const volume = Math.floor(baseVolume * volFactor * (0.5 + Math.random()));
+
+        data.push({
+            time: 1700000000 + i * 3600, // Start from late 2023
+            open: parseFloat(open.toFixed(5)),
+            high: parseFloat(high.toFixed(5)),
+            low: parseFloat(low.toFixed(5)),
+            close: parseFloat(close.toFixed(5)),
+            volume: volume
+        });
+
+        // Update price for next candle
+        price = close;
+    }
+
+    return data;
+}
+
 // Mock Data for Initial Test if market_data.json is missing
-const mockData = Array.from({ length: 1000 }, (_, i) => {
-    const open = 100 + Math.random() * 10;
-    const close = 100 + Math.random() * 10;
-    const high = Math.max(open, close) + Math.random() * 10;
-    const low = Math.min(open, close) - Math.random() * 10;
-    return {
-        time: 1600000000 + i * 3600,
-        open: open,
-        high: high,
-        low: low,
-        close: close,
-        volume: Math.floor(Math.random() * 1000)
-    };
-});
+const mockData = generateRealisticMockData(1000);
 
 let currentChart = null;
+
+// Initialization check
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[Rapid-EA] DOM ready');
+    const status = document.getElementById('status-msg');
+    if (status) status.textContent = 'App initialized';
+});
+
 
 // DOM Elements
 const inputEl = document.getElementById('strategy-input');
@@ -23,7 +100,7 @@ const btnVisualize = document.getElementById('btn-visualize');
 const btnCode = document.getElementById('btn-code');
 const statusEl = document.getElementById('status-msg');
 const chartContainer = document.getElementById('chart-container');
-const mqlOutput = document.getElementById('mql-output');
+
 const btnScan = document.getElementById('btn-scan');
 const codebaseList = document.getElementById('codebase-list');
 
@@ -34,11 +111,13 @@ if (btnVisualize) {
 if (btnCode) {
     btnCode.addEventListener('click', handleGenerateCode);
 }
-inputEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        handleVisualize();
-    }
-});
+if (inputEl) {
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            handleVisualize();
+        }
+    });
+}
 
 if (btnScan) {
     btnScan.addEventListener('click', () => {
@@ -66,22 +145,65 @@ try {
     console.log("Not running in VS Code Webview");
 }
 
+// Generated files section elements
+const generatedFilesSection = document.getElementById('generated-files-section');
+const generatedFileLink = document.getElementById('generated-file-link');
+
+// Global message listener for extension messages
+window.addEventListener('message', (event) => {
+    const message = event.data;
+
+    if (message.command === 'fileCreated') {
+        // Show the generated file link
+        if (generatedFilesSection && generatedFileLink) {
+            generatedFilesSection.style.display = 'block';
+            generatedFileLink.textContent = message.fileName;
+            generatedFileLink.title = message.filePath;
+
+            // Make it clickable to open the file
+            generatedFileLink.onclick = () => {
+                if (vscode) {
+                    vscode.postMessage({ command: 'openFile', filePath: message.filePath });
+                }
+            };
+        }
+    }
+});
+
 async function loadData() {
     if (vscode) {
         // Request data from Extension
-        statusEl.textContent = "Requesting data from VS Code Extension...";
+        if (statusEl) statusEl.textContent = "Requesting data from VS Code Extension...";
         vscode.postMessage({ command: 'requestData' });
 
-        // Wait for response
+        // Wait for response with timeout
         return new Promise((resolve, reject) => {
+            let resolved = false;
+
+            // Timeout after 3 seconds - use mock data
+            const timeout = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    window.removeEventListener('message', listen);
+                    console.warn('Timeout waiting for data, using mock data');
+                    resolve(mockData);
+                }
+            }, 3000);
+
             const listen = (event) => {
                 const message = event.data;
                 if (message.command === 'receiveData') {
-                    window.removeEventListener('message', listen);
-                    if (message.error) {
-                        reject(message.error);
-                    } else {
-                        resolve(message.data);
+                    if (!resolved) {
+                        resolved = true;
+                        clearTimeout(timeout);
+                        window.removeEventListener('message', listen);
+                        if (message.error) {
+                            // On error, resolve with mock data instead of rejecting
+                            console.warn('Data load error, using mock data:', message.error);
+                            resolve(mockData);
+                        } else {
+                            resolve(message.data);
+                        }
                     }
                 } else if (message.command === 'codebaseScanned') {
                     // Update the UI with found files
@@ -117,25 +239,23 @@ async function loadData() {
     }
 }
 
-async function handleVisualize() {
-    const strategy = inputEl.value;
-    if (!strategy) {
-        statusEl.textContent = "Please enter a strategy description.";
-        return;
-    }
 
-    statusEl.textContent = "Loading data...";
+async function handleVisualize() {
+    const strategy = inputEl ? inputEl.value : '';
+
+    if (statusEl) statusEl.textContent = "Loading data...";
 
     let data;
     try {
         data = await loadData();
     } catch (e) {
         console.error("Error loading data", e);
-        statusEl.textContent = "Error loading data: " + (e.message || e);
-        return;
+        // Fall back to mock data on error
+        data = mockData;
+        if (statusEl) statusEl.textContent = "Using demo data (load error: " + (e.message || e) + ")";
     }
 
-    statusEl.textContent = "Generating visualization...";
+    if (statusEl) statusEl.textContent = "Generating visualization...";
 
     // -------------------------------------------------------------------------
     // RENDER WITH APACHE ECHARTS (LWC Style)
@@ -325,7 +445,6 @@ async function handleVisualize() {
     });
 
     statusEl.textContent = "Visualization updated (LWC Style).";
-    mqlOutput.style.display = 'none';
 
 }
 
@@ -412,8 +531,6 @@ async function handleGenerateCode() {
     mqlCode += `   }\n`;
     mqlCode += `}\n`;
 
-    mqlOutput.style.display = 'block';
-    mqlOutput.textContent = mqlCode;
     statusEl.textContent = "Code generated successfully!";
 
     // If in VS Code, offer to save

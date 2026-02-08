@@ -109,11 +109,6 @@ class RapidPanel {
                         <!-- Left Panel: Controls -->
                         <div style="width: 300px; padding: 20px; background-color: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; gap: 15px;">
                             
-                            <div id="active-instructions-bar" style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); padding: 8px; border-radius: 4px; font-size: 0.85em;">
-                                <div style="color: #888; margin-bottom: 2px;">Context Instructions:</div>
-                                <div id="instruction-filename" style="color: #4CAF50; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${instructionFile}">${instructionFile}</div>
-                            </div>
-
                             <div>
                                 <label style="display: block; margin-bottom: 5px; color: #ccc;">Strategy Description</label>
                                 <textarea id="strategy-input" rows="6" style="width: 100%; background: #3c3c3c; color: #fff; border: 1px solid #555; padding: 8px; border-radius: 4px; resize: vertical;" placeholder="Describe your trading strategy..."></textarea>
@@ -123,8 +118,6 @@ class RapidPanel {
                                 <button id="btn-visualize" style="flex: 1; padding: 10px; background: #0E639C; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold;">Visualize</button>
                                 <button id="btn-code" style="flex: 1; padding: 10px; background: #388E3C; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold;">Generate Code</button>
                             </div>
-
-                            <div id="mql-output" style="display: none; background: #1e1e1e; padding: 10px; border: 1px solid #444; color: #9cdcfe; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; height: 200px; overflow: auto; white-space: pre-wrap; border-radius: 4px;"></div>
                             
                             <div id="codebase-visibility" style="margin-top: 10px; border-top: 1px solid #444; padding-top: 10px;">
                                 <div style="font-size: 0.9em; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between;">
@@ -136,8 +129,18 @@ class RapidPanel {
                                 </ul>
                             </div>
 
-                            <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #444; font-size: 0.8em; color: #666;">
-                                <span style="color: #4CAF50;">●</span> MQL-Clangd Integrated
+                            <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid #444;">
+                                <div id="generated-files-section" style="display: none; background: rgba(14, 99, 156, 0.1); border: 1px solid rgba(14, 99, 156, 0.3); padding: 8px; border-radius: 4px; font-size: 0.8em; margin-bottom: 8px;">
+                                    <div style="color: #888; margin-bottom: 4px; font-size: 0.85em;">Generated File:</div>
+                                    <div id="generated-file-link" style="color: #0E639C; cursor: pointer; text-decoration: underline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
+                                </div>
+                                <div id="active-instructions-bar" style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); padding: 8px; border-radius: 4px; font-size: 0.8em; margin-bottom: 8px;">
+                                    <div style="color: #888; margin-bottom: 2px; font-size: 0.85em;">Context Instructions:</div>
+                                    <div id="instruction-filename" style="color: #4CAF50; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${instructionFile}">${instructionFile}</div>
+                                </div>
+                                <div style="font-size: 0.8em; color: #666;">
+                                    <span style="color: #4CAF50;">●</span> MQL-Clangd Integrated
+                                </div>
                             </div>
                         </div>
 
@@ -226,23 +229,71 @@ class RapidPanel {
                         });
                         return;
 
+                    case 'openFile':
+                        // Open a file in the editor when clicking the generated file link
+                        if (message.filePath) {
+                            const fileUri = vscode.Uri.file(message.filePath);
+                            const doc = await vscode.workspace.openTextDocument(fileUri);
+                            await vscode.window.showTextDocument(doc, {
+                                viewColumn: vscode.ViewColumn.Beside,
+                                preview: false
+                            });
+                        }
+                        return;
+
                     case 'saveCode':
-                        // Save generated MQL code to a file
+                        // Save generated MQL code directly to the workspace
                         const code = message.text;
                         if (!code) return;
 
-                        const saveUri = await vscode.window.showSaveDialog({
-                            defaultUri: vscode.Uri.file('GeneratedEA.mq5'),
-                            filters: { 'MQL5 Files': ['mq5'], 'MQL4 Files': ['mq4'] }
-                        });
+                        try {
+                            const wsFolders = vscode.workspace.workspaceFolders;
+                            if (!wsFolders || wsFolders.length === 0) {
+                                vscode.window.showErrorMessage('No workspace folder open. Please open a folder first.');
+                                return;
+                            }
 
-                        if (saveUri) {
-                            await fs.promises.writeFile(saveUri.fsPath, code, 'utf-8');
-                            vscode.window.showInformationMessage(`Saved to ${path.basename(saveUri.fsPath)}`);
+                            const rootUri = wsFolders[0].uri;
 
-                            // Open the file in editor
-                            const doc = await vscode.workspace.openTextDocument(saveUri);
-                            await vscode.window.showTextDocument(doc);
+                            // Create Experts folder if it doesn't exist
+                            const expertsUri = vscode.Uri.joinPath(rootUri, 'Experts');
+                            try {
+                                await vscode.workspace.fs.stat(expertsUri);
+                            } catch {
+                                await vscode.workspace.fs.createDirectory(expertsUri);
+                            }
+
+                            // Generate unique filename with timestamp
+                            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                            const fileName = `GeneratedEA_${timestamp}.mq5`;
+                            const fileUri = vscode.Uri.joinPath(expertsUri, fileName);
+
+                            // Create and write the file using WorkspaceEdit
+                            const edit = new vscode.WorkspaceEdit();
+                            edit.createFile(fileUri, { ignoreIfExists: false, overwrite: false });
+                            await vscode.workspace.applyEdit(edit);
+
+                            // Write content to the file
+                            const encoder = new TextEncoder();
+                            await vscode.workspace.fs.writeFile(fileUri, encoder.encode(code));
+
+                            // Open the file in an editor tab
+                            const document = await vscode.workspace.openTextDocument(fileUri);
+                            await vscode.window.showTextDocument(document, {
+                                viewColumn: vscode.ViewColumn.Beside,
+                                preview: false
+                            });
+
+                            vscode.window.showInformationMessage(`Created: ${fileName}`);
+
+                            // Notify webview about the created file
+                            webview.postMessage({
+                                command: 'fileCreated',
+                                fileName: fileName,
+                                filePath: fileUri.fsPath
+                            });
+                        } catch (error) {
+                            vscode.window.showErrorMessage(`Failed to create file: ${error.message || error}`);
                         }
                         return;
                 }

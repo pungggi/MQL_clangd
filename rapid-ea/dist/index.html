@@ -1,12 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rapid-EA: Strategy Visualizer</title>
-    <style>
-        body {
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapid-EA: Strategy Visualizer</title><style>body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 0;
@@ -149,34 +141,7 @@
             white-space: pre;
             height: 200px;
             overflow: auto;
-        }
-    </style>
-<script defer src="bundle.js"></script></head>
-
-<body>
-    <div class="container">
-        <div class="controls">
-            <div class="input-group">
-                <label for="strategy-input" class="visually-hidden">Strategy Description</label>
-                <input type="text" id="strategy-input"
-                    placeholder="Describe your strategy (e.g., 'SMA 20 crossover SMA 50')..."
-                    aria-label="Strategy Description">
-                <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" tabindex="0" role="button"
-                     aria-label="Toggle voice input" title="Toggle voice input" id="mic-button">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-                    <path
-                        d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                </svg>
-            </div>
-            <button class="btn-primary" id="btn-visualize">Visualize</button>
-            <button class="btn-secondary" id="btn-code">Generate Code</button>
-        </div>
-        <div class="status" id="status-msg">Ready</div>
-        <div id="chart-container"></div>
-        <div id="mql-output"></div>
-    </div>
-    <script>
-        // Toggle speech function
+        }</style><script defer="defer" src="bundle.js"></script></head><body><div class="container"><div class="controls"><div class="input-group"><label for="strategy-input" class="visually-hidden">Strategy Description</label> <input id="strategy-input" placeholder="Describe your strategy (e.g., 'SMA 20 crossover SMA 50')..." aria-label="Strategy Description"> <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" tabindex="0" role="button" aria-label="Toggle voice input" title="Toggle voice input" id="mic-button"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></div><button class="btn-primary" id="btn-visualize">Visualize</button> <button class="btn-secondary" id="btn-code">Generate Code</button></div><div class="status" id="status-msg">Ready</div><div id="chart-container"></div><div id="mql-output"></div></div><script>// Toggle speech function
         function toggleSpeech() {
             alert("Speech-to-Text would activate here (using Web Speech API).");
         }
@@ -216,8 +181,4 @@
                     }
                 });
             }
-        });
-    </script>
-</body>
-
-</html>
+        });</script></body></html>

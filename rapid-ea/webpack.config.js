@@ -8,7 +8,8 @@ module.exports = {
     path: path.resolve(__dirname, 'dist'),
     clean: true,
   },
-  mode: 'development',
+  mode: 'production',
+  devtool: 'hidden-source-map',
   devServer: {
     static: [
       { directory: __dirname, publicPath: '/' } // serve current dir only
