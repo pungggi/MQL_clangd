@@ -94,8 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// DOM Elements
-const inputEl = document.getElementById('strategy-input');
+
+// DOM Elements - 4 input sections for price action trading
+const inputFramework = document.getElementById('input-framework');
+const inputTriggers = document.getElementById('input-triggers');
+const inputTargets = document.getElementById('input-targets');
+const inputStrategy = document.getElementById('input-strategy');
 const btnVisualize = document.getElementById('btn-visualize');
 const btnCode = document.getElementById('btn-code');
 const statusEl = document.getElementById('status-msg');
@@ -104,19 +108,22 @@ const chartContainer = document.getElementById('chart-container');
 const btnScan = document.getElementById('btn-scan');
 const codebaseList = document.getElementById('codebase-list');
 
+// Helper to get all strategy inputs combined
+function getStrategyInputs() {
+    return {
+        framework: inputFramework?.value || '',
+        triggers: inputTriggers?.value || '',
+        targets: inputTargets?.value || '',
+        strategy: inputStrategy?.value || ''
+    };
+}
+
 // Event Listeners
 if (btnVisualize) {
     btnVisualize.addEventListener('click', handleVisualize);
 }
 if (btnCode) {
     btnCode.addEventListener('click', handleGenerateCode);
-}
-if (inputEl) {
-    inputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            handleVisualize();
-        }
-    });
 }
 
 if (btnScan) {
@@ -149,6 +156,9 @@ try {
 const generatedFilesSection = document.getElementById('generated-files-section');
 const generatedFileLink = document.getElementById('generated-file-link');
 
+// Store the current generated file path
+let currentGeneratedFilePath = null;
+
 // Global message listener for extension messages
 window.addEventListener('message', (event) => {
     const message = event.data;
@@ -159,6 +169,7 @@ window.addEventListener('message', (event) => {
             generatedFilesSection.style.display = 'block';
             generatedFileLink.textContent = message.fileName;
             generatedFileLink.title = message.filePath;
+            currentGeneratedFilePath = message.filePath;
 
             // Make it clickable to open the file
             generatedFileLink.onclick = () => {
@@ -166,6 +177,12 @@ window.addEventListener('message', (event) => {
                     vscode.postMessage({ command: 'openFile', filePath: message.filePath });
                 }
             };
+        }
+    } else if (message.command === 'fileDeleted') {
+        // Hide the generated file link if the file was deleted
+        if (generatedFilesSection && message.filePath === currentGeneratedFilePath) {
+            generatedFilesSection.style.display = 'none';
+            currentGeneratedFilePath = null;
         }
     }
 });
@@ -241,7 +258,8 @@ async function loadData() {
 
 
 async function handleVisualize() {
-    const strategy = inputEl ? inputEl.value : '';
+    const inputs = getStrategyInputs();
+    const strategy = [inputs.framework, inputs.triggers, inputs.targets, inputs.strategy].filter(Boolean).join(' ');
 
     if (statusEl) statusEl.textContent = "Loading data...";
 
@@ -449,9 +467,12 @@ async function handleVisualize() {
 }
 
 async function handleGenerateCode() {
-    const strategy = inputEl.value;
-    if (!strategy) {
-        statusEl.textContent = "Please enter a strategy description.";
+    const inputs = getStrategyInputs();
+
+    // Check if at least one input is provided
+    const hasInput = inputs.framework || inputs.triggers || inputs.targets || inputs.strategy;
+    if (!hasInput) {
+        statusEl.textContent = "Please fill in at least one strategy section.";
         return;
     }
     statusEl.textContent = "Generating MQL code...";
@@ -465,27 +486,73 @@ async function handleGenerateCode() {
             .replace(/\r/g, '')
             .replace(/\t/g, ' ');
     }
-    const safeStrategy = sanitizeForMql(strategy);
 
-    // Build minimal MQL5 Expert Advisor skeleton
+    const safeFramework = sanitizeForMql(inputs.framework);
+    const safeTriggers = sanitizeForMql(inputs.triggers);
+    const safeTargets = sanitizeForMql(inputs.targets);
+    const safeStrategy = sanitizeForMql(inputs.strategy);
+
+    // Build MQL5 Expert Advisor with structured sections
     let mqlCode = '';
 
     // --- Header ---
     mqlCode += `//+------------------------------------------------------------------+\n`;
     mqlCode += `//|                                        Rapid-EA Generated        |\n`;
-    mqlCode += `//|                   Strategy: ${safeStrategy.substring(0, 40).padEnd(40)}|\n`;
+    mqlCode += `//|                        Price Action Strategy                     |\n`;
     mqlCode += `//+------------------------------------------------------------------+\n`;
     mqlCode += `#property strict\n`;
     mqlCode += `#include <Trade/Trade.mqh>\n\n`;
 
+    // --- Strategy Documentation ---
+    mqlCode += `/*\n`;
+    mqlCode += `================================================================================\n`;
+    mqlCode += `STRATEGY SPECIFICATION\n`;
+    mqlCode += `================================================================================\n`;
+    if (safeFramework) {
+        mqlCode += `\nFRAMEWORK (Patterns & Structures):\n`;
+        mqlCode += `   ${safeFramework}\n`;
+    }
+    if (safeTriggers) {
+        mqlCode += `\nTRIGGERS (Entry Conditions):\n`;
+        mqlCode += `   ${safeTriggers}\n`;
+    }
+    if (safeTargets) {
+        mqlCode += `\nTARGETS (TP/SL/Trailing):\n`;
+        mqlCode += `   ${safeTargets}\n`;
+    }
+    if (safeStrategy) {
+        mqlCode += `\nSTRATEGY (Session/Filters/Exceptions):\n`;
+        mqlCode += `   ${safeStrategy}\n`;
+    }
+    mqlCode += `\n================================================================================\n`;
+    mqlCode += `*/\n\n`;
+
     // --- Input Parameters ---
     mqlCode += `// ===== Input Parameters =====\n`;
-    mqlCode += `input double LotSize = 0.1;      // Trade Lot Size\n`;
-    mqlCode += `input int MagicNumber = 123456;  // EA Magic Number\n\n`;
+    mqlCode += `input double LotSize = 0.1;           // Trade Lot Size\n`;
+    mqlCode += `input int    MagicNumber = 123456;    // EA Magic Number\n`;
+    mqlCode += `input double RiskPercent = 1.0;       // Risk per trade (%)\n`;
+    mqlCode += `input int    MaxSpread = 30;          // Maximum spread (points)\n\n`;
+
+    // --- Session Filters (if strategy mentions sessions) ---
+    mqlCode += `// ===== Session Filters =====\n`;
+    mqlCode += `input bool   TradeLondon = true;      // Trade London Session\n`;
+    mqlCode += `input bool   TradeNewYork = true;     // Trade New York Session\n`;
+    mqlCode += `input bool   TradeAsia = false;       // Trade Asian Session\n\n`;
 
     // --- Global Objects ---
     mqlCode += `// ===== Global Objects =====\n`;
     mqlCode += `CTrade trade;\n\n`;
+
+    // --- Enums for state machine ---
+    mqlCode += `// ===== Trade State Machine =====\n`;
+    mqlCode += `enum TRADE_STATE {\n`;
+    mqlCode += `   STATE_IDLE,           // Waiting for setup\n`;
+    mqlCode += `   STATE_SETUP,          // Framework conditions met\n`;
+    mqlCode += `   STATE_TRIGGER,        // Trigger confirmed, ready to enter\n`;
+    mqlCode += `   STATE_IN_TRADE        // Position open\n`;
+    mqlCode += `};\n`;
+    mqlCode += `TRADE_STATE CurrentState = STATE_IDLE;\n\n`;
 
     // --- OnInit ---
     mqlCode += `//+------------------------------------------------------------------+\n`;
@@ -494,7 +561,7 @@ async function handleGenerateCode() {
     mqlCode += `int OnInit() {\n`;
     mqlCode += `   trade.SetExpertMagicNumber(MagicNumber);\n`;
     mqlCode += `   \n`;
-    mqlCode += `   // TODO: Initialize your indicators here\n`;
+    mqlCode += `   // TODO: Initialize price action detection\n`;
     mqlCode += `   \n`;
     mqlCode += `   return INIT_SUCCEEDED;\n`;
     mqlCode += `}\n\n`;
@@ -504,7 +571,72 @@ async function handleGenerateCode() {
     mqlCode += `//| Expert deinitialization function                                 |\n`;
     mqlCode += `//+------------------------------------------------------------------+\n`;
     mqlCode += `void OnDeinit(const int reason) {\n`;
-    mqlCode += `   // TODO: Clean up resources here\n`;
+    mqlCode += `   // Clean up\n`;
+    mqlCode += `}\n\n`;
+
+    // --- Helper Functions ---
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Check if current time is in valid session                       |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `bool IsValidSession() {\n`;
+    mqlCode += `   MqlDateTime dt;\n`;
+    mqlCode += `   TimeToStruct(TimeCurrent(), dt);\n`;
+    mqlCode += `   int hour = dt.hour;\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   // London: 08:00-17:00 GMT\n`;
+    mqlCode += `   if(TradeLondon && hour >= 8 && hour < 17) return true;\n`;
+    mqlCode += `   // New York: 13:00-22:00 GMT\n`;
+    mqlCode += `   if(TradeNewYork && hour >= 13 && hour < 22) return true;\n`;
+    mqlCode += `   // Asia: 00:00-08:00 GMT\n`;
+    mqlCode += `   if(TradeAsia && (hour >= 0 && hour < 8)) return true;\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   return false;\n`;
+    mqlCode += `}\n\n`;
+
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Check Framework conditions (patterns/structures)                |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `bool CheckFramework() {\n`;
+    mqlCode += `   // TODO: Implement pattern detection\n`;
+    mqlCode += `   // Framework: ${safeFramework || 'Not specified'}\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   return false; // Placeholder\n`;
+    mqlCode += `}\n\n`;
+
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Check Trigger conditions                                        |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `int CheckTrigger() {\n`;
+    mqlCode += `   // TODO: Implement trigger detection\n`;
+    mqlCode += `   // Triggers: ${safeTriggers || 'Not specified'}\n`;
+    mqlCode += `   // Return: 1 = Buy, -1 = Sell, 0 = No trigger\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   return 0; // Placeholder\n`;
+    mqlCode += `}\n\n`;
+
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Calculate Stop Loss based on price action                       |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `double CalculateSL(int direction) {\n`;
+    mqlCode += `   // TODO: Implement SL calculation\n`;
+    mqlCode += `   // Targets: ${safeTargets || 'Not specified'}\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   double atr = 0; // Use ATR or swing points\n`;
+    mqlCode += `   return direction > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_BID) - atr \n`;
+    mqlCode += `                        : SymbolInfoDouble(_Symbol, SYMBOL_ASK) + atr;\n`;
+    mqlCode += `}\n\n`;
+
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Calculate Take Profit                                           |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `double CalculateTP(int direction, double sl) {\n`;
+    mqlCode += `   // TODO: Implement TP calculation\n`;
+    mqlCode += `   double entry = direction > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)\n`;
+    mqlCode += `                                : SymbolInfoDouble(_Symbol, SYMBOL_BID);\n`;
+    mqlCode += `   double risk = MathAbs(entry - sl);\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   // Default 2:1 R:R\n`;
+    mqlCode += `   return direction > 0 ? entry + (risk * 2) : entry - (risk * 2);\n`;
     mqlCode += `}\n\n`;
 
     // --- OnTick ---
@@ -512,28 +644,53 @@ async function handleGenerateCode() {
     mqlCode += `//| Expert tick function                                            |\n`;
     mqlCode += `//+------------------------------------------------------------------+\n`;
     mqlCode += `void OnTick() {\n`;
-    mqlCode += `   // Only process on new bar (optional)\n`;
+    mqlCode += `   // New bar check\n`;
     mqlCode += `   static datetime lastBarTime = 0;\n`;
     mqlCode += `   datetime currentBarTime = iTime(_Symbol, _Period, 0);\n`;
     mqlCode += `   if(lastBarTime == currentBarTime) return;\n`;
     mqlCode += `   lastBarTime = currentBarTime;\n\n`;
-    mqlCode += `   // TODO: Add your strategy logic here\n`;
-    mqlCode += `   // Strategy: ${safeStrategy}\n\n`;
-    mqlCode += `   bool buySignal = false;\n`;
-    mqlCode += `   bool sellSignal = false;\n\n`;
-    mqlCode += `   // TODO: Define your entry conditions\n\n`;
-    mqlCode += `   // Execute signals\n`;
-    mqlCode += `   if(buySignal && PositionSelect(_Symbol) == false) {\n`;
-    mqlCode += `      trade.Buy(LotSize, _Symbol);\n`;
-    mqlCode += `   }\n`;
-    mqlCode += `   if(sellSignal && PositionSelect(_Symbol) == false) {\n`;
-    mqlCode += `      trade.Sell(LotSize, _Symbol);\n`;
+    mqlCode += `   // Spread filter\n`;
+    mqlCode += `   if(SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) > MaxSpread) return;\n\n`;
+    mqlCode += `   // Session filter\n`;
+    mqlCode += `   if(!IsValidSession()) return;\n\n`;
+    mqlCode += `   // State machine\n`;
+    mqlCode += `   switch(CurrentState) {\n`;
+    mqlCode += `      case STATE_IDLE:\n`;
+    mqlCode += `         if(CheckFramework()) {\n`;
+    mqlCode += `            CurrentState = STATE_SETUP;\n`;
+    mqlCode += `         }\n`;
+    mqlCode += `         break;\n\n`;
+    mqlCode += `      case STATE_SETUP:\n`;
+    mqlCode += `         {\n`;
+    mqlCode += `            int trigger = CheckTrigger();\n`;
+    mqlCode += `            if(trigger != 0) {\n`;
+    mqlCode += `               double sl = CalculateSL(trigger);\n`;
+    mqlCode += `               double tp = CalculateTP(trigger, sl);\n`;
+    mqlCode += `               \n`;
+    mqlCode += `               if(trigger > 0) {\n`;
+    mqlCode += `                  if(trade.Buy(LotSize, _Symbol, 0, sl, tp)) {\n`;
+    mqlCode += `                     CurrentState = STATE_IN_TRADE;\n`;
+    mqlCode += `                  }\n`;
+    mqlCode += `               } else {\n`;
+    mqlCode += `                  if(trade.Sell(LotSize, _Symbol, 0, sl, tp)) {\n`;
+    mqlCode += `                     CurrentState = STATE_IN_TRADE;\n`;
+    mqlCode += `                  }\n`;
+    mqlCode += `               }\n`;
+    mqlCode += `            }\n`;
+    mqlCode += `         }\n`;
+    mqlCode += `         break;\n\n`;
+    mqlCode += `      case STATE_IN_TRADE:\n`;
+    mqlCode += `         if(!PositionSelect(_Symbol)) {\n`;
+    mqlCode += `            CurrentState = STATE_IDLE;\n`;
+    mqlCode += `         }\n`;
+    mqlCode += `         // TODO: Trailing stop logic\n`;
+    mqlCode += `         break;\n`;
     mqlCode += `   }\n`;
     mqlCode += `}\n`;
 
     statusEl.textContent = "Code generated successfully!";
 
-    // If in VS Code, offer to save
+    // If in VS Code, save the file
     if (vscode) {
         vscode.postMessage({ command: 'saveCode', text: mqlCode });
     }

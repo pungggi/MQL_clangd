@@ -107,11 +107,46 @@ class RapidPanel {
 
                     <div style="display: flex; height: calc(100vh - 50px);">
                         <!-- Left Panel: Controls -->
-                        <div style="width: 300px; padding: 20px; background-color: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; gap: 15px;">
+                        <div style="width: 340px; padding: 15px; background-color: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
                             
-                            <div>
-                                <label style="display: block; margin-bottom: 5px; color: #ccc;">Strategy Description</label>
-                                <textarea id="strategy-input" rows="6" style="width: 100%; background: #3c3c3c; color: #fff; border: 1px solid #555; padding: 8px; border-radius: 4px; resize: vertical;" placeholder="Describe your trading strategy..."></textarea>
+                            <!-- Framework Section -->
+                            <div class="input-section" style="background: rgba(255, 152, 0, 0.05); border: 1px solid rgba(255, 152, 0, 0.2); border-radius: 6px; padding: 10px;">
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                    <span style="color: #FF9800; font-size: 12px;">◆</span>
+                                    <label style="color: #FF9800; font-weight: bold; font-size: 12px;">FRAMEWORK</label>
+                                </div>
+                                <div style="font-size: 10px; color: #888; margin-bottom: 6px;">Candlestick patterns, price structures, time situations</div>
+                                <textarea id="input-framework" rows="2" style="width: 100%; background: #1e1e1e; color: #fff; border: 1px solid #444; padding: 6px; border-radius: 4px; resize: vertical; font-size: 11px;" placeholder="e.g., Engulfing, Pin Bar, Inside Bar, Break of Structure..."></textarea>
+                            </div>
+
+                            <!-- Triggers Section -->
+                            <div class="input-section" style="background: rgba(33, 150, 243, 0.05); border: 1px solid rgba(33, 150, 243, 0.2); border-radius: 6px; padding: 10px;">
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                    <span style="color: #2196F3; font-size: 12px;">⚡</span>
+                                    <label style="color: #2196F3; font-weight: bold; font-size: 12px;">TRIGGERS</label>
+                                </div>
+                                <div style="font-size: 10px; color: #888; margin-bottom: 6px;">What triggers entry, state transitions, confirmations</div>
+                                <textarea id="input-triggers" rows="2" style="width: 100%; background: #1e1e1e; color: #fff; border: 1px solid #444; padding: 6px; border-radius: 4px; resize: vertical; font-size: 11px;" placeholder="e.g., Liquidity sweep + rejection, FVG fill, Order block touch..."></textarea>
+                            </div>
+
+                            <!-- Targets Section -->
+                            <div class="input-section" style="background: rgba(76, 175, 80, 0.05); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 6px; padding: 10px;">
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                    <span style="color: #4CAF50; font-size: 12px;">🎯</span>
+                                    <label style="color: #4CAF50; font-weight: bold; font-size: 12px;">TARGETS</label>
+                                </div>
+                                <div style="font-size: 10px; color: #888; margin-bottom: 6px;">TP, SL, trailing, partial exits, R:R logic</div>
+                                <textarea id="input-targets" rows="2" style="width: 100%; background: #1e1e1e; color: #fff; border: 1px solid #444; padding: 6px; border-radius: 4px; resize: vertical; font-size: 11px;" placeholder="e.g., SL below swing low, TP at next liquidity pool, trail after 1:1..."></textarea>
+                            </div>
+
+                            <!-- Strategy Overview Section -->
+                            <div class="input-section" style="background: rgba(156, 39, 176, 0.05); border: 1px solid rgba(156, 39, 176, 0.2); border-radius: 6px; padding: 10px;">
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                    <span style="color: #9C27B0; font-size: 12px;">📋</span>
+                                    <label style="color: #9C27B0; font-weight: bold; font-size: 12px;">STRATEGY</label>
+                                </div>
+                                <div style="font-size: 10px; color: #888; margin-bottom: 6px;">Session filters, exceptions, correlations, overview</div>
+                                <textarea id="input-strategy" rows="2" style="width: 100%; background: #1e1e1e; color: #fff; border: 1px solid #444; padding: 6px; border-radius: 4px; resize: vertical; font-size: 11px;" placeholder="e.g., London/NY sessions only, avoid news, check DXY correlation..."></textarea>
                             </div>
 
                             <div style="display: flex; gap: 10px;">
@@ -233,11 +268,33 @@ class RapidPanel {
                         // Open a file in the editor when clicking the generated file link
                         if (message.filePath) {
                             const fileUri = vscode.Uri.file(message.filePath);
-                            const doc = await vscode.workspace.openTextDocument(fileUri);
-                            await vscode.window.showTextDocument(doc, {
-                                viewColumn: vscode.ViewColumn.Beside,
-                                preview: false
-                            });
+                            try {
+                                // Check if file exists
+                                await vscode.workspace.fs.stat(fileUri);
+
+                                // Try to find if file is already open
+                                const existingDoc = vscode.workspace.textDocuments.find(
+                                    doc => doc.uri.fsPath === fileUri.fsPath
+                                );
+
+                                if (existingDoc) {
+                                    // Reuse existing tab
+                                    await vscode.window.showTextDocument(existingDoc, {
+                                        preserveFocus: false,
+                                        preview: false
+                                    });
+                                } else {
+                                    // Open new tab
+                                    const doc = await vscode.workspace.openTextDocument(fileUri);
+                                    await vscode.window.showTextDocument(doc, {
+                                        viewColumn: vscode.ViewColumn.Beside,
+                                        preview: false
+                                    });
+                                }
+                            } catch {
+                                // File was deleted - notify webview to remove the link
+                                webview.postMessage({ command: 'fileDeleted', filePath: message.filePath });
+                            }
                         }
                         return;
 
