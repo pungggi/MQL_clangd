@@ -1,13 +1,19 @@
 import * as echarts from 'echarts';
 // Mock Data for Initial Test if market_data.json is missing
-const mockData = Array.from({ length: 1000 }, (_, i) => ({
-    time: 1600000000 + i * 3600,
-    open: 100 + Math.random() * 10,
-    high: 110 + Math.random() * 10,
-    low: 90 + Math.random() * 10,
-    close: 105 + Math.random() * 10,
-    volume: Math.floor(Math.random() * 1000)
-}));
+const mockData = Array.from({ length: 1000 }, (_, i) => {
+    const open = 100 + Math.random() * 10;
+    const close = 100 + Math.random() * 10;
+    const high = Math.max(open, close) + Math.random() * 10;
+    const low = Math.min(open, close) - Math.random() * 10;
+    return {
+        time: 1600000000 + i * 3600,
+        open: open,
+        high: high,
+        low: low,
+        close: close,
+        volume: Math.floor(Math.random() * 1000)
+    };
+});
 
 let currentChart = null;
 
@@ -22,8 +28,12 @@ const btnScan = document.getElementById('btn-scan');
 const codebaseList = document.getElementById('codebase-list');
 
 // Event Listeners
-btnVisualize.addEventListener('click', handleVisualize);
-btnCode.addEventListener('click', handleGenerateCode);
+if (btnVisualize) {
+    btnVisualize.addEventListener('click', handleVisualize);
+}
+if (btnCode) {
+    btnCode.addEventListener('click', handleGenerateCode);
+}
 inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         handleVisualize();
@@ -76,9 +86,18 @@ async function loadData() {
                 } else if (message.command === 'codebaseScanned') {
                     // Update the UI with found files
                     if (codebaseList) {
-                        codebaseList.innerHTML = message.files.length > 0
-                            ? message.files.map(f => `<li>${f}</li>`).join('')
-                            : "<li>No .mqh files found</li>";
+                        codebaseList.innerHTML = '';
+                        if (message.files.length > 0) {
+                            message.files.forEach(f => {
+                                const li = document.createElement('li');
+                                li.textContent = f;
+                                codebaseList.appendChild(li);
+                            });
+                        } else {
+                            const li = document.createElement('li');
+                            li.textContent = 'No .mqh files found';
+                            codebaseList.appendChild(li);
+                        }
                     }
                     if (btnScan) btnScan.textContent = "Scan";
                 }
@@ -111,7 +130,8 @@ async function handleVisualize() {
     try {
         data = await loadData();
     } catch (e) {
-        statusEl.textContent = "Error loading data: " + e;
+        console.error("Error loading data", e);
+        statusEl.textContent = "Error loading data: " + (e.message || e);
         return;
     }
 
@@ -174,7 +194,8 @@ async function handleVisualize() {
     ];
 
     // Indicators
-    if (strategy.toLowerCase().includes('sma')) {
+    const strategyLower = strategy.toLowerCase();
+    if (strategyLower.includes('sma') || strategyLower.includes('crossover')) {
         const period = 20;
         const smaData = [];
         for (let i = 0; i < data.length; i++) {
@@ -308,39 +329,97 @@ async function handleVisualize() {
 
 }
 
-// Deprecated
-async function renderChart(options) { }
-
-
-
 async function handleGenerateCode() {
     const strategy = inputEl.value;
+    if (!strategy) {
+        statusEl.textContent = "Please enter a strategy description.";
+        return;
+    }
     statusEl.textContent = "Generating MQL code...";
 
-    // -------------------------------------------------------------------------
-    // MOCK AI AGENT LOGIC: Strategy Description -> MQL Code
-    // -------------------------------------------------------------------------
-
-    let mqlCode = `// Expert Advisor for: ${strategy}\n\n`;
-    mqlCode += `#include <Trade/Trade.mqh>\nCTrade trade;\n\n`;
-    mqlCode += `void OnTick() {\n`;
-
-    if (strategy.toLowerCase().includes('sma')) {
-        mqlCode += `   // SMA Strategy Logic\n`;
-        mqlCode += `   double maFast = iMA(_Symbol, _Period, 20, 0, MODE_SMA, PRICE_CLOSE, 0);\n`;
-        mqlCode += `   double maSlow = iMA(_Symbol, _Period, 50, 0, MODE_SMA, PRICE_CLOSE, 0);\n`;
-        mqlCode += `   \n   if(maFast > maSlow) trade.Buy(0.1);\n`;
-    } else {
-        mqlCode += `   // Placeholder logic\n   Print("Running strategy: ${strategy}");\n`;
+    // Sanitize strategy string for MQL comments
+    function sanitizeForMql(str) {
+        return str
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\n/g, ' ')
+            .replace(/\r/g, '')
+            .replace(/\t/g, ' ');
     }
+    const safeStrategy = sanitizeForMql(strategy);
 
+    // Build minimal MQL5 Expert Advisor skeleton
+    let mqlCode = '';
+
+    // --- Header ---
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//|                                        Rapid-EA Generated        |\n`;
+    mqlCode += `//|                   Strategy: ${safeStrategy.substring(0, 40).padEnd(40)}|\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `#property strict\n`;
+    mqlCode += `#include <Trade/Trade.mqh>\n\n`;
+
+    // --- Input Parameters ---
+    mqlCode += `// ===== Input Parameters =====\n`;
+    mqlCode += `input double LotSize = 0.1;      // Trade Lot Size\n`;
+    mqlCode += `input int MagicNumber = 123456;  // EA Magic Number\n\n`;
+
+    // --- Global Objects ---
+    mqlCode += `// ===== Global Objects =====\n`;
+    mqlCode += `CTrade trade;\n\n`;
+
+    // --- OnInit ---
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Expert initialization function                                   |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `int OnInit() {\n`;
+    mqlCode += `   trade.SetExpertMagicNumber(MagicNumber);\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   // TODO: Initialize your indicators here\n`;
+    mqlCode += `   \n`;
+    mqlCode += `   return INIT_SUCCEEDED;\n`;
+    mqlCode += `}\n\n`;
+
+    // --- OnDeinit ---
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Expert deinitialization function                                 |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `void OnDeinit(const int reason) {\n`;
+    mqlCode += `   // TODO: Clean up resources here\n`;
+    mqlCode += `}\n\n`;
+
+    // --- OnTick ---
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `//| Expert tick function                                            |\n`;
+    mqlCode += `//+------------------------------------------------------------------+\n`;
+    mqlCode += `void OnTick() {\n`;
+    mqlCode += `   // Only process on new bar (optional)\n`;
+    mqlCode += `   static datetime lastBarTime = 0;\n`;
+    mqlCode += `   datetime currentBarTime = iTime(_Symbol, _Period, 0);\n`;
+    mqlCode += `   if(lastBarTime == currentBarTime) return;\n`;
+    mqlCode += `   lastBarTime = currentBarTime;\n\n`;
+    mqlCode += `   // TODO: Add your strategy logic here\n`;
+    mqlCode += `   // Strategy: ${safeStrategy}\n\n`;
+    mqlCode += `   bool buySignal = false;\n`;
+    mqlCode += `   bool sellSignal = false;\n\n`;
+    mqlCode += `   // TODO: Define your entry conditions\n\n`;
+    mqlCode += `   // Execute signals\n`;
+    mqlCode += `   if(buySignal && PositionSelect(_Symbol) == false) {\n`;
+    mqlCode += `      trade.Buy(LotSize, _Symbol);\n`;
+    mqlCode += `   }\n`;
+    mqlCode += `   if(sellSignal && PositionSelect(_Symbol) == false) {\n`;
+    mqlCode += `      trade.Sell(LotSize, _Symbol);\n`;
+    mqlCode += `   }\n`;
     mqlCode += `}\n`;
-
-    // -------------------------------------------------------------------------
 
     mqlOutput.style.display = 'block';
     mqlOutput.textContent = mqlCode;
-    statusEl.textContent = "Code generated.";
+    statusEl.textContent = "Code generated successfully!";
+
+    // If in VS Code, offer to save
+    if (vscode) {
+        vscode.postMessage({ command: 'saveCode', text: mqlCode });
+    }
 }
 
 // Global scope for HTML access

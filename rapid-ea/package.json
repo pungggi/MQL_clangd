@@ -1,7 +1,7 @@
 {
     "name": "rapid-ea",
     "version": "0.1.0",
-    "description": "ChartGPU Integration PoC for MQL5 Strategy Visualization",
+    "description": "Rapid-EA: AI-Powered MQL5 Strategy Visualization and Code Generation",
     "main": "dist/bundle.js",
     "scripts": {
         "build": "webpack",

@@ -32,6 +32,8 @@ const lg = require('./language');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
+const { RapidPanel } = require('./RapidPanel');
+const { SettingsPanel } = require('./SettingsPanel');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider } = require('./provider');
 const { obj_items } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
@@ -2277,6 +2279,24 @@ function activate(context) {
             );
         }
     }));
+
+    // Rapid EA - Visual Strategy Builder
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openRapidEA', () => {
+        RapidPanel.render(context.extensionUri, context);
+    }));
+
+    // Rapid EA Settings
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openSettings', () => {
+        SettingsPanel.render(context.extensionUri, context);
+    }));
+
+    // Status Bar Item for Settings
+    const settingsStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    settingsStatusBarItem.command = 'mql_tools.openSettings';
+    settingsStatusBarItem.text = '$(gear) Rapid EA';
+    settingsStatusBarItem.tooltip = 'Rapid EA Settings';
+    settingsStatusBarItem.show();
+    context.subscriptions.push(settingsStatusBarItem);
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.switchLogMode', async () => {
         const current = logTailer.mode;

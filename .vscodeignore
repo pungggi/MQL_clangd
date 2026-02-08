@@ -13,3 +13,9 @@ package-lock.json
 *.log
 # Exclude webpack config from package
 webpack.config.js
+# Rapid EA - include dist, exclude source
+rapid-ea/node_modules/**
+rapid-ea/src/**
+rapid-ea/scripts/**
+rapid-ea/*.json
+rapid-ea/*.js

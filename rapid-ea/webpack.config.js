@@ -11,17 +11,21 @@ module.exports = {
   mode: 'development',
   devServer: {
     static: [
-      { directory: path.join(__dirname, 'dist') },
-      { directory: path.resolve(__dirname, '..'), publicPath: '/..' }, // serve parent to access market_data.json if needed
-      { directory: __dirname, publicPath: '/' } // serve current dir
+      { directory: __dirname, publicPath: '/' } // serve current dir only
     ],
     compress: true,
     port: 9000,
     hot: true,
+    proxy: {
+      '/market_data.json': {
+        target: 'http://localhost:9000',
+        pathRewrite: { '^/market_data.json': '/market_data.json' }
+      }
+    }
   },
   plugins: [
     new HtmlWebpackPlugin({
-      title: 'Rapid-EA ChartGPU Viewer',
+      title: 'Rapid-EA Strategy Viewer',
       template: './src/index.html',
     }),
   ],

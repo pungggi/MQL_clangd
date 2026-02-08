@@ -370,6 +370,18 @@
                 "command": "mql_tools.switchLogMode",
                 "title": "Switch Log Tail Mode (Live/Standard)",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.openRapidEA",
+                "title": "Open Rapid EA (Visual Strategy Builder)",
+                "category": "MQL",
+                "icon": "$(graph)"
+            },
+            {
+                "command": "mql_tools.openSettings",
+                "title": "Rapid EA Settings",
+                "category": "MQL",
+                "icon": "$(gear)"
             }
         ],
         "menus": {
