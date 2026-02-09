@@ -3,7 +3,7 @@
 ## 1.1.21
 
 ### Bug Fixes
-- **Windows Compilation with Spaces in Paths**: Fixed compilation failure when file or folder paths contain spaces (e.g., `RB v20.mq5`). Now uses `exec()` instead of `spawn()` on Windows to properly quote MetaEditor flag arguments.
+- **Windows Compilation with Spaces in Paths**: Fixed compilation failure when file or folder paths contain spaces (e.g., `RB v20.mq5`). `spawn()` with `shell: false` was re-escaping the quotes added by `buildMetaEditorCmd()`, causing MetaEditor to receive malformed `/compile:\"...\"` arguments. Now uses `windowsVerbatimArguments: true` to pass arguments verbatim without Node.js re-escaping (fixes #6).
 
 ## 1.1.20 (pre-release)
 
