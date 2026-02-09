@@ -82,6 +82,13 @@ class RapidPanel {
         const instructions = this._context.workspaceState.get('rapidEA.instructions', '')
             .replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
         const instructionFile = this._context.workspaceState.get('rapidEA.instructionFile', 'None');
+        // Escape HTML to prevent XSS
+        const escapedInstructionFile = instructionFile
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
 
         return /*html*/ `
           <!DOCTYPE html>
@@ -155,6 +162,10 @@ class RapidPanel {
                             </div>
                             
                             <div id="codebase-visibility" style="margin-top: 10px; border-top: 1px solid #444; padding-top: 10px;">
+                                <!-- Ask Pattern Button - Point & Ask Feature -->
+                                <button id="btn-ask-pattern" onclick="handleAskPattern()" style="display: none; width: 100%; margin-bottom: 10px; padding: 12px; background: linear-gradient(135deg, #9C27B0, #673AB7); color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 12px;">
+                                    🔍 Ask Pattern (MTF Analysis)
+                                </button>
                                 <div style="font-size: 0.9em; color: #888; margin-bottom: 5px; display: flex; justify-content: space-between;">
                                     <span>MQL Codebase</span>
                                     <span id="btn-scan" style="color: #0E639C; cursor: pointer; text-decoration: underline;">Scan</span>
@@ -171,7 +182,7 @@ class RapidPanel {
                                 </div>
                                 <div id="active-instructions-bar" style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); padding: 8px; border-radius: 4px; font-size: 0.8em; margin-bottom: 8px;">
                                     <div style="color: #888; margin-bottom: 2px; font-size: 0.85em;">Context Instructions:</div>
-                                    <div id="instruction-filename" style="color: #4CAF50; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${instructionFile}">${instructionFile}</div>
+                                    <div id="instruction-filename" style="color: #4CAF50; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapedInstructionFile}">${escapedInstructionFile}</div>
                                 </div>
                                 <div style="font-size: 0.8em; color: #666;">
                                     <span style="color: #4CAF50;">●</span> MQL-Clangd Integrated
@@ -264,10 +275,66 @@ class RapidPanel {
                         });
                         return;
 
+                    case 'askPattern':
+                        // Point & Ask feature - save context and invoke OpenCode
+                        if (message.context) {
+                            try {
+                                // Save context to a temp file for reference
+                                const workspaceFolders = vscode.workspace.workspaceFolders;
+                                if (workspaceFolders && workspaceFolders.length > 0) {
+                                    const contextPath = path.join(workspaceFolders[0].uri.fsPath, '.rapid-ea-context.md');
+                                    await vscode.workspace.fs.writeFile(
+                                        vscode.Uri.file(contextPath),
+                                        Buffer.from(message.context, 'utf8')
+                                    );
+                                }
+
+                                // Copy context to clipboard for easy paste into OpenCode
+                                await vscode.env.clipboard.writeText(message.context);
+
+                                // Show notification
+                                vscode.window.showInformationMessage(
+                                    'Pattern context copied to clipboard! Paste into OpenCode to analyze.',
+                                    'Open Context File'
+                                ).then(selection => {
+                                    if (selection === 'Open Context File') {
+                                        const workspaceFolders = vscode.workspace.workspaceFolders;
+                                        if (workspaceFolders && workspaceFolders.length > 0) {
+                                            const contextPath = path.join(workspaceFolders[0].uri.fsPath, '.rapid-ea-context.md');
+                                            vscode.workspace.openTextDocument(vscode.Uri.file(contextPath))
+                                                .then(doc => vscode.window.showTextDocument(doc));
+                                        }
+                                    }
+                                });
+                            } catch (err) {
+                                vscode.window.showErrorMessage('Failed to process pattern context: ' + err.message);
+                            }
+                        }
+                        return;
+
                     case 'openFile':
                         // Open a file in the editor when clicking the generated file link
                         if (message.filePath) {
-                            const fileUri = vscode.Uri.file(message.filePath);
+                            // Validate path is within workspace to prevent path traversal
+                            const workspaceFolders = vscode.workspace.workspaceFolders;
+                            if (!workspaceFolders || workspaceFolders.length === 0) {
+                                webview.postMessage({ command: 'invalidPath', text: 'No workspace open' });
+                                return;
+                            }
+
+                            // Resolve to absolute path and normalize
+                            const resolvedPath = path.resolve(message.filePath);
+                            const isWithinWorkspace = workspaceFolders.some(folder => {
+                                const folderPath = folder.uri.fsPath;
+                                return resolvedPath.startsWith(folderPath);
+                            });
+
+                            if (!isWithinWorkspace) {
+                                webview.postMessage({ command: 'invalidPath', text: 'File outside workspace' });
+                                return;
+                            }
+
+                            const fileUri = vscode.Uri.file(resolvedPath);
                             try {
                                 // Check if file exists
                                 await vscode.workspace.fs.stat(fileUri);

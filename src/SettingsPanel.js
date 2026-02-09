@@ -184,15 +184,17 @@ class SettingsPanel {
                   window.addEventListener('message', event => {
                       const message = event.data;
                       
-                      switch (message.command) {
+                       switch (message.command) {
                           case 'searchResults':
                               renderResults(message.files);
                               statusMsg.textContent = '';
+                              statusMsg.style.color = '';
                               break;
                           
                           case 'fileSelected':
                               selectedFileLink.textContent = message.fileName;
                               statusMsg.textContent = 'Instructions updated.';
+                              statusMsg.style.color = '#4caf50';
                               break;
 
                           case 'error':
@@ -249,8 +251,18 @@ class SettingsPanel {
                 switch (message.command) {
                     case 'searchFiles':
                         try {
+                            // Escape glob metacharacters to prevent injection
+                            function escapeGlob(str) {
+                                return str.replace(/[*?[\]{}!\\/]/g, '\\$&');
+                            }
+
                             // Find .md and .txt files matching the query
-                            const pattern = `**/*${message.query}*.{md,txt}`;
+                            const safeQuery = escapeGlob(message.query).trim();
+                            if (!safeQuery || safeQuery.length > 100) {
+                                webview.postMessage({ command: 'searchResults', files: [] });
+                                return;
+                            }
+                            const pattern = `**/*${safeQuery}*.{md,txt}`;
                             const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**', 20);
 
                             const results = files.map(f => ({
@@ -266,13 +278,35 @@ class SettingsPanel {
 
                     case 'selectFile':
                         try {
-                            const content = await fs.promises.readFile(message.path, 'utf-8');
-                            const fileName = path.basename(message.path);
+                            // Validate path is within workspace to prevent path traversal
+                            const workspaceFolders = vscode.workspace.workspaceFolders;
+                            if (!workspaceFolders || workspaceFolders.length === 0) {
+                                webview.postMessage({ command: 'error', text: 'No workspace open' });
+                                return;
+                            }
+
+                            // Resolve to absolute path and normalize
+                            const resolvedPath = path.resolve(message.path);
+
+                            // Check if resolved path is within any workspace folder
+                            const isWithinWorkspace = workspaceFolders.some(folder => {
+                                const folderPath = folder.uri.fsPath;
+                                const relative = path.relative(folderPath, resolvedPath);
+                                return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+                            });
+
+                            if (!isWithinWorkspace) {
+                                webview.postMessage({ command: 'error', text: 'File outside workspace' });
+                                return;
+                            }
+
+                            const content = await fs.promises.readFile(resolvedPath, 'utf-8');
+                            const fileName = path.basename(resolvedPath);
 
                             // Persist to workspace state
                             await this._context.workspaceState.update('rapidEA.instructions', content);
                             await this._context.workspaceState.update('rapidEA.instructionFile', fileName);
-                            await this._context.workspaceState.update('rapidEA.instructionFilePath', message.path);
+                            await this._context.workspaceState.update('rapidEA.instructionFilePath', resolvedPath);
 
                             webview.postMessage({
                                 command: 'fileSelected',

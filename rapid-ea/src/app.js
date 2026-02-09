@@ -1,4 +1,11 @@
 import * as echarts from 'echarts';
+import { ChartContextBuilder } from './chartContext.js';
+
+// Chart state for pattern recognition
+let chartData = null;
+let chartContextBuilder = null;
+let selectedCandleIndex = null;
+const CURRENT_TIMEFRAME = 60; // H1 in minutes
 
 console.log('[Rapid-EA] Bundle loaded');
 
@@ -89,6 +96,7 @@ let currentChart = null;
 // Initialization check
 document.addEventListener('DOMContentLoaded', () => {
     console.log('[Rapid-EA] DOM ready');
+    initDOMElements();
     const status = document.getElementById('status-msg');
     if (status) status.textContent = 'App initialized';
 });
@@ -96,17 +104,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // DOM Elements - 4 input sections for price action trading
-const inputFramework = document.getElementById('input-framework');
-const inputTriggers = document.getElementById('input-triggers');
-const inputTargets = document.getElementById('input-targets');
-const inputStrategy = document.getElementById('input-strategy');
-const btnVisualize = document.getElementById('btn-visualize');
-const btnCode = document.getElementById('btn-code');
-const statusEl = document.getElementById('status-msg');
-const chartContainer = document.getElementById('chart-container');
+let inputFramework, inputTriggers, inputTargets, inputStrategy;
+let btnVisualize, btnCode, statusEl, chartContainer, btnScan, codebaseList;
 
-const btnScan = document.getElementById('btn-scan');
-const codebaseList = document.getElementById('codebase-list');
+// Initialize DOM elements after DOM is ready
+function initDOMElements() {
+    inputFramework = document.getElementById('input-framework');
+    inputTriggers = document.getElementById('input-triggers');
+    inputTargets = document.getElementById('input-targets');
+    inputStrategy = document.getElementById('input-strategy');
+    btnVisualize = document.getElementById('btn-visualize');
+    btnCode = document.getElementById('btn-code');
+    statusEl = document.getElementById('status-msg');
+    chartContainer = document.getElementById('chart-container');
+    btnScan = document.getElementById('btn-scan');
+    codebaseList = document.getElementById('codebase-list');
+}
 
 // Helper to get all strategy inputs combined
 function getStrategyInputs() {
@@ -301,8 +314,15 @@ async function handleVisualize() {
             border-radius: 4px;
             pointer-events: none;
         `;
-        chartContainer.style.position = 'relative'; // Ensure container is relative
-        chartContainer.appendChild(legendEl);
+        if (chartContainer) {
+            chartContainer.style.position = 'relative'; // Ensure container is relative
+            chartContainer.appendChild(legendEl);
+        }
+    }
+
+    if (!chartContainer) {
+        if (statusEl) statusEl.textContent = "Error: Chart container not found";
+        return;
     }
 
     currentChart = echarts.init(chartContainer);
@@ -462,8 +482,57 @@ async function handleVisualize() {
         }
     });
 
-    statusEl.textContent = "Visualization updated (LWC Style).";
+    // Click handler for candle selection (Point & Ask feature)
+    currentChart.on('click', 'series.candlestick', (params) => {
+        const index = params.dataIndex;
+        if (index >= 0 && index < data.length) {
+            selectedCandleIndex = index;
 
+            // Initialize context builder with current data
+            chartContextBuilder = new ChartContextBuilder(data, CURRENT_TIMEFRAME);
+            chartContextBuilder.selectCandle(index);
+
+            // Update status to show selection
+            const candle = data[index];
+            const type = candle.close > candle.open ? '↑ Bullish' : '↓ Bearish';
+            statusEl.textContent = `Selected: ${new Date(candle.time * 1000).toLocaleString()} | ${type} | Click "Ask Pattern" to analyze`;
+
+            // Show the Ask Pattern button
+            const askBtn = document.getElementById('btn-ask-pattern');
+            if (askBtn) {
+                askBtn.style.display = 'block';
+            }
+
+            // Visual highlight - update chart option to mark selected candle
+            highlightSelectedCandle(index);
+        }
+    });
+
+    // Store data globally for context building
+    chartData = data;
+
+    statusEl.textContent = "Visualization updated (LWC Style). Click any candle to select.";
+
+}
+
+// Highlight the selected candle on the chart
+function highlightSelectedCandle(index) {
+    if (!currentChart || !chartData || index < 0) return;
+
+    // Use markPoint to highlight the selected candle
+    currentChart.setOption({
+        series: [{
+            name: 'Price',
+            markPoint: {
+                symbol: 'pin',
+                symbolSize: 30,
+                data: [{
+                    coord: [index, chartData[index].high],
+                    itemStyle: { color: '#FFD700' }
+                }]
+            }
+        }]
+    });
 }
 
 async function handleGenerateCode() {
@@ -699,4 +768,33 @@ async function handleGenerateCode() {
 // Global scope for HTML access
 window.toggleSpeech = function () {
     alert("Speech-to-Text would activate here (using Web Speech API).");
+}
+
+// Handle Ask Pattern button click - send context to OpenCode
+window.handleAskPattern = function () {
+    if (!chartContextBuilder) {
+        statusEl.textContent = "Please select a candle first by clicking on the chart.";
+        return;
+    }
+
+    // Build markdown context
+    const context = chartContextBuilder.toMarkdown("Identify this candlestick pattern. What is its significance in the current market structure? Consider the higher timeframe context.");
+
+    // Send to extension
+    if (vscode) {
+        vscode.postMessage({
+            command: 'askPattern',
+            context: context,
+            json: chartContextBuilder.toJSON()
+        });
+        statusEl.textContent = "Context sent! Opening OpenCode...";
+    } else {
+        // Fallback: copy to clipboard
+        navigator.clipboard.writeText(context).then(() => {
+            statusEl.textContent = "Context copied to clipboard. Paste into your AI tool.";
+        }).catch(() => {
+            console.log(context);
+            statusEl.textContent = "Context logged to console.";
+        });
+    }
 }
