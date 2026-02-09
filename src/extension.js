@@ -459,7 +459,8 @@ async function compilePath(rt, pathToCompile, _context) {
         command = wineBinary;
     } else {
         // Direct execution (Windows)
-        // Note: With spawn shell:false, don't quote argument values - spawn handles escaping
+        // Paths are quoted by buildMetaEditorCmd() before spawn; windowsVerbatimArguments
+        // ensures Node.js passes them through without re-escaping (fixes #6).
         execArgs = [`/compile:${pathToCompile}`, `/log:${logFile}`];
         if (incDir) execArgs.push(`/inc:${incDir}`);
         if (portableSwitch) execArgs.push(portableSwitch);
@@ -549,9 +550,9 @@ async function compilePath(rt, pathToCompile, _context) {
                             resolve();
                         });
                 } else {
-                    // Direct execution on Windows - use spawn with shell: false to safely handle paths with spaces
+                    // Direct execution on Windows – windowsVerbatimArguments keeps quotes intact (fixes #6)
                     const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
-                    childProcess.spawn(executable, args, { shell: false })
+                    childProcess.spawn(executable, args, { shell: false, windowsVerbatimArguments: true })
                         .on('error', (error) => {
                             outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
                             resolve();
@@ -572,9 +573,10 @@ async function compilePath(rt, pathToCompile, _context) {
         if (useWine) {
             proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
         } else {
-            // Windows: use spawn with shell: false to safely handle paths with spaces
+            // Windows: windowsVerbatimArguments prevents Node.js from re-escaping the
+            // quotes that buildMetaEditorCmd() adds around path values (fixes #6).
             const { executable, args } = buildMetaEditorCmd(command, execArgs);
-            proc = childProcess.spawn(executable, args, { shell: false });
+            proc = childProcess.spawn(executable, args, { shell: false, windowsVerbatimArguments: true });
         }
         let stderrData = '';
         let timeoutId = null;
@@ -795,8 +797,8 @@ function replaceLog(str, f) {
                         // Broadened check to catch various formats of this warning
                         const isMQL181 = gh === '181' ||
                             (name_res.toLowerCase().includes('implicit conversion') &&
-                             ((name_res.includes("'number'") || name_res.includes('number')) &&
-                              (name_res.includes("'string'") || name_res.includes('string'))));
+                                ((name_res.includes("'number'") || name_res.includes('number')) &&
+                                    (name_res.includes("'string'") || name_res.includes('string'))));
                         if (isMQL181) {
                             continue; // Skip this warning entirely
                         }
