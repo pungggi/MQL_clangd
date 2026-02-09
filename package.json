@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.1.21",
+    "version": "1.1.22",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
