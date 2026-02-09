@@ -290,7 +290,11 @@ function buildMetaEditorCmd(executable, args) {
         if (value.startsWith('"') && value.endsWith('"')) {
             return arg;
         }
-        return `${matchingFlag}"${value}"`;
+        // Strip trailing backslashes to prevent \" ambiguity when the closing quote
+        // immediately follows a backslash (e.g., /inc:"C:\dir\"). Windows APIs handle
+        // directory paths identically with or without trailing separators.
+        const safeValue = value.replace(/\\+$/, '');
+        return `${matchingFlag}"${safeValue}"`;
     });
     return { executable, args: processedArgs };
 }
@@ -2504,5 +2508,6 @@ module.exports = {
     activate,
     deactivate,
     replaceLog,
-    tf
+    tf,
+    buildMetaEditorCmd
 };

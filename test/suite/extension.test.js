@@ -12,7 +12,7 @@ Module._load = function (request) {
 };
 
 // 2. Load the modules under test (they will now get the mock)
-const { replaceLog } = require('../../src/extension');
+const { replaceLog, buildMetaEditorCmd } = require('../../src/extension');
 const { normalizePath, generatePortableSwitch, safeConfigUpdate } = require('../../src/createProperties');
 
 suite('Core Logic Unit Tests (Independent)', () => {
@@ -188,5 +188,64 @@ suite('safeConfigUpdate Tests (Issue #21)', () => {
 
         await safeConfigUpdate('existing.setting', 'value', ConfigurationTarget.Workspace, false);
         assert.strictEqual(updateCalled, true, 'update() should be called when setting is registered');
+    });
+});
+
+suite('buildMetaEditorCmd Tests (Issue #6)', () => {
+    test('should add quotes to /compile: flag value', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/compile:C:\\Users\\Test\\file.mq5']);
+        assert.strictEqual(result.executable, 'metaeditor64.exe');
+        assert.strictEqual(result.args[0], '/compile:"C:\\Users\\Test\\file.mq5"');
+    });
+
+    test('should add quotes to /log: flag value', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/log:C:\\Users\\Test\\file.log']);
+        assert.strictEqual(result.args[0], '/log:"C:\\Users\\Test\\file.log"');
+    });
+
+    test('should add quotes to /inc: flag value', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/inc:C:\\Users\\Test\\Include']);
+        assert.strictEqual(result.args[0], '/inc:"C:\\Users\\Test\\Include"');
+    });
+
+    test('should strip trailing backslash from /inc: value before quoting', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/inc:C:\\Users\\Test\\Include\\']);
+        assert.strictEqual(result.args[0], '/inc:"C:\\Users\\Test\\Include"');
+    });
+
+    test('should strip multiple trailing backslashes', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/inc:C:\\Users\\Test\\Include\\\\\\']);
+        assert.strictEqual(result.args[0], '/inc:"C:\\Users\\Test\\Include"');
+    });
+
+    test('should not modify already-quoted values', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/compile:"C:\\Users\\Test\\file.mq5"']);
+        assert.strictEqual(result.args[0], '/compile:"C:\\Users\\Test\\file.mq5"');
+    });
+
+    test('should not modify non-MetaEditor flags', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/portable', '/someotherflag']);
+        assert.strictEqual(result.args[0], '/portable');
+        assert.strictEqual(result.args[1], '/someotherflag');
+    });
+
+    test('should handle mixed flags correctly', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', [
+            '/compile:C:\\path\\file.mq5',
+            '/log:C:\\path\\file.log',
+            '/inc:C:\\path\\Include\\',
+            '/portable'
+        ]);
+        assert.strictEqual(result.args[0], '/compile:"C:\\path\\file.mq5"');
+        assert.strictEqual(result.args[1], '/log:"C:\\path\\file.log"');
+        assert.strictEqual(result.args[2], '/inc:"C:\\path\\Include"');
+        assert.strictEqual(result.args[3], '/portable');
+    });
+
+    test('should be case-insensitive for flag matching', () => {
+        const result = buildMetaEditorCmd('metaeditor64.exe', ['/COMPILE:C:\\file.mq5', '/Log:C:\\file.log']);
+        // Note: The function normalizes flags to lowercase from the metaEditorFlags array
+        assert.strictEqual(result.args[0], '/compile:"C:\\file.mq5"');
+        assert.strictEqual(result.args[1], '/log:"C:\\file.log"');
     });
 });
