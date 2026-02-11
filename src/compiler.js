@@ -365,6 +365,23 @@ async function compilePath(rt, pathToCompile, _context) {
                 outputChannel.appendLine(`[Warning] Stderr: ${stderror}`);
             }
 
+            // Surface spawn/launch errors clearly
+            if (launchError) {
+                const errMsg = launchError.message || String(launchError);
+                const isNotFound = launchError.code === 'ENOENT';
+                const isPermission = launchError.code === 'EACCES' || launchError.code === 'EPERM';
+
+                if (isNotFound) {
+                    outputChannel.appendLine(`[Error] Compiler not found: ${command}`);
+                    vscode.window.showErrorMessage(`Compiler executable not found: ${command}`);
+                } else if (isPermission) {
+                    outputChannel.appendLine(`[Error] Permission denied launching compiler: ${command}`);
+                    vscode.window.showErrorMessage(`Permission denied: ${command}`);
+                } else {
+                    outputChannel.appendLine(`[Error] Launch error: ${errMsg}`);
+                }
+            }
+
             let data;
             try {
                 // Retry loop: Log file creation might be delayed.
@@ -381,21 +398,24 @@ async function compilePath(rt, pathToCompile, _context) {
                 }
 
                 if (!fs.existsSync(logFile)) {
-                    if (launchError) {
-                        outputChannel.appendLine(`[Error] Launch error: ${launchError.message || launchError}`);
-                    }
-                    throw new Error(`Log file not found at: ${logFile}`);
+                    const detail = launchError
+                        ? ` (compiler ${launchError.code === 'ENOENT' ? 'not found' : 'failed to start'})`
+                        : '';
+                    throw new Error(`Log file not found at: ${logFile}${detail}`);
                 }
 
                 data = await fsPromises.readFile(logFile, 'ucs-2');
             } catch (err) {
                 outputChannel.appendLine(`[Error] Failed to read log file: ${err.message}`);
-                return vscode.window.showErrorMessage(`${lg['err_read_log']} ${err.message}`), resolve();
+                vscode.window.showErrorMessage(`${lg['err_read_log']} ${err.message}`);
+                return resolve(true); // Signal error to caller
             }
 
-            config.LogFile.DeleteLog && fs.unlink(logFile, (err) => {
-                err && vscode.window.showErrorMessage(lg['err_remove_log']);
-            });
+            if (config.LogFile.DeleteLog) {
+                fsPromises.unlink(logFile).catch(err => {
+                    outputChannel.appendLine(`[Warning] Failed to delete log file: ${err.message}`);
+                });
+            }
 
             log = replaceLog(data, rt === 0);
 
@@ -427,31 +447,28 @@ async function compilePath(rt, pathToCompile, _context) {
             outputChannel.appendLine(`[${time}] ${teq} '${fileName}' [${timeCompile}s]`);
 
             if (rt === 2 && !log.error) {
-                if (useWine) {
-                    const args = [MetaDir, `/compile:${compileArg}`];
-                    const wineEnv = getWineEnv(config);
-                    childProcess.spawn(wineBinary, args, { shell: false, env: wineEnv })
-                        .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
-                            resolve();
-                        })
-                        .on('close', () => {
-                            outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                            resolve();
-                        });
-                } else {
-                    // Direct execution on Windows - use spawn with shell: false to safely handle paths with spaces
-                    const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
-                    childProcess.spawn(executable, args, { shell: false })
-                        .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
-                            resolve();
-                        })
-                        .on('close', () => {
-                            outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                            resolve();
-                        });
+                let scriptProc;
+                try {
+                    if (useWine) {
+                        const args = [MetaDir, `/compile:${compileArg}`];
+                        const wineEnv = getWineEnv(config);
+                        scriptProc = childProcess.spawn(wineBinary, args, { shell: false, env: wineEnv });
+                    } else {
+                        const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
+                        scriptProc = childProcess.spawn(executable, args, { shell: false });
+                    }
+                } catch (spawnErr) {
+                    outputChannel.appendLine(`[Error] ${lg['err_start_script']}: ${spawnErr.message}`);
+                    return resolve(true);
                 }
+                scriptProc.on('error', (error) => {
+                    outputChannel.appendLine(`[Error] ${lg['err_start_script']}: ${error.message}`);
+                    resolve(true);
+                });
+                scriptProc.on('close', () => {
+                    outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                    resolve();
+                });
             } else {
                 outputChannel.appendLine(String(log.text));
                 resolve(log.error);
@@ -460,12 +477,18 @@ async function compilePath(rt, pathToCompile, _context) {
 
         // Execute compilation command
         let proc;
-        if (useWine) {
-            proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
-        } else {
-            // Windows: use spawn with shell: false to safely handle paths with spaces
-            const { executable, args } = buildMetaEditorCmd(command, execArgs);
-            proc = childProcess.spawn(executable, args, { shell: false });
+        try {
+            if (useWine) {
+                proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
+            } else {
+                // Windows: use spawn with shell: false to safely handle paths with spaces
+                const { executable, args } = buildMetaEditorCmd(command, execArgs);
+                proc = childProcess.spawn(executable, args, { shell: false });
+            }
+        } catch (spawnErr) {
+            outputChannel.appendLine(`[Error] Failed to spawn compiler process: ${spawnErr.message}`);
+            vscode.window.showErrorMessage(`Failed to start compiler: ${spawnErr.message}`);
+            return resolve(true); // Signal error to caller
         }
         let stderrData = '';
         let timeoutId = null;
@@ -491,14 +514,24 @@ async function compilePath(rt, pathToCompile, _context) {
             }
         };
 
+        let errorEmitted = false;
         proc.stderr.on('data', (data) => { stderrData += data.toString(); });
         proc.on('error', (err) => {
+            errorEmitted = true;
             clearWineTimeout();
             handleCompilationResult(err, stderrData);
         });
         proc.on('close', (code) => {
+            if (errorEmitted) return; // Already handled by 'error' event
             clearWineTimeout();
-            handleCompilationResult(code !== 0 ? `Process exited with code ${code}` : null, stderrData);
+            if (code !== 0) {
+                const exitErr = new Error(`Process exited with code ${code}`);
+                exitErr.code = 'EXIT_' + code;
+                exitErr.exitCode = code;
+                handleCompilationResult(exitErr, stderrData);
+            } else {
+                handleCompilationResult(null, stderrData);
+            }
         });
     });
 }
