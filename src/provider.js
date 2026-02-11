@@ -234,9 +234,9 @@ function Hover_log() {
     return {
         provideHover(document, position) {
             const word = document.lineAt(position.line).text;
-            // Access obj_hover dynamically from extension module
-            const ext = require('./extension');
-            const obj_hover = ext.obj_hover || {};
+            // Access obj_hover dynamically from compiler module
+            const compiler = require('./compiler');
+            const obj_hover = compiler.obj_hover || {};
 
             if (!(word in obj_hover)) return undefined;
 
@@ -266,9 +266,9 @@ function DefinitionProvider() {
     return {
         provideDefinition(document, position) {
             const word = document.lineAt(position.line).text;
-            // Access obj_hover dynamically from extension module
-            const ext = require('./extension');
-            const obj_hover = ext.obj_hover || {};
+            // Access obj_hover dynamically from compiler module
+            const compiler = require('./compiler');
+            const obj_hover = compiler.obj_hover || {};
 
             if (!(word in obj_hover)) return undefined;
 
@@ -683,7 +683,7 @@ function ColorProvider() {
                             document.positionAt(match.index),
                             document.positionAt(match.index + match[0].length)
                         ),
-                        new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
+                            new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
                     }
                 });
 
@@ -696,7 +696,7 @@ function ColorProvider() {
                         document.positionAt(item.index),
                         document.positionAt(item.index + item[0].length)
                     ),
-                    new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
+                        new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
                 }
             }
 

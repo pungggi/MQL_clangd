@@ -4,7 +4,7 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const pathModule = require('path');
 const lg = require('./language');
-const { tf } = require('./extension');
+const { tf } = require('./formatting');
 const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
 const {
     toWineWindowsPath,
