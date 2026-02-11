@@ -201,6 +201,17 @@ class RapidPanel {
                   window.initialInstructions = "${instructions}";
               </script>
               <script nonce="${nonce}" src="${scriptUri}"></script>
+              <script nonce="${nonce}">
+                  // Fallback: if bundle failed to initialize, show diagnostic info
+                  setTimeout(function() {
+                      var s = document.getElementById('status-msg');
+                      if (s && s.textContent === 'Ready') {
+                          s.textContent = 'Warning: bundle may not have loaded';
+                          s.style.color = '#FF5252';
+                          console.error('[Rapid-EA] Bundle did not initialize within timeout');
+                      }
+                  }, 2000);
+              </script>
           </body>
           </html>
         `;

@@ -797,8 +797,8 @@ function replaceLog(str, f) {
                         // Broadened check to catch various formats of this warning
                         const isMQL181 = gh === '181' ||
                             (name_res.toLowerCase().includes('implicit conversion') &&
-                             ((name_res.includes("'number'") || name_res.includes('number')) &&
-                              (name_res.includes("'string'") || name_res.includes('string'))));
+                                ((name_res.includes("'number'") || name_res.includes('number')) &&
+                                    (name_res.includes("'string'") || name_res.includes('string'))));
                         if (isMQL181) {
                             continue; // Skip this warning entirely
                         }

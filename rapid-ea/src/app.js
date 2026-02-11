@@ -93,62 +93,9 @@ const mockData = generateRealisticMockData(1000);
 
 let currentChart = null;
 
-// Initialization check
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('[Rapid-EA] DOM ready');
-    initDOMElements();
-    const status = document.getElementById('status-msg');
-    if (status) status.textContent = 'App initialized';
-});
-
-
-
 // DOM Elements - 4 input sections for price action trading
 let inputFramework, inputTriggers, inputTargets, inputStrategy;
 let btnVisualize, btnCode, statusEl, chartContainer, btnScan, codebaseList;
-
-// Initialize DOM elements after DOM is ready
-function initDOMElements() {
-    inputFramework = document.getElementById('input-framework');
-    inputTriggers = document.getElementById('input-triggers');
-    inputTargets = document.getElementById('input-targets');
-    inputStrategy = document.getElementById('input-strategy');
-    btnVisualize = document.getElementById('btn-visualize');
-    btnCode = document.getElementById('btn-code');
-    statusEl = document.getElementById('status-msg');
-    chartContainer = document.getElementById('chart-container');
-    btnScan = document.getElementById('btn-scan');
-    codebaseList = document.getElementById('codebase-list');
-}
-
-// Helper to get all strategy inputs combined
-function getStrategyInputs() {
-    return {
-        framework: inputFramework?.value || '',
-        triggers: inputTriggers?.value || '',
-        targets: inputTargets?.value || '',
-        strategy: inputStrategy?.value || ''
-    };
-}
-
-// Event Listeners
-if (btnVisualize) {
-    btnVisualize.addEventListener('click', handleVisualize);
-}
-if (btnCode) {
-    btnCode.addEventListener('click', handleGenerateCode);
-}
-
-if (btnScan) {
-    btnScan.addEventListener('click', () => {
-        if (vscode) {
-            btnScan.textContent = "Scanning...";
-            vscode.postMessage({ command: 'scanCodebase' });
-        } else {
-            alert("This feature requires the VS Code Extension.");
-        }
-    });
-}
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -165,9 +112,8 @@ try {
     console.log("Not running in VS Code Webview");
 }
 
-// Generated files section elements
-const generatedFilesSection = document.getElementById('generated-files-section');
-const generatedFileLink = document.getElementById('generated-file-link');
+// Generated files section elements (initialized in initDOMElements)
+let generatedFilesSection, generatedFileLink;
 
 // Store the current generated file path
 let currentGeneratedFilePath = null;
@@ -267,6 +213,19 @@ async function loadData() {
             return mockData;
         }
     }
+}
+
+/**
+ * Collect the four strategy input values from the DOM.
+ * @returns {{ framework: string, triggers: string, targets: string, strategy: string }}
+ */
+function getStrategyInputs() {
+    return {
+        framework: inputFramework ? inputFramework.value.trim() : '',
+        triggers: inputTriggers ? inputTriggers.value.trim() : '',
+        targets: inputTargets ? inputTargets.value.trim() : '',
+        strategy: inputStrategy ? inputStrategy.value.trim() : ''
+    };
 }
 
 
@@ -483,7 +442,12 @@ async function handleVisualize() {
     });
 
     // Click handler for candle selection (Point & Ask feature)
-    currentChart.on('click', 'series.candlestick', (params) => {
+    currentChart.on('click', (params) => {
+        console.log('[Rapid-EA] Click event:', params);
+
+        // Only handle clicks on candlestick series
+        if (params.seriesType !== 'candlestick') return;
+
         const index = params.dataIndex;
         if (index >= 0 && index < data.length) {
             selectedCandleIndex = index;
@@ -501,6 +465,9 @@ async function handleVisualize() {
             const askBtn = document.getElementById('btn-ask-pattern');
             if (askBtn) {
                 askBtn.style.display = 'block';
+                console.log('[Rapid-EA] Ask Pattern button shown');
+            } else {
+                console.log('[Rapid-EA] Ask Pattern button NOT FOUND');
             }
 
             // Visual highlight - update chart option to mark selected candle
@@ -797,4 +764,57 @@ window.handleAskPattern = function () {
             statusEl.textContent = "Context logged to console.";
         });
     }
+}
+
+// ── Initialization ──────────────────────────────────────────────────
+// Placed at the very end of the module so every function declaration
+// above is guaranteed to be defined, regardless of how the bundler
+// transforms the code (hoisting is not reliable after minification).
+try {
+    console.log('[Rapid-EA] Initializing...');
+
+    inputFramework = document.getElementById('input-framework');
+    inputTriggers = document.getElementById('input-triggers');
+    inputTargets = document.getElementById('input-targets');
+    inputStrategy = document.getElementById('input-strategy');
+    btnVisualize = document.getElementById('btn-visualize');
+    btnCode = document.getElementById('btn-code');
+    statusEl = document.getElementById('status-msg');
+    chartContainer = document.getElementById('chart-container');
+    btnScan = document.getElementById('btn-scan');
+    codebaseList = document.getElementById('codebase-list');
+    generatedFilesSection = document.getElementById('generated-files-section');
+    generatedFileLink = document.getElementById('generated-file-link');
+
+    if (btnVisualize) {
+        btnVisualize.addEventListener('click', handleVisualize);
+        console.log('[Rapid-EA] btn-visualize listener attached');
+    } else {
+        console.error('[Rapid-EA] btn-visualize element NOT found');
+    }
+
+    if (btnCode) {
+        btnCode.addEventListener('click', handleGenerateCode);
+        console.log('[Rapid-EA] btn-code listener attached');
+    } else {
+        console.error('[Rapid-EA] btn-code element NOT found');
+    }
+
+    if (btnScan) {
+        btnScan.addEventListener('click', () => {
+            if (vscode) {
+                btnScan.textContent = 'Scanning...';
+                vscode.postMessage({ command: 'scanCodebase' });
+            } else {
+                alert('This feature requires the VS Code Extension.');
+            }
+        });
+    }
+
+    if (statusEl) statusEl.textContent = 'App initialized';
+    console.log('[Rapid-EA] Initialization complete');
+} catch (err) {
+    console.error('[Rapid-EA] Initialization failed:', err);
+    const s = document.getElementById('status-msg');
+    if (s) s.textContent = 'Init error: ' + err.message;
 }
