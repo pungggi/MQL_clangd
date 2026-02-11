@@ -12,12 +12,8 @@ const lg = require('./language');
 const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
 const { resolveCompileTargets, getCompileTargets } = require('./compileTargetResolver');
 const {
-    toWineWindowsPath,
-    isWineEnabled,
-    getWineBinary,
-    getWinePrefix,
-    getWineTimeout,
-    getWineEnv,
+    resolveWineConfig,
+    convertPathForWine,
     validateWinePath,
 } = require('./wineHelper');
 const { tf, FixFormatting, FindParentFile } = require('./formatting');
@@ -25,17 +21,44 @@ const { tf, FixFormatting, FindParentFile } = require('./formatting');
 // =============================================================================
 // REGEX CONSTANTS - Compiler output parsing
 // =============================================================================
+// --- Line-level classification (used with .test(), no /g flag) ---
 const REG_COMPILING = /: information: (?:compiling|checking)/;
 const REG_INCLUDE = /: information: including/;
 const REG_INFO = /: information: info/;
 const REG_RESULT = /(?:Result:|: information: result)/;
+
+// --- Result-line sub-patterns ---
 const REG_ERR_WAR = /(?!0)\d+.(?:error|warning)/;
 const REG_RESULT_SHORT = /\d+.error.+/;
+
+// --- Diagnostic path/position extraction ---
 const REG_LINE_PATH = /([a-zA-Z]:\\.+(?= :)|^\(\d+,\d+\))(?:.: )(.+)/;
 const REG_ERROR_CODE = /(?<=error |warning )\d+/;
 const REG_FULL_PATH = /[a-z]:\\.+/gi;
 const REG_LINE_POS = /\((?:\d+,\d+)\)$/gm;
 const REG_LINE_FRAGMENT = /\((?=(\d+,\d+).$)/gm;
+
+// --- Shared path pattern: Windows drive path before " :" separator ---
+const REG_PATH_BEFORE_SEP = /[a-zA-Z]:\\.+(?= :)/gi;
+
+// --- Name extraction from log categories ---
+const REG_COMPILING_NAME = /(?<=compiling ).+'/gi;
+const REG_CHECKING_NAME = /(?<=checking ).+'/gi;
+const REG_INCLUDE_NAME = /(?<=information: including ).+'/gi;
+const REG_INFO_NAME = /(?<=information: ).+/gi;
+
+// --- Diagnostic detail extraction ---
+const REG_DIAGNOSTIC_FULL_PATH = /[a-zA-Z]:\\[^(\r\n]+/g;
+const REG_DIAGNOSTIC_POS = /\((\d+),(\d+)\)$/;
+const REG_LINE_SUFFIX = /(.)(?:\d+,\d+).$/gm;
+
+// --- Cleanup patterns ---
+const REG_NEWLINES = /[\r\n]+/g;
+const REG_ERR_WAR_PREFIX = /^(error|warning)\s*:\s*/i;
+
+// --- Suppressed diagnostics ---
+/** MQL error code for implicit number→string conversion (noise from Print/PrintLive) */
+const MQL181_ERROR_CODE = '181';
 
 // =============================================================================
 // MODULE STATE - Initialized via init()
@@ -284,14 +307,11 @@ async function compilePath(rt, pathToCompile, _context) {
     logFile = pathModule.join(pathModule.dirname(pathToCompile), `${baseName}.log`);
 
 
-    // Check if Wine is enabled (macOS/Linux with Wine wrapper)
-    const useWine = isWineEnabled(config);
-    const wineBinary = getWineBinary(config);
-    const winePrefix = getWinePrefix(config);
+    // Resolve Wine configuration (no-op on Windows / when disabled)
+    const wine = resolveWineConfig(config);
 
     // Wine-specific validation
-    if (useWine) {
-        // Validate MetaEditor path format (must be Unix path, not Windows path)
+    if (wine.enabled) {
         const pathValidation = validateWinePath(MetaDir);
         if (!pathValidation.valid) {
             vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
@@ -300,37 +320,12 @@ async function compilePath(rt, pathToCompile, _context) {
     }
 
     // Build command arguments - convert paths if using Wine (async, done before Promise)
+    const wineLogger = (msg) => outputChannel.appendLine(msg);
     let compileArg, logArg, incArg;
-    if (useWine) {
-        // Convert Unix paths to Windows paths via winepath
-        const compileResult = await toWineWindowsPath(pathToCompile, wineBinary, winePrefix);
-        const logResult = await toWineWindowsPath(logFile, wineBinary, winePrefix);
-
-        if (!compileResult.success) {
-            outputChannel.appendLine(`[Wine] Path conversion failed for compile path '${pathToCompile}'; using original path as fallback`);
-            compileArg = pathToCompile;
-        } else {
-            compileArg = compileResult.path;
-        }
-
-        if (!logResult.success) {
-            outputChannel.appendLine(`[Wine] Path conversion failed for log path '${logFile}'; using original path as fallback`);
-            logArg = logFile;
-        } else {
-            logArg = logResult.path;
-        }
-
-        if (incDir) {
-            const incResult = await toWineWindowsPath(incDir, wineBinary, winePrefix);
-            if (!incResult.success) {
-                outputChannel.appendLine(`[Wine] Path conversion failed for include path '${incDir}'; using original path as fallback`);
-                incArg = incDir;
-            } else {
-                incArg = incResult.path;
-            }
-        } else {
-            incArg = '';
-        }
+    if (wine.enabled) {
+        compileArg = await convertPathForWine(pathToCompile, wine.binary, wine.prefix, wineLogger);
+        logArg = await convertPathForWine(logFile, wine.binary, wine.prefix, wineLogger);
+        incArg = incDir ? await convertPathForWine(incDir, wine.binary, wine.prefix, wineLogger) : '';
     } else {
         compileArg = pathToCompile;
         logArg = logFile;
@@ -341,13 +336,13 @@ async function compilePath(rt, pathToCompile, _context) {
 
     // Build command based on Wine mode
     let execArgs;
-    if (useWine) {
+    if (wine.enabled) {
         // Wine mode: wine64 metaeditor64.exe /compile:"Z:\..." /log:"Z:\..." ...
         // Note: MetaDir (path to metaeditor.exe) is passed as Unix path - Wine accepts this for executables in its prefix
         execArgs = [MetaDir, `/compile:"${compileArg}"`, `/log:"${logArg}"`];
         if (includefile) execArgs.push(includefile);
         if (portableSwitch) execArgs.push(portableSwitch);
-        command = wineBinary;
+        command = wine.binary;
     } else {
         // Direct execution (Windows)
         // Note: With spawn shell:false, don't quote argument values - spawn handles escaping
@@ -449,10 +444,9 @@ async function compilePath(rt, pathToCompile, _context) {
             if (rt === 2 && !log.error) {
                 let scriptProc;
                 try {
-                    if (useWine) {
+                    if (wine.enabled) {
                         const args = [MetaDir, `/compile:${compileArg}`];
-                        const wineEnv = getWineEnv(config);
-                        scriptProc = childProcess.spawn(wineBinary, args, { shell: false, env: wineEnv });
+                        scriptProc = childProcess.spawn(wine.binary, args, { shell: false, env: wine.env });
                     } else {
                         const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
                         scriptProc = childProcess.spawn(executable, args, { shell: false });
@@ -478,8 +472,8 @@ async function compilePath(rt, pathToCompile, _context) {
         // Execute compilation command
         let proc;
         try {
-            if (useWine) {
-                proc = childProcess.spawn(command, execArgs, { shell: false, env: getWineEnv(config) });
+            if (wine.enabled) {
+                proc = childProcess.spawn(command, execArgs, { shell: false, env: wine.env });
             } else {
                 // Windows: use spawn with shell: false to safely handle paths with spaces
                 const { executable, args } = buildMetaEditorCmd(command, execArgs);
@@ -494,17 +488,16 @@ async function compilePath(rt, pathToCompile, _context) {
         let timeoutId = null;
 
         // Set up timeout for Wine processes
-        if (useWine) {
-            const wineTimeout = getWineTimeout(config);
+        if (wine.enabled) {
             timeoutId = setTimeout(() => {
-                outputChannel.appendLine(`[Wine] Compilation timed out after ${wineTimeout / 1000} seconds. Killing process...`);
+                outputChannel.appendLine(`[Wine] Compilation timed out after ${wine.timeout / 1000} seconds. Killing process...`);
                 proc.kill('SIGTERM');
                 setTimeout(() => {
                     if (!proc.killed) {
                         proc.kill('SIGKILL');
                     }
                 }, 2000);
-            }, wineTimeout);
+            }, wine.timeout);
         }
 
         const clearWineTimeout = () => {
@@ -662,9 +655,8 @@ function replaceLog(str, f) {
 
         if (REG_COMPILING.test(item)) {
             const isCompiling = item.includes('compiling');
-            const regEx = new RegExp(`(?<=${isCompiling ? 'compiling' : 'checking'}.).+'`, 'gi');
-            const mName = item.match(regEx);
-            const mPath = item.match(/[a-zA-Z]:\\.+(?= :)/gi);
+            const mName = item.match(isCompiling ? REG_COMPILING_NAME : REG_CHECKING_NAME);
+            const mPath = item.match(REG_PATH_BEFORE_SEP);
 
             if (mName && mPath) {
                 const name = mName[0];
@@ -674,8 +666,8 @@ function replaceLog(str, f) {
             }
         }
         else if (REG_INCLUDE.test(item)) {
-            const mName = item.match(/(?<=information: including ).+'/gi);
-            const mPath = item.match(/[a-zA-Z]:\\.+(?= :)/gi);
+            const mName = item.match(REG_INCLUDE_NAME);
+            const mPath = item.match(REG_PATH_BEFORE_SEP);
             if (mName && mPath) {
                 const name = mName[0];
                 const link = url.pathToFileURL(mPath[0]).href;
@@ -687,8 +679,8 @@ function replaceLog(str, f) {
             continue;
         }
         else if (REG_INFO.test(item)) {
-            const mName = item.match(/(?<=information: ).+/gi);
-            const mPath = item.match(/[a-zA-Z]:\\.+(?= :)/gi);
+            const mName = item.match(REG_INFO_NAME);
+            const mPath = item.match(REG_PATH_BEFORE_SEP);
             if (mName && mPath) {
                 const name = mName[0];
                 const link = url.pathToFileURL(mPath[0]).href;
@@ -713,16 +705,16 @@ function replaceLog(str, f) {
         else {
             const mLinePath = item.match(REG_LINE_PATH);
             if (mLinePath) {
-                const link_res = (mLinePath[1] || '').replace(/[\r\n]+/g, '');
-                let name_res = (mLinePath[2] || '').replace(/[\r\n]+/g, '');
+                const link_res = (mLinePath[1] || '').replace(REG_NEWLINES, '');
+                let name_res = (mLinePath[2] || '').replace(REG_NEWLINES, '');
 
                 const gh_match = name_res.match(REG_ERROR_CODE);
                 const gh = gh_match ? gh_match[0] : null;
-                name_res = name_res.replace(gh || '', '').replace(/^(error|warning)\s*:\s*/i, '').trim();
+                name_res = name_res.replace(gh || '', '').replace(REG_ERR_WAR_PREFIX, '').trim();
 
                 if (link_res.match(REG_FULL_PATH) && name_res) {
-                    const mFullPath = link_res.match(/[a-zA-Z]:\\[^(\r\n]+/g);
-                    const mPos = link_res.match(/\((\d+),(\d+)\)$/);
+                    const mFullPath = link_res.match(REG_DIAGNOSTIC_FULL_PATH);
+                    const mPos = link_res.match(REG_DIAGNOSTIC_POS);
 
                     if (mFullPath && mPos) {
                         const fullPath = mFullPath[0].replace(/\($/, '').trim();
@@ -732,8 +724,7 @@ function replaceLog(str, f) {
 
                         // Filter out MQL181 (implicit conversion from number to string)
                         // These are noise since Print/PrintLive accept any type via implicit conversion
-                        // Broadened check to catch various formats of this warning
-                        const isMQL181 = gh === '181' ||
+                        const isMQL181 = gh === MQL181_ERROR_CODE ||
                             (name_res.toLowerCase().includes('implicit conversion') &&
                                 ((name_res.includes("'number'") || name_res.includes('number')) &&
                                     (name_res.includes("'string'") || name_res.includes('string'))));
@@ -758,7 +749,7 @@ function replaceLog(str, f) {
                             number: gh ? String(gh) : null
                         };
 
-                        const suffix = link_res.match(/(.)(?:\d+,\d+).$/gm);
+                        const suffix = link_res.match(REG_LINE_SUFFIX);
                         text += name_res + (suffix ? ' ' + suffix[0] : '') + '\n';
                     } else {
                         text += name_res + '\n';

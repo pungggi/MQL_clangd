@@ -1,18 +1,15 @@
 'use strict';
 const vscode = require('vscode');
-const childProcess = require('child_process');
 const fs = require('fs');
 const pathModule = require('path');
 const lg = require('./language');
 const { tf } = require('./formatting');
 const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
 const {
-    toWineWindowsPath,
-    isWineEnabled,
-    getWineBinary,
-    getWinePrefix,
-    getWineEnv,
-    validateWinePath
+    resolveWineConfig,
+    convertPathForWine,
+    spawnDetached,
+    validateWinePath,
 } = require('./wineHelper');
 
 
@@ -234,44 +231,32 @@ async function OpenFileInMetaEditor(uri) {
     }
 
     const portableSwitch = generatePortableSwitch(portableMode);
-    const useWine = isWineEnabled(config);
+    const wine = resolveWineConfig(config);
 
     try {
-        if (useWine) {
+        if (wine.enabled) {
             // Validate MetaEditor path format (must be Unix path, not Windows path)
             const pathValidation = validateWinePath(MetaDir);
             if (!pathValidation.valid) {
                 return vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
             }
 
-            const wineBinary = getWineBinary(config);
-            const winePrefix = getWinePrefix(config);
-            const wineEnv = getWineEnv(config);
-
-            const pathResult = await toWineWindowsPath(uri.fsPath, wineBinary, winePrefix);
-            if (!pathResult.success) {
-                console.error(`[Wine] Path conversion failed: ${pathResult.error}`);
-                return vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName} (Wine path conversion failed)`);
-            }
+            const winPath = await convertPathForWine(uri.fsPath, wine.binary, wine.prefix);
 
             // Note: MetaDir (path to metaeditor.exe) is passed as Unix path - Wine accepts this for executables in its prefix
-            const args = [MetaDir, pathResult.path];
+            const args = [MetaDir, winPath];
             if (portableSwitch) args.push(portableSwitch);
-            const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore', env: wineEnv });
-            proc.on('error', (err) => {
+            spawnDetached(wine.binary, args, { env: wine.env }, (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
             });
-            proc.unref();
         } else {
             const args = [uri.fsPath];
             if (portableSwitch) args.push(portableSwitch);
-            const proc = childProcess.spawn(MetaDir, args, { detached: true, stdio: 'ignore' });
-            proc.on('error', (err) => {
+            spawnDetached(MetaDir, args, {}, (err) => {
                 console.error('MetaEditor launch error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
             });
-            proc.unref();
         }
     }
     catch (e) {
@@ -340,35 +325,29 @@ async function OpenTradingTerminal() {
     }
 
     const portableSwitch = generatePortableSwitch(portableMode);
-    const useWine = isWineEnabled(config);
+    const wine = resolveWineConfig(config);
 
     try {
-        if (useWine) {
+        if (wine.enabled) {
             // Validate Terminal path format (must be Unix path, not Windows path)
             const pathValidation = validateWinePath(TerminalDir);
             if (!pathValidation.valid) {
                 return vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
             }
 
-            const wineBinary = getWineBinary(config);
-            const wineEnv = getWineEnv(config);
             const args = [TerminalDir];
             if (portableSwitch) args.push(portableSwitch);
-            const proc = childProcess.spawn(wineBinary, args, { shell: false, detached: true, stdio: 'ignore', env: wineEnv });
-            proc.on('error', (err) => {
+            spawnDetached(wine.binary, args, { env: wine.env }, (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
             });
-            proc.unref();
         } else {
             const args = [];
             if (portableSwitch) args.push(portableSwitch);
-            const proc = childProcess.spawn(TerminalDir, args, { detached: true, stdio: 'ignore' });
-            proc.on('error', (err) => {
+            spawnDetached(TerminalDir, args, {}, (err) => {
                 console.error('Terminal launch error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
             });
-            proc.unref();
         }
     }
     catch (e) {

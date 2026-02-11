@@ -5,7 +5,7 @@ const path = require('path');
 const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch } = require('../../src/createProperties');
 
 // Import Wine helper functions
-const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath } = require('../../src/wineHelper');
+const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, resolveWineConfig } = require('../../src/wineHelper');
 
 function withPlatform(value, fn) {
     const original = process.platform;
@@ -367,5 +367,52 @@ suite('Pure Logic Unit Tests', () => {
         // Note: toWineWindowsPath is not tested here because it requires actual Wine installation
         // and executes external processes. It should be tested in integration tests or manually.
         // However, the error handling paths are covered by the validateWinePath tests above.
+
+        suite('resolveWineConfig', () => {
+            test('should return all Wine settings bundled in one object', () => {
+                withPlatform('darwin', () => {
+                    const config = {
+                        Wine: {
+                            Enabled: true,
+                            Binary: '/opt/wine/bin/wine64',
+                            Prefix: '/Users/test/.wine',
+                            Timeout: 90000
+                        }
+                    };
+                    const wine = resolveWineConfig(config);
+                    assert.strictEqual(wine.enabled, true);
+                    assert.strictEqual(wine.binary, '/opt/wine/bin/wine64');
+                    assert.strictEqual(wine.prefix, '/Users/test/.wine');
+                    assert.strictEqual(wine.timeout, 90000);
+                    assert.strictEqual(wine.env.WINEPREFIX, '/Users/test/.wine');
+                });
+            });
+
+            test('should return defaults when Wine config is missing', () => {
+                withPlatform('win32', () => {
+                    const wine = resolveWineConfig({});
+                    assert.strictEqual(wine.enabled, false);
+                    assert.strictEqual(wine.binary, 'wine64');
+                    assert.strictEqual(wine.prefix, '');
+                    assert.strictEqual(wine.timeout, 60000);
+                });
+            });
+
+            test('should return frozen (immutable) object', () => {
+                withPlatform('darwin', () => {
+                    const wine = resolveWineConfig({ Wine: { Enabled: true } });
+                    assert.ok(Object.isFrozen(wine));
+                });
+            });
+
+            test('should not create env when Wine is disabled', () => {
+                withPlatform('win32', () => {
+                    const wine = resolveWineConfig({ Wine: { Enabled: false, Prefix: '/some/prefix' } });
+                    assert.strictEqual(wine.enabled, false);
+                    // env should be empty object when disabled
+                    assert.deepStrictEqual(wine.env, {});
+                });
+            });
+        });
     });
 });

@@ -322,6 +322,74 @@ async function validateWineSetup(config, metaEditorPath = '') {
     };
 }
 
+// =============================================================================
+// HIGH-LEVEL HELPERS — Reduce boilerplate in consumers
+// =============================================================================
+
+/**
+ * Reads all Wine-related settings from a VS Code config object and returns
+ * them as a single, immutable descriptor.
+ *
+ * @param {object} config - VS Code configuration object for mql_tools
+ * @returns {{ enabled: boolean, binary: string, prefix: string, timeout: number, env: object }}
+ */
+function resolveWineConfig(config) {
+    const enabled = isWineEnabled(config);
+    const binary = getWineBinary(config);
+    const prefix = getWinePrefix(config);
+    const timeout = getWineTimeout(config);
+    const env = enabled ? getWineEnv(config) : {};
+    return Object.freeze({ enabled, binary, prefix, timeout, env });
+}
+
+/**
+ * Converts a Unix path to a Windows path via winepath, falling back to the
+ * original path on failure.  Always returns a usable path string.
+ *
+ * @param {string} localPath - Unix/macOS path to convert
+ * @param {string} wineBinary - Path to Wine executable
+ * @param {string} winePrefix - Optional WINEPREFIX path
+ * @param {(msg: string) => void} [logger] - Optional callback for fallback warnings
+ * @returns {Promise<string>} Converted Windows path, or original on failure
+ */
+async function convertPathForWine(localPath, wineBinary, winePrefix, logger) {
+    const result = await toWineWindowsPath(localPath, wineBinary, winePrefix);
+    if (!result.success) {
+        const msg = `[Wine] Path conversion failed for '${localPath}'; using original path as fallback`;
+        if (typeof logger === 'function') {
+            logger(msg);
+        } else {
+            logWarning(msg);
+        }
+        return localPath;
+    }
+    return result.path;
+}
+
+/**
+ * Spawns a detached, unreferenced process (fire-and-forget).
+ * Works for both Wine-wrapped and native Windows executables.
+ *
+ * @param {string} command - Executable to launch
+ * @param {string[]} args - Arguments for the executable
+ * @param {{ env?: object }} [options] - Optional spawn options
+ * @param {(err: Error) => void} [onError] - Optional error callback
+ * @returns {import('child_process').ChildProcess}
+ */
+function spawnDetached(command, args, options = {}, onError) {
+    const proc = spawn(command, args, {
+        shell: false,
+        detached: true,
+        stdio: 'ignore',
+        ...options,
+    });
+    if (typeof onError === 'function') {
+        proc.on('error', onError);
+    }
+    proc.unref();
+    return proc;
+}
+
 module.exports = {
     setOutputChannel,
     isWineInstalled,
@@ -335,6 +403,9 @@ module.exports = {
     getWineEnv,
     spawnWineProcess,
     validateWineSetup,
+    resolveWineConfig,
+    convertPathForWine,
+    spawnDetached,
     log,
     logWarning,
     logError

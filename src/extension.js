@@ -9,9 +9,7 @@ const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const { CreateProperties } = require('./createProperties');
 const { markIndexDirty } = require('./compileTargetResolver');
 const {
-    isWineEnabled,
-    getWineBinary,
-    getWinePrefix,
+    resolveWineConfig,
     isWineInstalled,
     setOutputChannel: setWineOutputChannel
 } = require('./wineHelper');
@@ -44,11 +42,9 @@ function activate(context) {
 
     // Validate Wine configuration if enabled
     const config = vscode.workspace.getConfiguration('mql_tools');
-    if (isWineEnabled(config)) {
-        const wineBinary = getWineBinary(config);
-        const winePrefix = getWinePrefix(config);
-
-        isWineInstalled(wineBinary, winePrefix).then(result => {
+    const wine = resolveWineConfig(config);
+    if (wine.enabled) {
+        isWineInstalled(wine.binary, wine.prefix).then(result => {
             if (!result.installed) {
                 vscode.window.showErrorMessage(
                     `Wine is enabled but not found: ${result.error || 'Unknown error'}`,
@@ -60,8 +56,8 @@ function activate(context) {
                 });
             } else {
                 outputChannel.appendLine(`[Wine] Detected: ${result.version}`);
-                if (winePrefix) {
-                    outputChannel.appendLine(`[Wine] Using prefix: ${winePrefix}`);
+                if (wine.prefix) {
+                    outputChannel.appendLine(`[Wine] Using prefix: ${wine.prefix}`);
                 }
             }
         }).catch(error => {
