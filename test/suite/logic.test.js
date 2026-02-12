@@ -5,7 +5,7 @@ const path = require('path');
 const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch } = require('../../src/createProperties');
 
 // Import Wine helper functions
-const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath } = require('../../src/wineHelper');
+const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions } = require('../../src/wineHelper');
 
 function withPlatform(value, fn) {
     const original = process.platform;
@@ -367,5 +367,59 @@ suite('Pure Logic Unit Tests', () => {
         // Note: toWineWindowsPath is not tested here because it requires actual Wine installation
         // and executes external processes. It should be tested in integration tests or manually.
         // However, the error handling paths are covered by the validateWinePath tests above.
+
+        suite('buildWineCmd', () => {
+            test('should route through cmd /c with correct argument order', () => {
+                const result = buildWineCmd('wine64', 'Z:\\MetaTrader\\metaeditor64.exe', [
+                    '/compile:"Z:\\MQL5\\test.mq5"',
+                    '/log:"Z:\\MQL5\\test.log"',
+                ]);
+                assert.strictEqual(result.executable, 'wine64');
+                assert.deepStrictEqual(result.args, [
+                    'cmd', '/c',
+                    'Z:\\MetaTrader\\metaeditor64.exe',
+                    '/compile:"Z:\\MQL5\\test.mq5"',
+                    '/log:"Z:\\MQL5\\test.log"',
+                ]);
+            });
+
+            test('should handle optional arguments', () => {
+                const result = buildWineCmd('wine', 'C:\\Program Files\\MetaTrader 5\\metaeditor64.exe', [
+                    '/compile:"Z:\\test.mq5"',
+                ]);
+                assert.deepStrictEqual(result.args, [
+                    'cmd', '/c',
+                    'C:\\Program Files\\MetaTrader 5\\metaeditor64.exe',
+                    '/compile:"Z:\\test.mq5"',
+                ]);
+            });
+        });
+
+        suite('buildSpawnOptions', () => {
+            test('should enable windowsVerbatimArguments on win32', () => {
+                withPlatform('win32', () => {
+                    const opts = buildSpawnOptions();
+                    assert.strictEqual(opts.shell, false);
+                    assert.strictEqual(opts.windowsVerbatimArguments, true);
+                });
+            });
+
+            test('should not set windowsVerbatimArguments on non-Windows platforms', () => {
+                withPlatform('linux', () => {
+                    const opts = buildSpawnOptions();
+                    assert.strictEqual(opts.shell, false);
+                    assert.ok(!('windowsVerbatimArguments' in opts));
+                });
+            });
+
+            test('should include env when provided', () => {
+                withPlatform('linux', () => {
+                    const env = { FOO: 'bar' };
+                    const opts = buildSpawnOptions({ env });
+                    assert.strictEqual(opts.shell, false);
+                    assert.deepStrictEqual(opts.env, env);
+                });
+            });
+        });
     });
 });

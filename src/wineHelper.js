@@ -337,5 +337,42 @@ module.exports = {
     validateWineSetup,
     log,
     logWarning,
-    logError
+    logError,
+    buildWineCmd,
+    buildSpawnOptions
 };
+
+/**
+ * Build command arguments for MetaEditor via Wine's cmd.exe.
+ *
+ * Routes through `wine cmd /c` so that Windows' own command processor handles
+ * path quoting natively — fixing the issue where Wine's direct argument passing
+ * mangles embedded quotes in flags like /compile:"Z:\path with spaces\file.mq5".
+ *
+ * @param {string} wineBinary - Path to wine executable (e.g. 'wine64')
+ * @param {string} metaEditorWinPath - Windows-style path to MetaEditor (e.g. 'Z:\...\metaeditor64.exe')
+ * @param {string[]} metaEditorArgs - MetaEditor arguments (e.g. ['/compile:"Z:\..."', '/log:"Z:\..."'])
+ * @returns {{ executable: string, args: string[] }}
+ */
+function buildWineCmd(wineBinary, metaEditorWinPath, metaEditorArgs) {
+    return {
+        executable: wineBinary,
+        args: ['cmd', '/c', metaEditorWinPath, ...metaEditorArgs],
+    };
+}
+
+/**
+ * Build spawn options for MetaEditor/Wine processes.
+ *
+ * On Windows, Node's spawn() will otherwise re-escape embedded quotes in arguments
+ * (e.g. /compile:"C:\\Path With Spaces\\file.mq5"), which breaks MetaEditor.
+ * This restores the behavior from PR #7 by enabling windowsVerbatimArguments.
+ */
+function buildSpawnOptions({ env } = {}) {
+    const options = { shell: false };
+    if (env) options.env = env;
+    if (process.platform === 'win32') {
+        options.windowsVerbatimArguments = true;
+    }
+    return options;
+}
