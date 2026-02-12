@@ -10,6 +10,7 @@ const {
     convertPathForWine,
     spawnDetached,
     validateWinePath,
+    buildWineCmd,
 } = require('./wineHelper');
 
 
@@ -241,12 +242,18 @@ async function openFileInMetaEditor(uri) {
                 return vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
             }
 
+            const metaEditorWinPath = await convertPathForWine(MetaDir, wine.binary, wine.prefix);
             const winPath = await convertPathForWine(uri.fsPath, wine.binary, wine.prefix);
 
-            // Note: MetaDir (path to metaeditor.exe) is passed as Unix path - Wine accepts this for executables in its prefix
-            const args = [MetaDir, winPath];
+
+            // Route through cmd /c so Windows' cmd.exe handles path quoting natively
+            const args = [];
             if (portableSwitch) args.push(portableSwitch);
-            spawnDetached(wine.binary, args, { env: wine.env }, (err) => {
+            // Append file path to open
+            args.push(winPath);
+
+            const wineCmd = buildWineCmd(wine.binary, metaEditorWinPath, args);
+            spawnDetached(wineCmd.executable, wineCmd.args, { env: wine.env }, (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
             });
@@ -335,9 +342,12 @@ async function openTradingTerminal() {
                 return vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
             }
 
-            const args = [TerminalDir];
+            const terminalWinPath = await convertPathForWine(TerminalDir, wine.binary, wine.prefix);
+            // Route through cmd /c so Windows' cmd.exe handles path quoting natively
+            const args = [];
             if (portableSwitch) args.push(portableSwitch);
-            spawnDetached(wine.binary, args, { env: wine.env }, (err) => {
+            const wineCmd = buildWineCmd(wine.binary, terminalWinPath, args);
+            spawnDetached(wineCmd.executable, wineCmd.args, { env: wine.env }, (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
             });

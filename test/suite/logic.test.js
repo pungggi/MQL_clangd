@@ -5,7 +5,10 @@ const path = require('path');
 const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch } = require('../../src/createProperties');
 
 // Import Wine helper functions
-const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, resolveWineConfig } = require('../../src/wineHelper');
+const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, resolveWineConfig, buildWineCmd, buildSpawnOptions } = require('../../src/wineHelper');
+
+// Import compiler helpers
+const { buildMetaEditorCmd } = require('../../src/compiler');
 
 function withPlatform(value, fn) {
     const original = process.platform;
@@ -412,6 +415,106 @@ suite('Pure Logic Unit Tests', () => {
                     // env should be empty object when disabled
                     assert.deepStrictEqual(wine.env, {});
                 });
+            });
+        });
+    });
+
+    suite('buildWineCmd', () => {
+        test('should route through cmd /c with correct argument order', () => {
+            const result = buildWineCmd('wine64', 'Z:\\MetaTrader\\metaeditor64.exe', [
+                '/compile:"Z:\\MQL5\\test.mq5"',
+                '/log:"Z:\\MQL5\\test.log"',
+            ]);
+            assert.strictEqual(result.executable, 'wine64');
+            assert.deepStrictEqual(result.args, [
+                'cmd', '/c',
+                'Z:\\MetaTrader\\metaeditor64.exe',
+                '/compile:"Z:\\MQL5\\test.mq5"',
+                '/log:"Z:\\MQL5\\test.log"',
+            ]);
+        });
+
+        test('should preserve paths with spaces', () => {
+            const result = buildWineCmd('wine64', 'Z:\\Program Files\\MetaTrader 5\\metaeditor64.exe', [
+                '/compile:"Z:\\My Files\\MQL5\\Close All (Copy).mq5"',
+                '/log:"Z:\\My Files\\MQL5\\Close All (Copy).log"',
+            ]);
+            assert.strictEqual(result.executable, 'wine64');
+            assert.strictEqual(result.args[0], 'cmd');
+            assert.strictEqual(result.args[1], '/c');
+            assert.strictEqual(result.args[2], 'Z:\\Program Files\\MetaTrader 5\\metaeditor64.exe');
+            assert.ok(result.args[3].includes('Close All (Copy).mq5'));
+            assert.ok(result.args[4].includes('Close All (Copy).log'));
+        });
+
+        test('should include optional arguments like /inc and /portable', () => {
+            const result = buildWineCmd('/usr/bin/wine64', 'Z:\\MT5\\metaeditor64.exe', [
+                '/compile:"Z:\\file.mq5"',
+                '/log:"Z:\\file.log"',
+                '/inc:"Z:\\Include"',
+                '/portable',
+            ]);
+            assert.strictEqual(result.args.length, 7); // cmd, /c, exe, compile, log, inc, portable
+            assert.deepStrictEqual(result.args, [
+                'cmd', '/c',
+                'Z:\\MT5\\metaeditor64.exe',
+                '/compile:"Z:\\file.mq5"',
+                '/log:"Z:\\file.log"',
+                '/inc:"Z:\\Include"',
+                '/portable',
+            ]);
+        });
+
+        test('should work with custom wine binary path', () => {
+            const result = buildWineCmd('/opt/wine-staging/bin/wine64', 'Z:\\MT5\\metaeditor64.exe', [
+                '/compile:"Z:\\test.mq5"',
+            ]);
+            assert.strictEqual(result.executable, '/opt/wine-staging/bin/wine64');
+            assert.strictEqual(result.args[0], 'cmd');
+        });
+    });
+
+    suite('buildMetaEditorCmd', () => {
+        test('should wrap /compile:/log:/inc values in quotes (without double-quoting)', () => {
+            const { executable, args } = buildMetaEditorCmd('C:\\MT5\\metaeditor64.exe', [
+                '/compile:C:\\My Files\\EA\\test.mq5',
+                '/log:"C:\\My Files\\EA\\test.log"',
+                '/inc:C:\\My Files\\Include',
+                '/portable',
+            ]);
+            assert.strictEqual(executable, 'C:\\MT5\\metaeditor64.exe');
+            assert.deepStrictEqual(args, [
+                '/compile:"C:\\My Files\\EA\\test.mq5"',
+                '/log:"C:\\My Files\\EA\\test.log"',
+                '/inc:"C:\\My Files\\Include"',
+                '/portable',
+            ]);
+        });
+    });
+
+    suite('buildSpawnOptions', () => {
+        test('should enable windowsVerbatimArguments on win32', () => {
+            withPlatform('win32', () => {
+                const opts = buildSpawnOptions();
+                assert.strictEqual(opts.shell, false);
+                assert.strictEqual(opts.windowsVerbatimArguments, true);
+            });
+        });
+
+        test('should not set windowsVerbatimArguments on non-Windows platforms', () => {
+            withPlatform('linux', () => {
+                const opts = buildSpawnOptions();
+                assert.strictEqual(opts.shell, false);
+                assert.ok(!('windowsVerbatimArguments' in opts));
+            });
+        });
+
+        test('should include env when provided', () => {
+            withPlatform('linux', () => {
+                const env = { FOO: 'bar' };
+                const opts = buildSpawnOptions({ env });
+                assert.strictEqual(opts.shell, false);
+                assert.deepStrictEqual(opts.env, env);
             });
         });
     });

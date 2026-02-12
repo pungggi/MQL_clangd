@@ -15,6 +15,8 @@ const {
     resolveWineConfig,
     convertPathForWine,
     validateWinePath,
+    buildWineCmd,
+    buildSpawnOptions,
 } = require('./wineHelper');
 const { tf, fixFormatting, findParentFile } = require('./formatting');
 
@@ -205,6 +207,7 @@ function buildMetaEditorCmd(executable, args) {
     return { executable, args: processedArgs };
 }
 
+
 // =============================================================================
 // COMPILE PATH - Single file compilation
 // =============================================================================
@@ -321,8 +324,9 @@ async function compilePath(rt, pathTocompile, _context) {
 
     // Build command arguments - convert paths if using Wine (async, done before Promise)
     const wineLogger = (msg) => outputChannel.appendLine(msg);
-    let compileArg, logArg, incArg;
+    let compileArg, logArg, incArg, metaEditorWinPath;
     if (wine.enabled) {
+        metaEditorWinPath = await convertPathForWine(MetaDir, wine.binary, wine.prefix, wineLogger);
         compileArg = await convertPathForWine(pathTocompile, wine.binary, wine.prefix, wineLogger);
         logArg = await convertPathForWine(logFile, wine.binary, wine.prefix, wineLogger);
         incArg = incDir ? await convertPathForWine(incDir, wine.binary, wine.prefix, wineLogger) : '';
@@ -337,15 +341,18 @@ async function compilePath(rt, pathTocompile, _context) {
     // Build command based on Wine mode
     let execArgs;
     if (wine.enabled) {
-        // Wine mode: wine64 metaeditor64.exe /compile:"Z:\..." /log:"Z:\..." ...
-        // Note: MetaDir (path to metaeditor.exe) is passed as Unix path - Wine accepts this for executables in its prefix
-        execArgs = [MetaDir, `/compile:"${compileArg}"`, `/log:"${logArg}"`];
-        if (includefile) execArgs.push(includefile);
-        if (portableSwitch) execArgs.push(portableSwitch);
-        command = wine.binary;
+        // Wine mode: route through cmd /c so Windows' cmd.exe handles path quoting natively.
+        // This fixes Wine's argument passing which mangles embedded quotes in flags.
+        const metaArgs = [`/compile:"${compileArg}"`, `/log:"${logArg}"`];
+        if (includefile) metaArgs.push(includefile);
+        if (portableSwitch) metaArgs.push(portableSwitch);
+        const wineCmd = buildWineCmd(wine.binary, metaEditorWinPath, metaArgs);
+        command = wineCmd.executable;
+        execArgs = wineCmd.args;
     } else {
         // Direct execution (Windows)
-        // Note: With spawn shell:false, don't quote argument values - spawn handles escaping
+        // Note: we avoid quoting values here; buildMetaEditorCmd adds the quotes MetaEditor
+        // requires, and windowsVerbatimArguments (Windows) prevents Node from re-escaping them.
         execArgs = [`/compile:${pathTocompile}`, `/log:${logFile}`];
         if (incDir) execArgs.push(`/inc:${incDir}`);
         if (portableSwitch) execArgs.push(portableSwitch);
@@ -445,11 +452,11 @@ async function compilePath(rt, pathTocompile, _context) {
                 let scriptProc;
                 try {
                     if (wine.enabled) {
-                        const args = [MetaDir, `/compile:${compileArg}`];
-                        scriptProc = childProcess.spawn(wine.binary, args, { shell: false, env: wine.env });
+                        const wineCmd = buildWineCmd(wine.binary, metaEditorWinPath, [`/compile:"${compileArg}"`]);
+                        scriptProc = childProcess.spawn(wineCmd.executable, wineCmd.args, buildSpawnOptions({ env: wine.env }));
                     } else {
                         const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
-                        scriptProc = childProcess.spawn(executable, args, { shell: false });
+                        scriptProc = childProcess.spawn(executable, args, buildSpawnOptions());
                     }
                 } catch (spawnErr) {
                     outputChannel.appendLine(`[Error] ${lg['err_start_script']}: ${spawnErr.message}`);
@@ -473,11 +480,11 @@ async function compilePath(rt, pathTocompile, _context) {
         let proc;
         try {
             if (wine.enabled) {
-                proc = childProcess.spawn(command, execArgs, { shell: false, env: wine.env });
+                proc = childProcess.spawn(command, execArgs, buildSpawnOptions({ env: wine.env }));
             } else {
                 // Windows: use spawn with shell: false to safely handle paths with spaces
                 const { executable, args } = buildMetaEditorCmd(command, execArgs);
-                proc = childProcess.spawn(executable, args, { shell: false });
+                proc = childProcess.spawn(executable, args, buildSpawnOptions());
             }
         } catch (spawnErr) {
             outputChannel.appendLine(`[Error] Failed to spawn compiler process: ${spawnErr.message}`);
@@ -896,4 +903,5 @@ module.exports = {
     compile,
     replaceLog,
     registerAutoCheck,
+    buildMetaEditorCmd,
 };
