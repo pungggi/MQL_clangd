@@ -100,7 +100,7 @@ function openWebHelp(version, keyword) {
  * @param {string} [keyword] - Optional keyword to search for (used by quickfixes)
  * @param {number} [version] - Optional MQL version (4 or 5, defaults to auto-detect)
  */
-function Help(keyword, version) {
+function showHelp(keyword, version) {
     // If keyword is provided (called from quickfix), use it directly
     if (keyword) {
         // Default to MQL5 if version not specified
@@ -288,7 +288,7 @@ function openOfflineHelp(version, keyword) {
 /**
  * Main offline help function
  */
-function OfflineHelp() {
+function showOfflineHelp() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
         vscode.window.showWarningMessage('MQL Help: No active editor');
@@ -336,7 +336,7 @@ function OfflineHelp() {
 }
 
 module.exports = {
-    Help,
-    OfflineHelp,
+    showHelp,
+    showOfflineHelp,
     getMql5DocLang
 };

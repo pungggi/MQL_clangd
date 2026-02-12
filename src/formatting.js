@@ -28,7 +28,7 @@ function tf(date, t, d) {
  * @param {string} [string=''] - Accumulator
  * @returns {string} Combined alternation pattern
  */
-function CollectRegEx(dt, string = '') {
+function collectRegEx(dt, string = '') {
     for (const i in dt) {
         string += dt[i] + '|';
     }
@@ -40,7 +40,7 @@ function CollectRegEx(dt, string = '') {
  * Removes erroneous spaces after C/D literal prefixes.
  * @returns {Promise<boolean>} Whether any formatting changes were made
  */
-async function FixFormatting() {
+async function fixFormatting() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return false;
     const document = editor.document;
@@ -63,7 +63,7 @@ async function FixFormatting() {
         ]
     };
 
-    Array.from(document.getText().matchAll(new RegExp(CollectRegEx(data.reg), 'g'))).forEach(match => {
+    Array.from(document.getText().matchAll(new RegExp(collectRegEx(data.reg), 'g'))).forEach(match => {
         for (const i in data.reg) {
             if (match[0].match(new RegExp(data.reg[i], 'g'))) {
                 let range = new vscode.Range(document.positionAt(match.index), document.positionAt(match.index + match[0].length));
@@ -86,7 +86,7 @@ async function FixFormatting() {
  * Magic comment format: //###<relative/path/to/file.mq5>
  * @returns {string|undefined} Absolute path to the parent file, or undefined
  */
-function FindParentFile() {
+function findParentFile() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return undefined;
     const { document } = editor;
@@ -113,4 +113,4 @@ function FindParentFile() {
     }
 }
 
-module.exports = { tf, FixFormatting, CollectRegEx, FindParentFile };
+module.exports = { tf, fixFormatting, collectRegEx, findParentFile };

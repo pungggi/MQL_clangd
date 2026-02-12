@@ -189,7 +189,7 @@ async function add_vsicons(NameExt, extenPath) {
     vscode.window.showInformationMessage(`${lg['s_i_m_2']} '${NameExt}'`);
 }
 
-function IconsInstallation() {
+function installIcons() {
     const theme1 = 'Material Icon Theme', theme2 = 'vscode-icons', theme3 = 'VSCode Great Icons', theme4 = 'Material Theme Icons', options = [
         {
             label: theme1,
@@ -258,5 +258,5 @@ function IconsInstallation() {
 }
 
 module.exports = {
-    IconsInstallation
+    installIcons
 };

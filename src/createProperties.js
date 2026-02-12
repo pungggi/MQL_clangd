@@ -321,7 +321,7 @@ function mergeClangdSuppressions(newSuppressions, existingSuppressions) {
  * Main function to generate/update workspace properties for clangd.
  * @param {boolean} [force=false] - If true, force overwrite of existing config files
  */
-async function CreateProperties(force = false) {
+async function createProperties(force = false) {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
         return;
     }
@@ -752,7 +752,7 @@ SortIncludes: Never
 /**
  * Secondary helper to update properties during compilation.
  */
-function Cpp_prop(incDir) {
+function cppProp(incDir) {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) return;
 
     const config = vscode.workspace.getConfiguration();
@@ -805,8 +805,8 @@ function Cpp_prop(incDir) {
 }
 
 module.exports = {
-    CreateProperties,
-    Cpp_prop,
+    createProperties,
+    cppProp,
     normalizePath,
     expandWorkspaceVariables,
     resolvePathRelativeToWorkspace,

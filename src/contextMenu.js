@@ -13,7 +13,7 @@ const {
 } = require('./wineHelper');
 
 
-function ShowFiles(...args) {
+function showFiles(...args) {
     const conf = vscode.workspace.getConfiguration(),
         object = {}, obj = {};
 
@@ -23,7 +23,7 @@ function ShowFiles(...args) {
     conf.update('files.exclude', obj, false);
 }
 
-function InsertIcon() {
+function insertIcon() {
 
     const options = {
         canSelectFolders: false,
@@ -45,7 +45,7 @@ function InsertIcon() {
     });
 }
 
-function InsertMQL() {
+function insertMQL() {
     const options = {
         canSelectFolders: false,
         canSelectMany: false,
@@ -57,11 +57,11 @@ function InsertMQL() {
 
     vscode.window.showOpenDialog(options).then(fileUri => {
         if (fileUri && fileUri[0])
-            InsertNameFileMQL(fileUri[0]);
+            insertNameFileMQL(fileUri[0]);
     });
 }
 
-function InsertNameFileMQL(uri) {
+function insertNameFileMQL(uri) {
 
     const activeEditor = vscode.window.activeTextEditor, RelativePath = vscode.workspace.asRelativePath(uri.fsPath), extension = pathModule.extname(activeEditor.document.fileName),
         pos = new vscode.Position(0, 0);
@@ -70,7 +70,7 @@ function InsertNameFileMQL(uri) {
 
 }
 
-function InsertMQH() {
+function insertMQH() {
     const options = {
         canSelectFolders: false,
         canSelectMany: false,
@@ -82,12 +82,12 @@ function InsertMQH() {
 
     vscode.window.showOpenDialog(options).then(fileUri => {
         if (fileUri && fileUri[0])
-            InsertNameFileMQH(fileUri[0]);
+            insertNameFileMQH(fileUri[0]);
     });
 
 }
 
-function InsertNameFileMQH(uri) {
+function insertNameFileMQH(uri) {
 
     const { document, selection, edit } = vscode.window.activeTextEditor, NName = uri.fsPath, RelativePath = vscode.workspace.asRelativePath(NName),
         Path = document.fileName, extension = pathModule.extname(Path),
@@ -100,7 +100,7 @@ function InsertNameFileMQH(uri) {
     }
 }
 
-function InsertResource() {
+function insertResource() {
 
     const options = {
         canSelectFolders: false,
@@ -122,7 +122,7 @@ function InsertResource() {
     });
 }
 
-function InsertImport() {
+function insertImport() {
 
     const options = {
         canSelectFolders: false,
@@ -150,7 +150,7 @@ function InsertImport() {
     });
 }
 
-function InsertTime() {
+function insertTime() {
     const { selection, edit } = vscode.window.activeTextEditor, { start, end } = selection, date = new Date(),
         time = `D'${tf(date, 'Y')}.${tf(date, 'M')}.${tf(date, 'D')} ${tf(date, 'h')}:${tf(date, 'm')}:${tf(date, 's')}'`,
         pos = new vscode.Position(start.line, start.character);
@@ -158,7 +158,7 @@ function InsertTime() {
     (end.line !== start.line || end.character !== start.character) ? edit(edit => edit.replace(selection, time)) : edit(edit => edit.insert(pos, time));
 }
 
-function CreateComment() {
+function createComment() {
     const { document, selection, edit } = vscode.window.activeTextEditor, { end } = selection,
         reg = /(?:(\w+)\s+)(?:(?:\w+::|)\w+(?: +|)\()/,
         wordAtCursorRange = document.getWordRangeAtPosition(end, reg);
@@ -185,7 +185,7 @@ function CreateComment() {
     }
 }
 
-async function OpenFileInMetaEditor(uri) {
+async function openFileInMetaEditor(uri) {
     const extension = pathModule.extname(uri.fsPath).toLowerCase(), config = vscode.workspace.getConfiguration('mql_tools'), wn = vscode.workspace.name.includes('MQL4'), fileName = pathModule.basename(uri.fsPath);
     let MetaDir, CommM, portableMode, settingName;
 
@@ -264,7 +264,7 @@ async function OpenFileInMetaEditor(uri) {
     }
 }
 
-async function OpenTradingTerminal() {
+async function openTradingTerminal() {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const editor = vscode.window.activeTextEditor;
 
@@ -357,16 +357,16 @@ async function OpenTradingTerminal() {
 
 
 module.exports = {
-    ShowFiles,
-    InsertNameFileMQH,
-    InsertMQH,
-    InsertNameFileMQL,
-    InsertMQL,
-    InsertResource,
-    InsertImport,
-    InsertTime,
-    InsertIcon,
-    CreateComment,
-    OpenFileInMetaEditor,
-    OpenTradingTerminal
+    showFiles,
+    insertNameFileMQH,
+    insertMQH,
+    insertNameFileMQL,
+    insertMQL,
+    insertResource,
+    insertImport,
+    insertTime,
+    insertIcon,
+    createComment,
+    openFileInMetaEditor,
+    openTradingTerminal
 };

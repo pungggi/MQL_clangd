@@ -6,7 +6,7 @@ const sleep = require('util').promisify(setTimeout);
 // Internal modules
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
-const { CreateProperties } = require('./createProperties');
+const { createProperties } = require('./createProperties');
 const { markIndexDirty } = require('./compileTargetResolver');
 const {
     resolveWineConfig,
@@ -79,7 +79,7 @@ function activate(context) {
     sleep(2000).then(() => {
         if (previousVersion !== currentVersion) {
             if (currentVersion === '1.0.0' || currentVersion === '1.0.1' || currentVersion === '1.0.2') {
-                CreateProperties().then(() => {
+                createProperties().then(() => {
                     // Update successful info message
                     // console.log(`MQL Tools: Migrated to v${currentVersion}`);
                 });

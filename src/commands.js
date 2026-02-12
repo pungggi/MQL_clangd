@@ -3,12 +3,12 @@
 const vscode = require('vscode');
 const pathModule = require('path');
 
-const { Help, OfflineHelp } = require('./help');
-const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
-const { IconsInstallation } = require('./addIcon');
+const { showHelp, showOfflineHelp } = require('./help');
+const { showFiles, insertNameFileMQH, insertMQH, insertNameFileMQL, insertMQL, insertResource, insertImport, insertTime, insertIcon, openFileInMetaEditor, openTradingTerminal, createComment } = require('./contextMenu');
+const { installIcons } = require('./addIcon');
 const { RapidPanel } = require('./RapidPanel');
 const { SettingsPanel } = require('./SettingsPanel');
-const { CreateProperties } = require('./createProperties');
+const { createProperties } = require('./createProperties');
 const { setCompileTargets, resetCompileTargets } = require('./compileTargetResolver');
 const logTailer = require('./logTailer');
 const compiler = require('./compiler');
@@ -19,13 +19,13 @@ const compiler = require('./compiler');
  */
 function registerCommands(context) {
     // Compilation commands
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => compiler.Compile(0, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => compiler.Compile(1, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => compiler.Compile(2, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => compiler.compile(0, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => compiler.compile(1, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => compiler.compile(2, context)));
 
     // Help
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.help', (keyword, version) => Help(keyword, version)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.offlineHelp', () => OfflineHelp()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.help', (keyword, version) => showHelp(keyword, version)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.offlineHelp', () => showOfflineHelp()));
 
     // Compile target management
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.selectCompileTarget', () => selectCompileTarget(context)));
@@ -34,28 +34,28 @@ function registerCommands(context) {
 
     // Configuration & tools
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.configurations', async () => {
-        await CreateProperties();
+        await createProperties();
         try {
             await vscode.commands.executeCommand('clangd.restart');
         } catch (error) {
             // clangd extension may not be installed - silently ignore
         }
     }));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Addicon', () => IconsInstallation()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Addicon', () => installIcons()));
 
     // Context menu / insertion commands
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Showfiles', () => ShowFiles('**/*.ex4', '**/*.ex5')));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsMQL', () => InsertMQL()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsMQH', () => InsertMQH()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsNameMQL', (uri) => InsertNameFileMQL(uri)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsNameMQH', (uri) => InsertNameFileMQH(uri)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsResource', () => InsertResource()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsImport', () => InsertImport()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsTime', () => InsertTime()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsIcon', () => InsertIcon()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => OpenFileInMetaEditor(uri)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', () => OpenTradingTerminal()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Showfiles', () => showFiles('**/*.ex4', '**/*.ex5')));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsMQL', () => insertMQL()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsMQH', () => insertMQH()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsNameMQL', (uri) => insertNameFileMQL(uri)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsNameMQH', (uri) => insertNameFileMQH(uri)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsResource', () => insertResource()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsImport', () => insertImport()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsTime', () => insertTime()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsIcon', () => insertIcon()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => openFileInMetaEditor(uri)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', () => openTradingTerminal()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => createComment()));
 
     // Log tailing
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));

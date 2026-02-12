@@ -10,16 +10,16 @@ const fsPromises = fs.promises;
 
 const lg = require('./language');
 const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
-const { resolveCompileTargets, getCompileTargets } = require('./compileTargetResolver');
+const { resolvecompileTargets, getcompileTargets } = require('./compileTargetResolver');
 const {
     resolveWineConfig,
     convertPathForWine,
     validateWinePath,
 } = require('./wineHelper');
-const { tf, FixFormatting, FindParentFile } = require('./formatting');
+const { tf, fixFormatting, findParentFile } = require('./formatting');
 
 // =============================================================================
-// REGEX CONSTANTS - Compiler output parsing
+// REGEX CONSTANTS - compiler output parsing
 // =============================================================================
 // --- Line-level classification (used with .test(), no /g flag) ---
 const REG_COMPILING = /: information: (?:compiling|checking)/;
@@ -210,20 +210,20 @@ function buildMetaEditorCmd(executable, args) {
 // =============================================================================
 
 /**
- * Compile a single file path
- * Extracted from Compile() to support compiling multiple targets
+ * compile a single file path
+ * Extracted from compile() to support compiling multiple targets
  */
-async function compilePath(rt, pathToCompile, _context) {
+async function compilePath(rt, pathTocompile, _context) {
     const config = vscode.workspace.getConfiguration('mql_tools');
-    const fileName = pathModule.basename(pathToCompile);
-    const extension = pathModule.extname(pathToCompile).toLowerCase();
+    const fileName = pathModule.basename(pathTocompile);
+    const extension = pathModule.extname(pathTocompile).toLowerCase();
     const startT = new Date();
     const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
 
     let logFile, command, MetaDir, incDir, CommM, CommI, teq, includefile, log, portableMode;
 
     // Allow ${workspaceFolder} and relative paths in settings.
-    const fileUri = vscode.Uri.file(pathToCompile);
+    const fileUri = vscode.Uri.file(pathTocompile);
     const wsFolder = vscode.workspace.getWorkspaceFolder(fileUri) || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
     const workspaceFolderPath = wsFolder && wsFolder.uri ? wsFolder.uri.fsPath : '';
 
@@ -235,7 +235,7 @@ async function compilePath(rt, pathToCompile, _context) {
         isMql5 = true;
     } else if (extension === '.mqh') {
         // Try to determine flavor from resolved targets, falling back to substring check
-        const savedTargets = getCompileTargets(fileUri, wsFolder, _context);
+        const savedTargets = getcompileTargets(fileUri, wsFolder, _context);
         let resolvedFlavor = null;
 
         if (savedTargets && savedTargets.length > 0) {
@@ -251,7 +251,7 @@ async function compilePath(rt, pathToCompile, _context) {
             isMql5 = true;
         } else {
             // Last-resort fallback
-            if (pathToCompile.toLowerCase().includes('mql4')) {
+            if (pathTocompile.toLowerCase().includes('mql4')) {
                 // isMql4
             } else {
                 isMql5 = true; // Default to MQL5
@@ -303,8 +303,8 @@ async function compilePath(rt, pathToCompile, _context) {
 
     // Strategy: Place the log file directly next to the source file.
     // MetaEditor creates log files without the source extension (e.g., SMC.log, not SMC.mq5.log)
-    const baseName = pathModule.basename(pathToCompile, extension);
-    logFile = pathModule.join(pathModule.dirname(pathToCompile), `${baseName}.log`);
+    const baseName = pathModule.basename(pathTocompile, extension);
+    logFile = pathModule.join(pathModule.dirname(pathTocompile), `${baseName}.log`);
 
 
     // Resolve Wine configuration (no-op on Windows / when disabled)
@@ -323,11 +323,11 @@ async function compilePath(rt, pathToCompile, _context) {
     const wineLogger = (msg) => outputChannel.appendLine(msg);
     let compileArg, logArg, incArg;
     if (wine.enabled) {
-        compileArg = await convertPathForWine(pathToCompile, wine.binary, wine.prefix, wineLogger);
+        compileArg = await convertPathForWine(pathTocompile, wine.binary, wine.prefix, wineLogger);
         logArg = await convertPathForWine(logFile, wine.binary, wine.prefix, wineLogger);
         incArg = incDir ? await convertPathForWine(incDir, wine.binary, wine.prefix, wineLogger) : '';
     } else {
-        compileArg = pathToCompile;
+        compileArg = pathTocompile;
         logArg = logFile;
         incArg = incDir || '';
     }
@@ -346,7 +346,7 @@ async function compilePath(rt, pathToCompile, _context) {
     } else {
         // Direct execution (Windows)
         // Note: With spawn shell:false, don't quote argument values - spawn handles escaping
-        execArgs = [`/compile:${pathToCompile}`, `/log:${logFile}`];
+        execArgs = [`/compile:${pathTocompile}`, `/log:${logFile}`];
         if (incDir) execArgs.push(`/inc:${incDir}`);
         if (portableSwitch) execArgs.push(portableSwitch);
         command = MetaDir;
@@ -367,8 +367,8 @@ async function compilePath(rt, pathToCompile, _context) {
                 const isPermission = launchError.code === 'EACCES' || launchError.code === 'EPERM';
 
                 if (isNotFound) {
-                    outputChannel.appendLine(`[Error] Compiler not found: ${command}`);
-                    vscode.window.showErrorMessage(`Compiler executable not found: ${command}`);
+                    outputChannel.appendLine(`[Error] compiler not found: ${command}`);
+                    vscode.window.showErrorMessage(`compiler executable not found: ${command}`);
                 } else if (isPermission) {
                     outputChannel.appendLine(`[Error] Permission denied launching compiler: ${command}`);
                     vscode.window.showErrorMessage(`Permission denied: ${command}`);
@@ -437,9 +437,9 @@ async function compilePath(rt, pathToCompile, _context) {
             }
 
             const endT = new Date();
-            const timeCompile = (endT - startT) / 1000;
+            const timecompile = (endT - startT) / 1000;
 
-            outputChannel.appendLine(`[${time}] ${teq} '${fileName}' [${timeCompile}s]`);
+            outputChannel.appendLine(`[${time}] ${teq} '${fileName}' [${timecompile}s]`);
 
             if (rt === 2 && !log.error) {
                 let scriptProc;
@@ -538,8 +538,8 @@ async function compilePath(rt, pathToCompile, _context) {
  * @param {number} rt - 0=check, 1=compile, 2=compile+run script
  * @param {vscode.ExtensionContext} context
  */
-async function Compile(rt, context) {
-    await FixFormatting();
+async function compile(rt, context) {
+    await fixFormatting();
     // Save after formatting. Guard against re-entrant CheckOnSave triggers.
     internalSaveDepth++;
     try {
@@ -555,7 +555,7 @@ async function Compile(rt, context) {
     const extension = pathModule.extname(document.fileName).toLowerCase();
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
 
-    let pathsToCompile = [];
+    let pathsTocompile = [];
 
     // For .mqh files, resolve compile targets
     if (extension === '.mqh') {
@@ -564,7 +564,7 @@ async function Compile(rt, context) {
             return vscode.window.showErrorMessage('File must be in a workspace folder');
         }
 
-        const targets = await resolveCompileTargets({
+        const targets = await resolvecompileTargets({
             document,
             workspaceFolder,
             context,
@@ -578,9 +578,9 @@ async function Compile(rt, context) {
         if (targets.length === 0) {
             // No targets resolved by mapping/inference (or user cancelled)
             // Fall back to magic comment for backward compatibility
-            const magicPath = FindParentFile();
+            const magicPath = findParentFile();
             if (magicPath && fs.existsSync(magicPath)) {
-                pathsToCompile = [magicPath];
+                pathsTocompile = [magicPath];
             } else {
                 // If rt === 0 (checking), we can't fall back to current file for headers effectively
                 // but we should check if we should allow checking the header itself or just warn.
@@ -589,18 +589,18 @@ async function Compile(rt, context) {
                     return vscode.window.showWarningMessage(lg['mqh']);
                 } else {
                     // For rt === 0, if no target found, just check the header itself as a fallback
-                    pathsToCompile = [document.fileName];
+                    pathsTocompile = [document.fileName];
                 }
             }
         } else {
-            pathsToCompile = targets;
+            pathsTocompile = targets;
         }
     } else {
         // For .mq4/.mq5, compile the current file
-        pathsToCompile = [document.fileName];
+        pathsTocompile = [document.fileName];
     }
 
-    // Compile all targets
+    // compile all targets
     outputChannel.clear();
     outputChannel.show(true);
 
@@ -617,8 +617,8 @@ async function Compile(rt, context) {
             title: `MQL Tools: ${teq}`,
         },
         async () => {
-            for (const pathToCompile of pathsToCompile) {
-                const error = await compilePath(rt, pathToCompile, context);
+            for (const pathTocompile of pathsTocompile) {
+                const error = await compilePath(rt, pathTocompile, context);
                 if (error) hasErrors = true;
             }
         }
@@ -797,7 +797,7 @@ function registerAutoCheck(context) {
         const docUri = event.document.uri.toString();
         const docVersion = event.document.version;
 
-        // Ignore changes caused by our own auto-check edits (FixFormatting, save)
+        // Ignore changes caused by our own auto-check edits (fixFormatting, save)
         const trackedVersion = autoCheckDocVersions.get(docUri);
         if (trackedVersion !== undefined && docVersion <= trackedVersion) {
             return; // This change is from our own edits, ignore it
@@ -821,10 +821,10 @@ function registerAutoCheck(context) {
             const checkingUri = activeDoc?.uri.toString();
 
             try {
-                await Compile(0, context); // Syntax check (no compilation)
+                await compile(0, context); // Syntax check (no compilation)
             } finally {
                 // Record the final document version after our edits complete
-                // This prevents re-triggering from FixFormatting or save changes
+                // This prevents re-triggering from fixFormatting or save changes
                 if (checkingUri && vscode.window.activeTextEditor?.document.uri.toString() === checkingUri) {
                     autoCheckDocVersions.set(checkingUri, vscode.window.activeTextEditor.document.version);
                 }
@@ -845,7 +845,7 @@ function registerAutoCheck(context) {
 
     // Check on save - run syntax check when MQL files are saved
     context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (document) => {
-        // Ignore saves performed by Compile() itself (prevents recursion / cascades)
+        // Ignore saves performed by compile() itself (prevents recursion / cascades)
         if (internalSaveDepth > 0) return;
 
         const config = vscode.workspace.getConfiguration('mql_tools');
@@ -865,7 +865,7 @@ function registerAutoCheck(context) {
 
         isAutoCheckRunning = true;
         try {
-            await Compile(0, context); // Syntax check
+            await compile(0, context); // Syntax check
         } finally {
             isAutoCheckRunning = false;
         }
@@ -881,7 +881,7 @@ function registerAutoCheck(context) {
             if (['.mq4', '.mq5', '.mqh'].includes(ext)) {
                 isAutoCheckRunning = true;
                 try {
-                    await Compile(0, context); // Syntax check on startup
+                    await compile(0, context); // Syntax check on startup
                 } finally {
                     isAutoCheckRunning = false;
                 }
@@ -893,7 +893,7 @@ function registerAutoCheck(context) {
 module.exports = {
     init,
     getState,
-    Compile,
+    compile,
     replaceLog,
     registerAutoCheck,
 };
