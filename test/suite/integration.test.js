@@ -21,14 +21,16 @@ const logTailer = require('../../src/logTailer');
 
 /** Build a minimal ExtensionContext stub */
 function createMockContext() {
+    const stateStore = () => ({
+        _store: {},
+        get(key, defaultValue) { return key in this._store ? this._store[key] : defaultValue; },
+        update(key, value) { this._store[key] = value; return Promise.resolve(); },
+    });
     return {
         subscriptions: [],
         extensionUri: { fsPath: '/mock/extension', path: '/mock/extension', toString: () => 'file:///mock/extension' },
-        globalState: {
-            _store: {},
-            get(key) { return this._store[key]; },
-            update(key, value) { this._store[key] = value; return Promise.resolve(); },
-        },
+        globalState: stateStore(),
+        workspaceState: stateStore(),
     };
 }
 
@@ -56,7 +58,12 @@ suite('Integration Tests — activate() / deactivate()', () => {
 
     setup(() => {
         vscodeMock._resetTracking();
+        vscodeMock.workspace._configMock = null;
         ctx = createMockContext();
+    });
+
+    teardown(() => {
+        extension.deactivate();
     });
 
     // -----------------------------------------------------------------
@@ -257,11 +264,16 @@ suite('Integration Tests — activate() / deactivate()', () => {
 
     test('activate() populates context.subscriptions', () => {
         extension.activate(ctx);
-        // Commands (27) + providers (7 sync + 1 delayed) + auto-check + lightweight +
-        // file watcher + status bar item. Expect a sizeable number.
+        const commandCount = vscodeMock._tracking.registeredCommands.length;
+        // Subscriptions must exceed commands since providers, listeners, and
+        // watchers are also pushed into context.subscriptions.
         assert.ok(
-            ctx.subscriptions.length >= 25,
-            `Expected >= 25 subscriptions, got ${ctx.subscriptions.length}`
+            ctx.subscriptions.length > commandCount,
+            `Expected subscriptions (${ctx.subscriptions.length}) to exceed command count (${commandCount})`
+        );
+        assert.ok(
+            ctx.subscriptions.length > 0,
+            'Expected non-empty subscriptions'
         );
     });
 
@@ -327,6 +339,133 @@ suite('Integration Tests — activate() / deactivate()', () => {
             assert.strictEqual(stopCalled, true, 'deactivate() should call logTailer.stop()');
         } finally {
             logTailer.stop = originalStop;
+        }
+    });
+
+    // -----------------------------------------------------------------
+    // Event listener registration
+    // -----------------------------------------------------------------
+
+    test('activate() registers onDidChangeTextDocument listeners', () => {
+        extension.activate(ctx);
+        // registerLightweightDiagnostics + registerAutoCheck each register one
+        assert.ok(
+            vscodeMock._tracking.onDidChangeTextDocumentListeners.length >= 2,
+            `Expected >= 2 onDidChangeTextDocument listeners, got ${vscodeMock._tracking.onDidChangeTextDocumentListeners.length}`
+        );
+    });
+
+    test('activate() registers onDidOpenTextDocument listener', () => {
+        extension.activate(ctx);
+        assert.ok(
+            vscodeMock._tracking.onDidOpenTextDocumentListeners.length >= 1,
+            `Expected >= 1 onDidOpenTextDocument listener, got ${vscodeMock._tracking.onDidOpenTextDocumentListeners.length}`
+        );
+    });
+
+    test('activate() registers onDidCloseTextDocument listener', () => {
+        extension.activate(ctx);
+        assert.ok(
+            vscodeMock._tracking.onDidCloseTextDocumentListeners.length >= 1,
+            `Expected >= 1 onDidCloseTextDocument listener, got ${vscodeMock._tracking.onDidCloseTextDocumentListeners.length}`
+        );
+    });
+
+    test('activate() registers onDidSaveTextDocument listener', () => {
+        extension.activate(ctx);
+        assert.ok(
+            vscodeMock._tracking.onDidSaveTextDocumentListeners.length >= 1,
+            `Expected >= 1 onDidSaveTextDocument listener, got ${vscodeMock._tracking.onDidSaveTextDocumentListeners.length}`
+        );
+    });
+
+    // -----------------------------------------------------------------
+    // File watcher event handlers
+    // -----------------------------------------------------------------
+
+    test('file watcher registers onDidChange, onDidCreate, and onDidDelete handlers', () => {
+        extension.activate(ctx);
+        const watchers = vscodeMock._tracking.createdFileSystemWatchers;
+        const mqlWatcher = watchers.find(w => typeof w.pattern === 'string' && w.pattern.includes('mq'));
+        assert.ok(mqlWatcher, 'Expected an MQL file watcher');
+        assert.ok(
+            mqlWatcher.watcher._onDidChangeHandlers.length >= 1,
+            'Expected at least 1 onDidChange handler on file watcher'
+        );
+        assert.ok(
+            mqlWatcher.watcher._onDidCreateHandlers.length >= 1,
+            'Expected at least 1 onDidCreate handler on file watcher'
+        );
+        assert.ok(
+            mqlWatcher.watcher._onDidDeleteHandlers.length >= 1,
+            'Expected at least 1 onDidDelete handler on file watcher'
+        );
+    });
+
+    // -----------------------------------------------------------------
+    // Wine-enabled scenario
+    // -----------------------------------------------------------------
+
+    // Wine is only enabled on non-Windows platforms (isWineEnabled checks process.platform)
+    if (process.platform !== 'win32') {
+        test('Wine error shown when Wine is enabled but not installed', async () => {
+            vscodeMock.workspace._configMock = {
+                get: (key, defaultValue) => defaultValue,
+                update: () => Promise.resolve(),
+                inspect: () => ({ workspaceValue: undefined }),
+                Metaeditor: { Metaeditor5Dir: '', Include5Dir: '', Metaeditor4Dir: '', Include4Dir: '', Portable5: false, Portable4: false },
+                Wine: { Enabled: true, Binary: 'wine64', Prefix: '', Timeout: 60000 },
+                AutoCheck: { Enabled: false },
+                LogFile: { DeleteLog: false },
+                Diagnostics: { Lightweight: false },
+            };
+
+            extension.activate(ctx);
+
+            // Wine check is async — wait for an error message about Wine
+            await waitFor(
+                () => vscodeMock._tracking.shownErrors.some(
+                    e => String(e[0]).toLowerCase().includes('wine')
+                ),
+                5000
+            );
+
+            const wineErrors = vscodeMock._tracking.shownErrors.filter(
+                e => String(e[0]).toLowerCase().includes('wine')
+            );
+            assert.ok(wineErrors.length >= 1, 'Expected at least 1 Wine-related error');
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // Command handler smoke tests
+    // -----------------------------------------------------------------
+
+    test('mql_tools.help handler does not throw', () => {
+        extension.activate(ctx);
+        const cmd = vscodeMock._tracking.registeredCommands.find(c => c.id === 'mql_tools.help');
+        assert.ok(cmd, 'Expected mql_tools.help command to be registered');
+        assert.doesNotThrow(() => cmd.handler());
+    });
+
+    test('mql_tools.openSettings handler does not throw', () => {
+        extension.activate(ctx);
+        const cmd = vscodeMock._tracking.registeredCommands.find(c => c.id === 'mql_tools.openSettings');
+        assert.ok(cmd, 'Expected mql_tools.openSettings command to be registered');
+        assert.doesNotThrow(() => cmd.handler());
+    });
+
+    // -----------------------------------------------------------------
+    // Graceful degradation: missing extension
+    // -----------------------------------------------------------------
+
+    test('activate() does not throw when extensions.getExtension returns undefined', () => {
+        const original = vscodeMock.extensions.getExtension;
+        vscodeMock.extensions.getExtension = () => undefined;
+        try {
+            assert.doesNotThrow(() => extension.activate(ctx));
+        } finally {
+            vscodeMock.extensions.getExtension = original;
         }
     });
 

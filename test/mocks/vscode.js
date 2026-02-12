@@ -7,13 +7,19 @@ const path = require('path');
 const _tracking = {
     registeredCommands: [],         // { id, handler }
     registeredProviders: [],        // { type, selector, provider, ...options }
-    createdDiagnosticCollections: [],
+    createdDiagnosticCollections: [],  // { name, collection }
     createdOutputChannels: [],      // { name, languageId }
-    createdFileSystemWatchers: [],  // { pattern }
+    createdFileSystemWatchers: [],  // { pattern, watcher }
     shownErrors: [],
     shownWarnings: [],
     shownInfos: [],
     createdStatusBarItems: [],
+    // Event listener tracking
+    onDidChangeTextDocumentListeners: [],
+    onDidSaveTextDocumentListeners: [],
+    onDidOpenTextDocumentListeners: [],
+    onDidCloseTextDocumentListeners: [],
+    onDidChangeConfigurationListeners: [],
 };
 
 /** Reset all tracking arrays between test runs */
@@ -208,12 +214,15 @@ const disposable = () => ({ dispose: () => { } });
 function createFileSystemWatcher(pattern) {
     const watcher = {
         pattern,
-        onDidChange: () => disposable(),
-        onDidCreate: () => disposable(),
-        onDidDelete: () => disposable(),
+        _onDidChangeHandlers: [],
+        _onDidCreateHandlers: [],
+        _onDidDeleteHandlers: [],
+        onDidChange(cb) { watcher._onDidChangeHandlers.push(cb); return disposable(); },
+        onDidCreate(cb) { watcher._onDidCreateHandlers.push(cb); return disposable(); },
+        onDidDelete(cb) { watcher._onDidDeleteHandlers.push(cb); return disposable(); },
         dispose: () => { },
     };
-    _tracking.createdFileSystemWatchers.push({ pattern });
+    _tracking.createdFileSystemWatchers.push({ pattern, watcher });
     return watcher;
 }
 
@@ -362,11 +371,11 @@ module.exports = {
             readFile: () => Promise.resolve(Buffer.from(''))
         },
         createFileSystemWatcher,
-        onDidChangeTextDocument: () => disposable(),
-        onDidOpenTextDocument: () => disposable(),
-        onDidCloseTextDocument: () => disposable(),
-        onDidSaveTextDocument: () => disposable(),
-        onDidChangeConfiguration: () => disposable(),
+        onDidChangeTextDocument: (cb) => { _tracking.onDidChangeTextDocumentListeners.push(cb); return disposable(); },
+        onDidOpenTextDocument: (cb) => { _tracking.onDidOpenTextDocumentListeners.push(cb); return disposable(); },
+        onDidCloseTextDocument: (cb) => { _tracking.onDidCloseTextDocumentListeners.push(cb); return disposable(); },
+        onDidSaveTextDocument: (cb) => { _tracking.onDidSaveTextDocumentListeners.push(cb); return disposable(); },
+        onDidChangeConfiguration: (cb) => { _tracking.onDidChangeConfigurationListeners.push(cb); return disposable(); },
         textDocuments: [],
         applyEdit: () => Promise.resolve(true),
     },
@@ -384,13 +393,16 @@ module.exports = {
         createDiagnosticCollection: (name) => {
             const coll = {
                 name,
-                clear: () => { },
-                set: () => { },
-                delete: () => { },
+                _entries: new Map(),
+                _setCalls: [],
+                _deleteCalls: [],
+                clear() { coll._entries.clear(); },
+                set(uri, diags) { coll._setCalls.push({ uri, diags }); coll._entries.set(uri, diags); },
+                delete(uri) { coll._deleteCalls.push({ uri }); coll._entries.delete(uri); },
                 dispose: () => { },
-                forEach: () => { },
+                forEach: (cb) => { coll._entries.forEach((v, k) => cb(k, v)); },
             };
-            _tracking.createdDiagnosticCollections.push({ name });
+            _tracking.createdDiagnosticCollections.push({ name, collection: coll });
             return coll;
         },
         registerHoverProvider: (selector, provider) => {
