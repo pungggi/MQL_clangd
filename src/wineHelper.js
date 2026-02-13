@@ -1,6 +1,9 @@
 'use strict';
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
+const fs = require('fs');
+const os = require('os');
+const nodePath = require('path');
 
 const execFileAsync = promisify(execFile);
 
@@ -339,25 +342,25 @@ module.exports = {
     logWarning,
     logError,
     buildWineCmd,
-    buildSpawnOptions
+    buildSpawnOptions,
+    buildBatchContent,
+    createWineBatchFile,
+    cleanupBatchFile
 };
 
 /**
- * Build command arguments for MetaEditor via Wine's cmd.exe.
+ * Build command to execute a .bat file via Wine's cmd.exe.
  *
- * Routes through `wine cmd /c` so that Windows' own command processor handles
- * path quoting natively — fixing the issue where Wine's direct argument passing
- * mangles embedded quotes in flags like /compile:"Z:\path with spaces\file.mq5".
+ * Executes `wine cmd /c <bat_path>` to run a pre-written batch file.
  *
  * @param {string} wineBinary - Path to wine executable (e.g. 'wine64')
- * @param {string} metaEditorWinPath - Windows-style path to MetaEditor (e.g. 'Z:\...\metaeditor64.exe')
- * @param {string[]} metaEditorArgs - MetaEditor arguments (e.g. ['/compile:"Z:\..."', '/log:"Z:\..."'])
+ * @param {string} batWinPath - Windows-style path to the .bat file to execute
  * @returns {{ executable: string, args: string[] }}
  */
-function buildWineCmd(wineBinary, metaEditorWinPath, metaEditorArgs) {
+function buildWineCmd(wineBinary, batWinPath) {
     return {
         executable: wineBinary,
-        args: ['cmd', '/c', metaEditorWinPath, ...metaEditorArgs],
+        args: ['cmd', '/c', batWinPath],
     };
 }
 
@@ -375,4 +378,58 @@ function buildSpawnOptions({ env } = {}) {
         options.windowsVerbatimArguments = true;
     }
     return options;
+}
+
+
+/**
+ * Build the content for a temporary .bat file that executes a Wine command.
+ *
+ * This bypasses Wine's MSVC-style command line reconstruction which escapes
+ * embedded quotes (" -> \") in a way that cmd.exe cannot parse. By writing
+ * the exact command to a .bat file, cmd.exe reads and executes it directly.
+ *
+ * @param {string} exeWinPath - Windows-style path to the executable
+ * @param {string[]} args - Arguments with correct quoting (e.g. '/compile:"Z:\\..."')
+ * @returns {string} The .bat file content
+ */
+function buildBatchContent(exeWinPath, args) {
+    const quotedExe = '"' + exeWinPath + '"';
+    const cmdLine = [quotedExe, ...args].join(' ');
+    return '@echo off\r\n' + cmdLine + '\r\n';
+}
+
+/**
+ * Create a temporary .bat file for Wine command execution.
+ *
+ * Writes the command to a temp file and converts its path to Windows format
+ * so it can be passed to `wine cmd /c <bat_path>`.
+ *
+ * @param {string} content - The .bat file content (from buildBatchContent)
+ * @param {string} wineBinary - Path to wine executable
+ * @param {string} [winePrefix] - Optional WINEPREFIX path
+ * @returns {Promise<{unixPath: string, winPath: string}>}
+ */
+async function createWineBatchFile(content, wineBinary, winePrefix) {
+    const tmpDir = os.tmpdir();
+    const batName = 'mql_compile_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.bat';
+    const batUnixPath = nodePath.join(tmpDir, batName);
+
+    fs.writeFileSync(batUnixPath, content, 'utf8');
+
+    const result = await toWineWindowsPath(batUnixPath, wineBinary, winePrefix);
+    if (!result.success) {
+        try { fs.unlinkSync(batUnixPath); } catch (_) { /* ignore */ }
+        throw new Error('Failed to convert batch file path: ' + result.error);
+    }
+
+    return { unixPath: batUnixPath, winPath: result.path };
+}
+
+/**
+ * Clean up a temporary .bat file created by createWineBatchFile.
+ *
+ * @param {string} unixPath - The Unix path to the .bat file
+ */
+function cleanupBatchFile(unixPath) {
+    try { fs.unlinkSync(unixPath); } catch (_) { /* ignore */ }
 }

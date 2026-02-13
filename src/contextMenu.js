@@ -13,7 +13,10 @@ const {
     getWinePrefix,
     getWineEnv,
     validateWinePath,
-    buildWineCmd
+    buildWineCmd,
+    buildBatchContent,
+    createWineBatchFile,
+    cleanupBatchFile
 } = require('./wineHelper');
 
 
@@ -266,13 +269,17 @@ async function OpenFileInMetaEditor(uri) {
             const args = [pathResult.path]; // File to open
             if (portableSwitch) args.push(portableSwitch);
 
-            const wineCmd = buildWineCmd(wineBinary, metaEditorWinPath, args);
+            const batContent = buildBatchContent(metaEditorWinPath, args);
+            const batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
+            const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
             const proc = childProcess.spawn(wineCmd.executable, wineCmd.args, { shell: false, detached: true, stdio: 'ignore', env: wineEnv });
             proc.on('error', (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
             });
             proc.unref();
+            // Clean up batch file after cmd.exe has read it
+            setTimeout(() => cleanupBatchFile(batFile.unixPath), 5000);
         } else {
             const args = [uri.fsPath];
             if (portableSwitch) args.push(portableSwitch);
@@ -373,13 +380,17 @@ async function OpenTradingTerminal() {
             const args = [];
             if (portableSwitch) args.push(portableSwitch);
 
-            const wineCmd = buildWineCmd(wineBinary, terminalWinPath, args);
+            const batContent = buildBatchContent(terminalWinPath, args);
+            const batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
+            const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
             const proc = childProcess.spawn(wineCmd.executable, wineCmd.args, { shell: false, detached: true, stdio: 'ignore', env: wineEnv });
             proc.on('error', (err) => {
                 console.error('Wine process error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
             });
             proc.unref();
+            // Clean up batch file after cmd.exe has read it
+            setTimeout(() => cleanupBatchFile(batFile.unixPath), 5000);
         } else {
             const args = [];
             if (portableSwitch) args.push(portableSwitch);
