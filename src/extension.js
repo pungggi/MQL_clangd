@@ -501,7 +501,7 @@ async function compilePath(rt, pathToCompile, _context) {
             }
 
             // Clean up temporary batch file (Wine mode only)
-            if (useWine && typeof batFile !== 'undefined' && batFile) {
+            if (useWine && batFile) {
                 cleanupBatchFile(batFile.unixPath);
             }
 

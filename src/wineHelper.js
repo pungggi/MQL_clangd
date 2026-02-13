@@ -382,19 +382,61 @@ function buildSpawnOptions({ env } = {}) {
 
 
 /**
+ * Escape a string for safe use in a batch file command line.
+ *
+ * Wraps the value in double quotes and escapes batch metacharacters:
+ * - % is doubled to %%
+ * - ^ is doubled to ^^
+ * - Special characters &, |, <, >, (, ), @, ! are prefixed with ^
+ *
+ * LIMITATION: This function does NOT handle control characters (\r, \n) or
+ * null bytes. Callers must ensure paths and arguments do not contain these
+ * characters before passing them to buildBatchContent().
+ *
+ * @param {string} value - The string to escape
+ * @returns {string} The escaped and quoted string
+ * @throws {Error} If the value contains control characters (\r, \n) or null bytes
+ */
+function escapeBatchArg(value) {
+    // Reject control characters and null bytes
+    if (/[\r\n\x00]/.test(value)) {
+        throw new Error('Batch argument contains invalid control characters: ' + JSON.stringify(value));
+    }
+
+    // First, escape % as %%
+    let escaped = value.replace(/%/g, '%%');
+
+    // Escape ^ as ^^
+    escaped = escaped.replace(/\^/g, '^^');
+
+    // Escape special batch characters with ^ prefix
+    // Characters: & | < > ( ) @ !
+    escaped = escaped.replace(/([&|<>()@!])/g, '^$1');
+
+    // Wrap in double quotes
+    return '"' + escaped + '"';
+}
+
+/**
  * Build the content for a temporary .bat file that executes a Wine command.
  *
  * This bypasses Wine's MSVC-style command line reconstruction which escapes
  * embedded quotes (" -> \") in a way that cmd.exe cannot parse. By writing
  * the exact command to a .bat file, cmd.exe reads and executes it directly.
  *
+ * LIMITATION: exeWinPath and args are escaped for batch file safety, but
+ * control characters (\r, \n, \x00) in paths or arguments will cause an error.
+ * Callers must sanitize inputs to avoid these characters.
+ *
  * @param {string} exeWinPath - Windows-style path to the executable
- * @param {string[]} args - Arguments with correct quoting (e.g. '/compile:"Z:\\..."')
+ * @param {string[]} args - Arguments with correct quoting (e.g. '/compile:"Z:\..."')
  * @returns {string} The .bat file content
+ * @throws {Error} If exeWinPath or any arg contains control characters
  */
 function buildBatchContent(exeWinPath, args) {
-    const quotedExe = '"' + exeWinPath + '"';
-    const cmdLine = [quotedExe, ...args].join(' ');
+    const escapedExe = escapeBatchArg(exeWinPath);
+    const escapedArgs = args.map(arg => escapeBatchArg(arg));
+    const cmdLine = [escapedExe, ...escapedArgs].join(' ');
     return '@echo off\r\n' + cmdLine + '\r\n';
 }
 
