@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.23
+
+### Bug Fixes
+- **Wine Compilation**: Fixed a critical bug where arguments with spaces (like `/compile:"Path with spaces"`) were being double-quoted in the generated batch file, causing `cmd.exe` to fail parsing.
+  - Implemented smarter argument escaping that preserves existing quotes while securing batch metacharacters.
+  - Added safeguards around batch file creation to prevent UI hangs if the filesystem operation fails.
+  
 ## 1.1.21/22
 
 ### Bug Fixes
