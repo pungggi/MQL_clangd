@@ -381,17 +381,22 @@ function buildSpawnOptions({ env } = {}) {
 }
 
 
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS_RE = /[\r\n\x00]/;
+
 /**
- * Escape a string for safe use in a batch file command line.
+ * Escape a string for safe use as a quoted batch file argument.
  *
  * Wraps the value in double quotes and escapes batch metacharacters:
+ * - " is doubled to "" (CMD toggle-quoting convention)
  * - % is doubled to %%
  * - ^ is doubled to ^^
  * - Special characters &, |, <, >, (, ), @, ! are prefixed with ^
  *
- * LIMITATION: This function does NOT handle control characters (\r, \n) or
- * null bytes. Callers must ensure paths and arguments do not contain these
- * characters before passing them to buildBatchContent().
+ * Use this for simple values (e.g., the executable path) that need full
+ * quoting. For arguments that already contain their own quoting structure
+ * (e.g., /compile:"Z:\..."), use escapeBatchMeta() instead to avoid
+ * broken nested quotes.
  *
  * @param {string} value - The string to escape
  * @returns {string} The escaped and quoted string
@@ -399,12 +404,15 @@ function buildSpawnOptions({ env } = {}) {
  */
 function escapeBatchArg(value) {
     // Reject control characters and null bytes
-    if (/[\r\n\x00]/.test(value)) {
+    if (CONTROL_CHARS_RE.test(value)) {
         throw new Error('Batch argument contains invalid control characters: ' + JSON.stringify(value));
     }
 
-    // First, escape % as %%
+    // Escape % as %%
     let escaped = value.replace(/%/g, '%%');
+
+    // Escape embedded double quotes as "" (CMD toggle-quoting convention)
+    escaped = escaped.replace(/"/g, '""');
 
     // Escape ^ as ^^
     escaped = escaped.replace(/\^/g, '^^');
@@ -415,6 +423,30 @@ function escapeBatchArg(value) {
 
     // Wrap in double quotes
     return '"' + escaped + '"';
+}
+
+/**
+ * Escape batch metacharacters without adding outer quotes.
+ *
+ * Use for arguments that already contain their own quoting structure
+ * (e.g., /compile:"Z:\\path\\file.mq5"), where adding outer quotes
+ * would produce broken nested quoting that cmd.exe cannot parse.
+ *
+ * Only escapes % → %% since it is the only batch metacharacter
+ * interpreted inside double-quoted strings. Other metacharacters
+ * (&, |, <, >, ^) are already protected by the quotes surrounding
+ * path values within the argument.
+ *
+ * @param {string} value - The pre-formatted argument string
+ * @returns {string} The argument with batch-sensitive characters escaped
+ * @throws {Error} If the value contains control characters (\r, \n) or null bytes
+ */
+function escapeBatchMeta(value) {
+    if (CONTROL_CHARS_RE.test(value)) {
+        throw new Error('Batch argument contains invalid control characters: ' + JSON.stringify(value));
+    }
+    // % is interpreted even inside double-quoted strings in batch files
+    return value.replace(/%/g, '%%');
 }
 
 /**
@@ -429,13 +461,15 @@ function escapeBatchArg(value) {
  * Callers must sanitize inputs to avoid these characters.
  *
  * @param {string} exeWinPath - Windows-style path to the executable
- * @param {string[]} args - Arguments with correct quoting (e.g. '/compile:"Z:\..."')
+ * @param {string[]} args - Pre-formatted arguments with correct quoting (e.g. '/compile:"Z:\..."')
  * @returns {string} The .bat file content
  * @throws {Error} If exeWinPath or any arg contains control characters
  */
 function buildBatchContent(exeWinPath, args) {
     const escapedExe = escapeBatchArg(exeWinPath);
-    const escapedArgs = args.map(arg => escapeBatchArg(arg));
+    // Args already contain their own quoting structure (e.g. /compile:"path");
+    // only escape % to prevent batch variable expansion, don't add outer quotes.
+    const escapedArgs = args.map(arg => escapeBatchMeta(arg));
     const cmdLine = [escapedExe, ...escapedArgs].join(' ');
     return '@echo off\r\n' + cmdLine + '\r\n';
 }

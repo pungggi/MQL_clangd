@@ -477,8 +477,14 @@ async function compilePath(rt, pathToCompile, _context) {
         if (includefile) metaArgs.push(includefile);
         if (portableSwitch) metaArgs.push(portableSwitch);
 
-        const batContent = buildBatchContent(metaEditorWinPath, metaArgs);
-        batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
+        try {
+            const batContent = buildBatchContent(metaEditorWinPath, metaArgs);
+            batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
+        } catch (batchErr) {
+            outputChannel.appendLine(`[Error] Failed to create Wine batch file: ${batchErr.message}`);
+            vscode.window.showErrorMessage(`Wine compilation setup failed: ${batchErr.message}`);
+            return undefined;
+        }
         const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
         command = wineCmd.executable;
         execArgs = wineCmd.args;
@@ -568,24 +574,29 @@ async function compilePath(rt, pathToCompile, _context) {
 
             if (rt === 2 && !log.error) {
                 if (useWine) {
-                    const wineEnv = getWineEnv(config);
-                    // Use the already converted metaEditorWinPath
-                    const rt2Args = [`/compile:"${compileArg}"`];
-                    const rt2BatContent = buildBatchContent(metaEditorWinPath, rt2Args);
-                    const rt2BatFile = await createWineBatchFile(rt2BatContent, wineBinary, winePrefix);
-                    const wineCmd = buildWineCmd(wineBinary, rt2BatFile.winPath);
+                    try {
+                        const wineEnv = getWineEnv(config);
+                        // Use the already converted metaEditorWinPath
+                        const rt2Args = [`/compile:"${compileArg}"`];
+                        const rt2BatContent = buildBatchContent(metaEditorWinPath, rt2Args);
+                        const rt2BatFile = await createWineBatchFile(rt2BatContent, wineBinary, winePrefix);
+                        const wineCmd = buildWineCmd(wineBinary, rt2BatFile.winPath);
 
-                    childProcess.spawn(wineCmd.executable, wineCmd.args, buildSpawnOptions({ env: wineEnv }))
-                        .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
-                            cleanupBatchFile(rt2BatFile.unixPath);
-                            resolve();
-                        })
-                        .on('close', () => {
-                            outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                            cleanupBatchFile(rt2BatFile.unixPath);
-                            resolve();
-                        });
+                        childProcess.spawn(wineCmd.executable, wineCmd.args, buildSpawnOptions({ env: wineEnv }))
+                            .on('error', (error) => {
+                                outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
+                                cleanupBatchFile(rt2BatFile.unixPath);
+                                resolve();
+                            })
+                            .on('close', () => {
+                                outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                                cleanupBatchFile(rt2BatFile.unixPath);
+                                resolve();
+                            });
+                    } catch (batchErr) {
+                        outputChannel.appendLine(`[Error] Failed to create Wine batch file for script execution: ${batchErr.message}`);
+                        resolve();
+                    }
                 } else {
                     // Direct execution on Windows – windowsVerbatimArguments keeps quotes intact (fixes #6)
                     const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
