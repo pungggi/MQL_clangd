@@ -5,7 +5,7 @@ const path = require('path');
 const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch } = require('../../src/createProperties');
 
 // Import Wine helper functions
-const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions } = require('../../src/wineHelper');
+const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent } = require('../../src/wineHelper');
 
 function withPlatform(value, fn) {
     const original = process.platform;
@@ -369,29 +369,56 @@ suite('Pure Logic Unit Tests', () => {
         // However, the error handling paths are covered by the validateWinePath tests above.
 
         suite('buildWineCmd', () => {
-            test('should route through cmd /c with correct argument order', () => {
-                const result = buildWineCmd('wine64', 'Z:\\MetaTrader\\metaeditor64.exe', [
-                    '/compile:"Z:\\MQL5\\test.mq5"',
-                    '/log:"Z:\\MQL5\\test.log"',
-                ]);
+            test('should route through cmd /c with bat file path', () => {
+                const result = buildWineCmd('wine64', 'C:\\Temp\\mql_compile_123.bat');
                 assert.strictEqual(result.executable, 'wine64');
                 assert.deepStrictEqual(result.args, [
                     'cmd', '/c',
-                    'Z:\\MetaTrader\\metaeditor64.exe',
-                    '/compile:"Z:\\MQL5\\test.mq5"',
-                    '/log:"Z:\\MQL5\\test.log"',
+                    'C:\\Temp\\mql_compile_123.bat',
                 ]);
             });
 
-            test('should handle optional arguments', () => {
-                const result = buildWineCmd('wine', 'C:\\Program Files\\MetaTrader 5\\metaeditor64.exe', [
-                    '/compile:"Z:\\test.mq5"',
+            test('should accept different wine binaries', () => {
+                const result = buildWineCmd('wine', 'Z:\\tmp\\script.bat');
+                assert.strictEqual(result.executable, 'wine');
+                assert.deepStrictEqual(result.args, ['cmd', '/c', 'Z:\\tmp\\script.bat']);
+            });
+        });
+
+        suite('buildBatchContent', () => {
+            test('should produce correct batch content with quoted exe and args', () => {
+                const content = buildBatchContent('Z:\\MetaTrader\\metaeditor64.exe', [
+                    '/compile:"Z:\\MQL5\\test.mq5"',
+                    '/log:"Z:\\MQL5\\test.log"',
                 ]);
-                assert.deepStrictEqual(result.args, [
-                    'cmd', '/c',
-                    'C:\\Program Files\\MetaTrader 5\\metaeditor64.exe',
-                    '/compile:"Z:\\test.mq5"',
+                assert.ok(content.startsWith('@echo off\r\n'));
+                assert.ok(content.includes('"Z:\\MetaTrader\\metaeditor64.exe"'));
+                assert.ok(content.includes('/compile:"Z:\\MQL5\\test.mq5"'));
+                assert.ok(content.includes('/log:"Z:\\MQL5\\test.log"'));
+            });
+
+            test('should handle empty args array', () => {
+                const content = buildBatchContent('C:\\editor.exe', []);
+                assert.ok(content.includes('"C:\\editor.exe"'));
+                // Should just have the quoted exe with no trailing args
+                const cmdLine = content.split('\r\n')[1];
+                assert.strictEqual(cmdLine, '"C:\\editor.exe"');
+            });
+
+            test('should handle paths with spaces', () => {
+                const content = buildBatchContent('C:\\Program Files\\MetaTrader 5\\metaeditor64.exe', [
+                    '/compile:"Z:\\My Projects\\test file.mq5"',
                 ]);
+                assert.ok(content.includes('"C:\\Program Files\\MetaTrader 5\\metaeditor64.exe"'));
+                assert.ok(content.includes('/compile:"Z:\\My Projects\\test file.mq5"'));
+            });
+
+            test('should use CRLF line endings for Windows batch files', () => {
+                const content = buildBatchContent('C:\\editor.exe', ['/compile:"test"']);
+                // Check that \r\n is used (not just \n)
+                const parts = content.split('\r\n');
+                assert.ok(parts.length >= 3, 'Should have at least 3 parts when split by CRLF');
+                assert.strictEqual(parts[0], '@echo off');
             });
         });
 

@@ -1,6 +1,9 @@
 'use strict';
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
+const fs = require('fs');
+const os = require('os');
+const nodePath = require('path');
 
 const execFileAsync = promisify(execFile);
 
@@ -339,25 +342,25 @@ module.exports = {
     logWarning,
     logError,
     buildWineCmd,
-    buildSpawnOptions
+    buildSpawnOptions,
+    buildBatchContent,
+    createWineBatchFile,
+    cleanupBatchFile
 };
 
 /**
- * Build command arguments for MetaEditor via Wine's cmd.exe.
+ * Build command to execute a .bat file via Wine's cmd.exe.
  *
- * Routes through `wine cmd /c` so that Windows' own command processor handles
- * path quoting natively — fixing the issue where Wine's direct argument passing
- * mangles embedded quotes in flags like /compile:"Z:\path with spaces\file.mq5".
+ * Executes `wine cmd /c <bat_path>` to run a pre-written batch file.
  *
  * @param {string} wineBinary - Path to wine executable (e.g. 'wine64')
- * @param {string} metaEditorWinPath - Windows-style path to MetaEditor (e.g. 'Z:\...\metaeditor64.exe')
- * @param {string[]} metaEditorArgs - MetaEditor arguments (e.g. ['/compile:"Z:\..."', '/log:"Z:\..."'])
+ * @param {string} batWinPath - Windows-style path to the .bat file to execute
  * @returns {{ executable: string, args: string[] }}
  */
-function buildWineCmd(wineBinary, metaEditorWinPath, metaEditorArgs) {
+function buildWineCmd(wineBinary, batWinPath) {
     return {
         executable: wineBinary,
-        args: ['cmd', '/c', metaEditorWinPath, ...metaEditorArgs],
+        args: ['cmd', '/c', batWinPath],
     };
 }
 
@@ -375,4 +378,134 @@ function buildSpawnOptions({ env } = {}) {
         options.windowsVerbatimArguments = true;
     }
     return options;
+}
+
+
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS_RE = /[\r\n\x00]/;
+
+/**
+ * Escape a string for safe use as a quoted batch file argument.
+ *
+ * Wraps the value in double quotes and escapes batch metacharacters:
+ * - " is doubled to "" (CMD toggle-quoting convention)
+ * - % is doubled to %%
+ * - ^ is doubled to ^^
+ * - Special characters &, |, <, >, (, ), @, ! are prefixed with ^
+ *
+ * Use this for simple values (e.g., the executable path) that need full
+ * quoting. For arguments that already contain their own quoting structure
+ * (e.g., /compile:"Z:\..."), use escapeBatchMeta() instead to avoid
+ * broken nested quotes.
+ *
+ * @param {string} value - The string to escape
+ * @returns {string} The escaped and quoted string
+ * @throws {Error} If the value contains control characters (\r, \n) or null bytes
+ */
+function escapeBatchArg(value) {
+    // Reject control characters and null bytes
+    if (CONTROL_CHARS_RE.test(value)) {
+        throw new Error('Batch argument contains invalid control characters: ' + JSON.stringify(value));
+    }
+
+    // Escape % as %%
+    let escaped = value.replace(/%/g, '%%');
+
+    // Escape embedded double quotes as "" (CMD toggle-quoting convention)
+    escaped = escaped.replace(/"/g, '""');
+
+    // Escape ^ as ^^
+    escaped = escaped.replace(/\^/g, '^^');
+
+    // Escape special batch characters with ^ prefix
+    // Characters: & | < > ( ) @ !
+    escaped = escaped.replace(/([&|<>()@!])/g, '^$1');
+
+    // Wrap in double quotes
+    return '"' + escaped + '"';
+}
+
+/**
+ * Escape batch metacharacters without adding outer quotes.
+ *
+ * Use for arguments that already contain their own quoting structure
+ * (e.g., /compile:"Z:\\path\\file.mq5"), where adding outer quotes
+ * would produce broken nested quoting that cmd.exe cannot parse.
+ *
+ * Only escapes % → %% since it is the only batch metacharacter
+ * interpreted inside double-quoted strings. Other metacharacters
+ * (&, |, <, >, ^) are already protected by the quotes surrounding
+ * path values within the argument.
+ *
+ * @param {string} value - The pre-formatted argument string
+ * @returns {string} The argument with batch-sensitive characters escaped
+ * @throws {Error} If the value contains control characters (\r, \n) or null bytes
+ */
+function escapeBatchMeta(value) {
+    if (CONTROL_CHARS_RE.test(value)) {
+        throw new Error('Batch argument contains invalid control characters: ' + JSON.stringify(value));
+    }
+    // % is interpreted even inside double-quoted strings in batch files
+    return value.replace(/%/g, '%%');
+}
+
+/**
+ * Build the content for a temporary .bat file that executes a Wine command.
+ *
+ * This bypasses Wine's MSVC-style command line reconstruction which escapes
+ * embedded quotes (" -> \") in a way that cmd.exe cannot parse. By writing
+ * the exact command to a .bat file, cmd.exe reads and executes it directly.
+ *
+ * LIMITATION: exeWinPath and args are escaped for batch file safety, but
+ * control characters (\r, \n, \x00) in paths or arguments will cause an error.
+ * Callers must sanitize inputs to avoid these characters.
+ *
+ * @param {string} exeWinPath - Windows-style path to the executable
+ * @param {string[]} args - Pre-formatted arguments with correct quoting (e.g. '/compile:"Z:\..."')
+ * @returns {string} The .bat file content
+ * @throws {Error} If exeWinPath or any arg contains control characters
+ */
+function buildBatchContent(exeWinPath, args) {
+    const escapedExe = escapeBatchArg(exeWinPath);
+    // Args already contain their own quoting structure (e.g. /compile:"path");
+    // only escape % to prevent batch variable expansion, don't add outer quotes.
+    const escapedArgs = args.map(arg => escapeBatchMeta(arg));
+    const cmdLine = [escapedExe, ...escapedArgs].join(' ');
+    return '@echo off\r\n' + cmdLine + '\r\n';
+}
+
+/**
+ * Create a temporary .bat file for Wine command execution.
+ *
+ * Writes the command to a temp file and converts its path to Windows format
+ * so it can be passed to `wine cmd /c <bat_path>`.
+ *
+ * @param {string} content - The .bat file content (from buildBatchContent)
+ * @param {string} wineBinary - Path to wine executable
+ * @param {string} [winePrefix] - Optional WINEPREFIX path
+ * @returns {Promise<{unixPath: string, winPath: string}>}
+ */
+async function createWineBatchFile(content, wineBinary, winePrefix) {
+    const tmpDir = os.tmpdir();
+    const batName = 'mql_compile_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.bat';
+    const batUnixPath = nodePath.join(tmpDir, batName);
+
+    fs.writeFileSync(batUnixPath, content, 'utf8');
+
+    const result = await toWineWindowsPath(batUnixPath, wineBinary, winePrefix);
+    if (!result.success) {
+        try { fs.unlinkSync(batUnixPath); } catch (_) { /* ignore */ }
+        throw new Error('Failed to convert batch file path: ' + result.error);
+    }
+
+    return { unixPath: batUnixPath, winPath: result.path };
+}
+
+/**
+ * Clean up a temporary .bat file created by createWineBatchFile.
+ *
+ * @param {string} unixPath - The Unix path to the .bat file
+ */
+function cleanupBatchFile(unixPath) {
+    try { fs.unlinkSync(unixPath); } catch (_) { /* ignore */ }
 }
