@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.24
+
+### Features
+- **Clangd Properties Generator**: New module for generating `.clangd` configuration properties and compiler flags for MQL projects, improving clangd setup automation.
+
+### Improvements
+- **Lightweight Diagnostics**: Major rewrite of the lightweight diagnostics engine with better detection of unnecessary semicolons, assignments in conditions, and unclosed strings.
+
 ## 1.1.23
 
 ### Bug Fixes
