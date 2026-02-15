@@ -418,6 +418,10 @@ async function CreateProperties(force = false) {
                 args.push('-D__MQL5_BUILD__');
             }
 
+            // -c tells the driver to compile only (no linking), producing
+            // exactly one compiler job.  Some clangd versions fail with
+            // "fe_expected_compiler_job" when this is missing.
+            args.push('-c');
             args.push(filePath);
 
             return {
@@ -619,7 +623,9 @@ async function CreateProperties(force = false) {
             'member_decl_does_not_match',
             'ovl_no_oper',
             // MQL const semantics differ from C++ - const params can be reassigned
-            'typecheck_assign_const'
+            'typecheck_assign_const',
+            // Clangd driver error when compile command produces multiple jobs
+            'fe_expected_compiler_job'
         ];
 
         let finalSuppressions = baseSuppressions;
@@ -666,6 +672,8 @@ Hover:
 
 CompileFlags:
   Add:
+    # Compile only – ensures the driver produces exactly one compiler job
+    - -c
     # Suppress all warnings in .clangd config; targeted -Wno-* flags are already set in baseFlags
     - -Wno-everything
 
