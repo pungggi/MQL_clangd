@@ -25,12 +25,94 @@ function analyzeDocument(document) {
     const text = document.getText();
     const lines = text.split('\n');
 
+    // Track multi-line state across the entire document
+    let inMultiLineString = false;
+    let multiLineStringStartLine = -1;
+    let inBlockComment = false;
+
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+        // Strip trailing \r to handle CRLF line endings
+        const line = lines[i].replace(/\r$/, '');
         const trimmed = line.trim();
 
-        // Skip comments and empty lines
-        if (trimmed.startsWith('//') || trimmed === '') continue;
+        // --- Character scanner: always runs to maintain state ---
+        // Tracks block comments, strings, char literals, and escape sequences
+        let inString = inMultiLineString;
+        let escaped = false;
+        let quoteCount = 0;
+        const hasLineContinuation = line.endsWith('\\');
+        let lineIsCode = !inBlockComment && !inMultiLineString;
+
+        for (let j = 0; j < line.length; j++) {
+            const char = line[j];
+
+            // Handle block comment state
+            if (inBlockComment) {
+                if (char === '*' && j < line.length - 1 && line[j + 1] === '/') {
+                    inBlockComment = false;
+                    j++; // skip the '/'
+                }
+                continue;
+            }
+
+            // Skip escaped characters inside strings
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+
+            if (inString && char === '\\') {
+                escaped = true;
+                continue;
+            }
+
+            // Outside strings: detect comment starts
+            if (!inString) {
+                // Single-line comment: stop scanning this line
+                if (char === '/' && j < line.length - 1 && line[j + 1] === '/') {
+                    break;
+                }
+                // Block comment start
+                if (char === '/' && j < line.length - 1 && line[j + 1] === '*') {
+                    inBlockComment = true;
+                    j++; // skip the '*'
+                    continue;
+                }
+                // Character literal containing a double quote: skip '"'
+                if (char === '\'' && j + 2 < line.length && line[j + 1] === '"' && line[j + 2] === '\'') {
+                    j += 2; // skip the '"' and closing '
+                    continue;
+                }
+            }
+
+            // Track string boundaries
+            if (char === '"') {
+                quoteCount++;
+                if (!inString) {
+                    inString = true;
+                    if (multiLineStringStartLine === -1) {
+                        multiLineStringStartLine = i;
+                    }
+                } else {
+                    inString = false;
+                }
+            }
+        }
+
+        // Update multi-line string state for next iteration
+        if (!inMultiLineString && inString) {
+            inMultiLineString = true;
+        } else if (inMultiLineString && !inString) {
+            inMultiLineString = false;
+            multiLineStringStartLine = -1;
+        }
+
+        // --- Skip diagnostics for non-code lines ---
+        // If the entire line is inside a block comment or multi-line string
+        // that started before this line, skip diagnostic checks
+        if (!lineIsCode) continue;
+        // Skip empty lines and pure single-line comment lines
+        if (trimmed === '' || trimmed.startsWith('//')) continue;
 
         // CHECK 1: Semicolon after closing brace (common typo, not struct/class/enum)
         if (/\}\s*;/.test(line) && !/^\s*(struct|class|enum)/.test(trimmed)) {
@@ -71,72 +153,68 @@ function analyzeDocument(document) {
             }
         }
 
-        // CHECK 3: Unclosed string literal on single line
-        // DISABLED: This check causes too many false positives in complex MQL code
-        // (multi-line strings, macros, special MQL syntax patterns)
-        // TODO: Re-enable with better heuristics or make it configurable
-        /*
-        let quoteCount = 0;
-        let inString = false;
-        let escaped = false;
-        let hasBackslashAtEnd = trimmed.endsWith('\\');
+        // CHECK 3: Unclosed string literal check
+        // Skip MQL directives that commonly have unbalanced quotes
+        if (/^#(property|import|resource)\s/.test(trimmed)) continue;
 
-        for (let j = 0; j < line.length; j++) {
-            const char = line[j];
-
-            if (!inString && j < line.length - 1 && char === '/' && line[j + 1] === '/') {
-                break;
-            }
-
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-
-            if (char === '\\') {
-                escaped = true;
-                continue;
-            }
-
-            if (char === '"') {
-                quoteCount++;
-                inString = !inString;
-            }
-        }
-
-        if (quoteCount % 2 !== 0 && !hasBackslashAtEnd) {
-            const diag = new vscode.Diagnostic(
-                new vscode.Range(i, 0, i, line.length),
-                'Possible unclosed string literal (odd number of quotes)',
-                vscode.DiagnosticSeverity.Warning
-            );
-            diag.source = 'mql-lightweight';
-            diag.code = 'unclosed-string';
-            diagnostics.push(diag);
-        }
-        */
-
-        // CHECK 4: Common MQL function typos
-        const commonTypos = {
-            'Ordersend': 'OrderSend', 'ordersend': 'OrderSend',
-            'Orderclose': 'OrderClose', 'Symbolinfo': 'SymbolInfo',
-            'symbolinfo': 'SymbolInfo', 'Accountinfo': 'AccountInfo',
-            'accountinfo': 'AccountInfo', 'Positionget': 'PositionGet',
-            'Iclose': 'iClose', 'Iopen': 'iOpen', 'Ihigh': 'iHigh', 'Ilow': 'iLow'
-        };
-
-        for (const [typo, correct] of Object.entries(commonTypos)) {
-            const regex = new RegExp(`\\b${typo}\\b`, 'g');
-            let match;
-            while ((match = regex.exec(line)) !== null) {
-                diagnostics.push(new vscode.Diagnostic(
-                    new vscode.Range(i, match.index, i, match.index + typo.length),
-                    `Typo: '${typo}' should be '${correct}'`,
-                    vscode.DiagnosticSeverity.Error
-                ));
+        // Report suspicious patterns on this line
+        // Only report if:
+        // 1. We have odd quote count
+        // 2. No line continuation
+        // 3. Not inside a multi-line string that started earlier
+        // 4. Not a #define macro (which often has odd quote patterns)
+        if (!inMultiLineString && quoteCount % 2 !== 0 && !hasLineContinuation) {
+            // Skip lines that look like macro definitions
+            if (!/^\s*#\s*define\s/.test(line)) {
+                const diag = new vscode.Diagnostic(
+                    new vscode.Range(i, 0, i, line.length),
+                    'Possible unclosed string literal',
+                    vscode.DiagnosticSeverity.Warning
+                );
+                diag.source = 'mql-lightweight';
+                diag.code = 'unclosed-string';
+                diagnostics.push(diag);
             }
         }
     }
+    
+    // After processing all lines, check if there's an unclosed multi-line string
+    if (inMultiLineString && multiLineStringStartLine >= 0) {
+        const diag = new vscode.Diagnostic(
+            new vscode.Range(multiLineStringStartLine, 0, multiLineStringStartLine, lines[multiLineStringStartLine].length),
+            'Unclosed string literal (started here)',
+            vscode.DiagnosticSeverity.Error
+        );
+        diag.source = 'mql-lightweight';
+        diag.code = 'unclosed-string';
+        diagnostics.push(diag);
+    }
+
+    // CHECK 4: Common MQL function typos
+    const commonTypos = {
+        'Ordersend': 'OrderSend', 'ordersend': 'OrderSend',
+        'Orderclose': 'OrderClose', 'Symbolinfo': 'SymbolInfo',
+        'symbolinfo': 'SymbolInfo', 'Accountinfo': 'AccountInfo',
+        'accountinfo': 'AccountInfo', 'Positionget': 'PositionGet',
+        'Iclose': 'iClose', 'Iopen': 'iOpen', 'Ihigh': 'iHigh', 'Ilow': 'iLow'
+    };
+
+    for (const [typo, correct] of Object.entries(commonTypos)) {
+        const regex = new RegExp(`\\b${typo}\\b`, 'g');
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+            // Find line number for this match
+            const pos = document.positionAt(match.index);
+            const line = pos.line;
+            const col = pos.character;
+            diagnostics.push(new vscode.Diagnostic(
+                new vscode.Range(line, col, line, col + typo.length),
+                `Typo: '${typo}' should be '${correct}'`,
+                vscode.DiagnosticSeverity.Error
+            ));
+        }
+    }
+
     return diagnostics;
 }
 
