@@ -200,6 +200,11 @@
                         "Automatically merge existing suppressions",
                         "Always overwrite the .clangd file"
                     ]
+                },
+                "mql_tools.telemetry.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Send anonymous usage statistics to help improve MQL Clangd. **No personal data, file names, paths, or code is ever collected** — only which commands and features are used, and whether compilation succeeds. You can also disable all extension telemetry globally via `telemetry.telemetryLevel`."
                 }
             }
         },

@@ -54,6 +54,7 @@ const {
     cleanupBatchFile
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
+const telemetry = require('./telemetry');
 
 
 // =============================================================================
@@ -759,6 +760,13 @@ async function Compile(rt, context) {
     if (hasErrors) {
         await vscode.commands.executeCommand('workbench.panel.markers.view.focus');
     }
+
+    telemetry.track('compile_result', {
+        mode: rt === 0 ? 'check' : rt === 1 ? 'compile' : 'script',
+        ext:  extension.slice(1), // 'mq4', 'mq5', or 'mqh' — no path
+        ok:   !hasErrors,
+        wine: isWineEnabled(vscode.workspace.getConfiguration('mql_tools'))
+    });
 }
 
 function replaceLog(str, f) {
@@ -2137,6 +2145,8 @@ function activate(context) {
     diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
     outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
 
+    telemetry.init(context);
+
     const extensionId = 'ngsoftware.mql-tools';
     const currentVersion = vscode.extensions.getExtension(extensionId)?.packageJSON.version;
     const previousVersion = context.globalState.get('mql-tools.version');
@@ -2181,6 +2191,15 @@ function activate(context) {
         });
     }
 
+    // Track anonymous activation snapshot (feature flags only, no PII)
+    telemetry.track('activate', {
+        wine:             config.get('Wine.Enabled', false),
+        lightweight_diag: config.get('Diagnostics.Lightweight', true),
+        auto_check:       config.get('AutoCheck.Enabled', false),
+        check_on_save:    config.get('CheckOnSave', true),
+        first_install:    previousVersion === undefined
+    });
+
     // Wait for environment to stabilize before migration check
     sleep(2000).then(() => {
         if (previousVersion !== currentVersion) {
@@ -2194,11 +2213,11 @@ function activate(context) {
         }
     });
 
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(0, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => Compile(1, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => Compile(2, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.help', (keyword, version) => Help(keyword, version)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.offlineHelp', () => OfflineHelp()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => { telemetry.track('command', { name: 'check' }); return Compile(0, context); }));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => { telemetry.track('command', { name: 'compile' }); return Compile(1, context); }));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => { telemetry.track('command', { name: 'compile_script' }); return Compile(2, context); }));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.help', (keyword, version) => { telemetry.track('command', { name: 'help' }); return Help(keyword, version); }));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.offlineHelp', () => { telemetry.track('command', { name: 'offline_help' }); return OfflineHelp(); }));
 
     // Compile target commands
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.selectCompileTarget', async () => {
@@ -2300,6 +2319,7 @@ function activate(context) {
         }
     }));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.configurations', async () => {
+        telemetry.track('command', { name: 'create_config' });
         await CreateProperties();
         try {
             await vscode.commands.executeCommand('clangd.restart');
@@ -2320,7 +2340,7 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => OpenFileInMetaEditor(uri)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', () => OpenTradingTerminal()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => { telemetry.track('command', { name: 'toggle_log' }); return logTailer.toggle(); }));
 
     // LiveLog commands for real-time logging
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.installLiveLog', async () => {
@@ -2372,6 +2392,7 @@ function activate(context) {
             }
             logTailer.updateStatusBar();
             vscode.window.showInformationMessage(`Switched to ${selected.label} mode`);
+            telemetry.track('command', { name: 'switch_log_mode', mode: selected.mode });
         }
     }));
 
