@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates correct implementation of MQL #include directive parsing. The candidate must extract file paths from both angle-bracket and double-quote include styles while correctly handling block comments and single-line comments.",
+  "type": "weighted_checklist",
+  "capability_tested": "MQL Include Statement Parsing",
+  "checklist": [
+    {
+      "name": "Angle-bracket includes",
+      "description": "Correctly extracts paths from #include <file.mqh> style directives, returning just the path without the angle brackets",
+      "max_score": 20
+    },
+    {
+      "name": "Double-quote includes",
+      "description": "Correctly extracts paths from #include \"file.mqh\" style directives, returning just the path without the quotes",
+      "max_score": 20
+    },
+    {
+      "name": "Block comment stripping",
+      "description": "Block comments (/* ... */) are stripped before scanning, so #include directives inside block comments are not returned",
+      "max_score": 25
+    },
+    {
+      "name": "Single-line comment skipping",
+      "description": "Lines beginning with // are skipped; #include directives on such lines are not extracted",
+      "max_score": 20
+    },
+    {
+      "name": "Mixed source correctness",
+      "description": "When source contains a mix of valid includes, commented includes, and non-include lines, only valid #include paths are returned with no duplicates or spurious entries",
+      "max_score": 15
+    }
+  ]
+}

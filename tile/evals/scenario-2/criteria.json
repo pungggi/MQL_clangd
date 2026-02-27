@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of VS Code workspace variable expansion and path resolution utilities. The candidate must correctly handle ${workspaceFolder} and ${workspaceFolderBasename} substitution as well as relative-to-absolute path resolution.",
+  "type": "weighted_checklist",
+  "capability_tested": "Workspace Variable Path Resolution",
+  "checklist": [
+    {
+      "name": "${workspaceFolder} expansion",
+      "description": "Correctly replaces ${workspaceFolder} (case-insensitive) with the provided workspace folder path",
+      "max_score": 25
+    },
+    {
+      "name": "${workspaceFolderBasename} expansion",
+      "description": "Correctly replaces ${workspaceFolderBasename} with the basename of the workspace folder path",
+      "max_score": 20
+    },
+    {
+      "name": "Relative path resolution",
+      "description": "resolvePathRelativeToWorkspace resolves relative paths against the workspace folder root using path.resolve",
+      "max_score": 25
+    },
+    {
+      "name": "Absolute path normalization",
+      "description": "Absolute paths are returned normalized (.. segments resolved) without prepending the workspace path",
+      "max_score": 15
+    },
+    {
+      "name": "Edge case handling",
+      "description": "Non-string inputs are returned unchanged; empty strings and missing workspace paths are handled without throwing",
+      "max_score": 15
+    }
+  ]
+}

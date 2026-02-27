@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of a log file tailer with dual-mode encoding support. The candidate must correctly track byte offsets, detect file truncation, support two encoding modes, and implement polling as a fallback to native file watching.",
+  "type": "weighted_checklist",
+  "capability_tested": "Live Log Tailing",
+  "checklist": [
+    {
+      "name": "Incremental byte reading",
+      "description": "readNewLines reads only the bytes from lastSize to newSize using file descriptor operations (open/read/close or equivalent), not by reading the entire file",
+      "max_score": 25
+    },
+    {
+      "name": "Encoding support",
+      "description": "In 'livelog' mode decodes bytes as UTF-8; in 'standard' mode decodes as UTF-16LE; correctly updates lastSize after each read",
+      "max_score": 25
+    },
+    {
+      "name": "Truncation detection",
+      "description": "checkForNewContent detects when file size < lastSize and resets lastSize to 0 rather than attempting a negative-range read",
+      "max_score": 20
+    },
+    {
+      "name": "Polling loop with stop",
+      "description": "poll() uses setTimeout to schedule itself recursively; when isTailing is false the timer is not rescheduled and any active timer is cleared on stop()",
+      "max_score": 20
+    },
+    {
+      "name": "File watcher setup",
+      "description": "Uses fs.watch on the target file and calls checkForNewContent on 'change' events; handles missing files gracefully without throwing",
+      "max_score": 10
+    }
+  ]
+}

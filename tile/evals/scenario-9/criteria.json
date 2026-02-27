@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of Windows batch file argument escaping utilities used to safely execute MetaEditor commands via Wine. The candidate must correctly implement two different escaping strategies and combine them into batch file content.",
+  "type": "weighted_checklist",
+  "capability_tested": "Wine Batch File Command Builder",
+  "checklist": [
+    {
+      "name": "Full batch argument quoting",
+      "description": "escapeBatchArg wraps the value in double quotes and correctly escapes %, \", ^, and the special characters &, |, <, >, (, ), @, ! using the documented escaping rules",
+      "max_score": 25
+    },
+    {
+      "name": "Metacharacter-only escaping",
+      "description": "escapeBatchMeta escapes only % as %% and does not add outer quotes or escape other metacharacters, preserving existing quoting structures in arguments",
+      "max_score": 20
+    },
+    {
+      "name": "Control character validation",
+      "description": "Both escapeBatchArg and escapeBatchMeta throw an Error when the input contains \\r, \\n, or null bytes",
+      "max_score": 20
+    },
+    {
+      "name": "Batch content structure",
+      "description": "buildBatchContent produces content starting with '@echo off\\r\\n', uses escapeBatchArg for the executable and escapeBatchMeta for arguments, with CRLF line endings",
+      "max_score": 20
+    },
+    {
+      "name": "Spaces in paths",
+      "description": "The generated batch content correctly handles executable paths containing spaces (wrapped in double quotes by escapeBatchArg) so cmd.exe can parse them",
+      "max_score": 15
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of .clangd YAML suppression parsing and merging. The candidate must correctly traverse the YAML structure to find Diagnostics.Suppress entries and merge them with extension-provided suppressions without duplication.",
+  "type": "weighted_checklist",
+  "capability_tested": "Clangd Diagnostic Suppression Configuration",
+  "checklist": [
+    {
+      "name": "Correct YAML section navigation",
+      "description": "parseClangdSuppressions correctly identifies the Diagnostics: section, then the Suppress: subsection, and extracts only items from that subsection (stops at ClangTidy: key)",
+      "max_score": 30
+    },
+    {
+      "name": "Missing file handling",
+      "description": "Returns an empty array (not an error) when the .clangd file does not exist (ENOENT); propagates other filesystem errors",
+      "max_score": 20
+    },
+    {
+      "name": "Comment line exclusion",
+      "description": "Lines beginning with '# ' inside the Suppress block are excluded from the returned suppressions list",
+      "max_score": 15
+    },
+    {
+      "name": "Merge preserves order",
+      "description": "mergeClangdSuppressions returns extension suppressions first, then appends user suppressions not already in the base list, preserving relative order",
+      "max_score": 20
+    },
+    {
+      "name": "Merge no duplicates",
+      "description": "mergeClangdSuppressions does not include a suppression from existingSuppressions that is already present in newSuppressions",
+      "max_score": 15
+    }
+  ]
+}

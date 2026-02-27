@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of a reverse include dependency graph for MQL files. The candidate must correctly build the graph with case-insensitive normalized keys and perform graph traversal that finds transitive dependencies while handling cycles.",
+  "type": "weighted_checklist",
+  "capability_tested": "Reverse Include Graph Construction",
+  "checklist": [
+    {
+      "name": "Index key normalization",
+      "description": "buildReverseIndex stores entries with keys that are lowercase-normalized paths (using path.normalize + .toLowerCase()), enabling case-insensitive lookup",
+      "max_score": 20
+    },
+    {
+      "name": "Multiple includers in Set",
+      "description": "When multiple files include the same header, all their paths appear in the Set for that header's key without duplicates",
+      "max_score": 20
+    },
+    {
+      "name": "Direct dependency lookup",
+      "description": "findCandidateMains returns .mq4/.mq5 files that directly include the queried header",
+      "max_score": 20
+    },
+    {
+      "name": "Transitive traversal",
+      "description": "findCandidateMains traverses through intermediate .mqh files to find main files that indirectly depend on the queried header",
+      "max_score": 25
+    },
+    {
+      "name": "Cycle handling",
+      "description": "Uses a visited set to prevent infinite loops when circular include dependencies exist between .mqh files",
+      "max_score": 15
+    }
+  ]
+}

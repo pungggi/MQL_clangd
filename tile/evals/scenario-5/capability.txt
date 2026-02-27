@@ -1,0 +1,1 @@
+Clangd Diagnostic Suppression Configuration

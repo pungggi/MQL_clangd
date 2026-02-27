@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates correct implementation of MQL4/MQL5 version detection from file path information. The candidate must handle file extensions, folder path markers, and the correct defaulting behavior.",
+  "type": "weighted_checklist",
+  "capability_tested": "MQL Version Detection",
+  "checklist": [
+    {
+      "name": ".mq4 extension detection",
+      "description": "Returns 'mql4' when fileName ends with .mq4 regardless of folder path",
+      "max_score": 20
+    },
+    {
+      "name": ".mq5 extension detection",
+      "description": "Returns 'mql5' when fileName ends with .mq5 regardless of folder path",
+      "max_score": 20
+    },
+    {
+      "name": "Extension priority over folder",
+      "description": "File extension takes priority over folder path; a .mq5 file in an MQL4 folder returns 'mql5'",
+      "max_score": 20
+    },
+    {
+      "name": "Folder path marker detection",
+      "description": "When no file extension is determinative, checks folder path for case-insensitive 'MQL4' or 'MQL5' substring",
+      "max_score": 20
+    },
+    {
+      "name": "Null/default behavior",
+      "description": "Returns null when both folderPath and fileName are absent; returns 'mql5' (not null) when path is present but version is ambiguous",
+      "max_score": 20
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of MQL static analysis that detects three common coding errors: unnecessary semicolons after closing braces, assignment operators in conditions, and unclosed string literals. The candidate must correctly handle comment exclusion and edge cases for each check.",
+  "type": "weighted_checklist",
+  "capability_tested": "Lightweight Live Diagnostics",
+  "checklist": [
+    {
+      "name": "Unnecessary semicolon detection",
+      "description": "Flags '}; ' patterns on non-struct/class/enum lines with the correct 'unnecessary-semicolon' code and hint severity; does not flag struct/class/enum closing braces",
+      "max_score": 25
+    },
+    {
+      "name": "Assignment-in-condition detection",
+      "description": "Detects bare '=' in if/while conditions and reports 'assignment-in-condition' warning; does not flag intentional patterns where a comparison operator is also present",
+      "max_score": 25
+    },
+    {
+      "name": "Unclosed string detection",
+      "description": "Flags lines with odd quote counts (not inside block comments, not line-continuation lines) with 'unclosed-string' warning; handles multi-line strings and skips #property/#import/#resource directives",
+      "max_score": 25
+    },
+    {
+      "name": "Comment exclusion",
+      "description": "Lines inside block comments and single-line comment lines are excluded from all three checks; block comment state is tracked across lines",
+      "max_score": 15
+    },
+    {
+      "name": "Correct diagnostic structure",
+      "description": "Each returned diagnostic includes a zero-based line number, human-readable message, severity level, and diagnostic code matching the expected values",
+      "max_score": 10
+    }
+  ]
+}

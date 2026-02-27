@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of clangd compiler flag generation for MQL4/5 projects. The candidate must generate the correct base flags, correctly transform them for MQL4 vs MQL5, and merge flags without duplicates.",
+  "type": "weighted_checklist",
+  "capability_tested": "Clangd Compiler Flags Generation",
+  "checklist": [
+    {
+      "name": "Required base flags",
+      "description": "generateBaseFlags always includes -xc++, -std=c++17, -D__MQL__, -D__MQL5__, -fms-extensions, -fms-compatibility, and -ferror-limit=0",
+      "max_score": 25
+    },
+    {
+      "name": "compat header insertion",
+      "description": "When compatHeaderPath is provided, the -include<path> flag is inserted at position 4 (after -D__MQL5__), not appended at the end",
+      "max_score": 20
+    },
+    {
+      "name": "MQL4 flag transformation",
+      "description": "generateProjectFlags with 'mql4' replaces -D__MQL5__ with -D__MQL4__ and appends -D__MQL4_BUILD__; does not mutate the input array",
+      "max_score": 25
+    },
+    {
+      "name": "MQL5 flag transformation",
+      "description": "generateProjectFlags with 'mql5' appends only -D__MQL5_BUILD__ without replacing any flags",
+      "max_score": 15
+    },
+    {
+      "name": "Flag merging without duplicates",
+      "description": "mergeFlags returns a combined array with no duplicate flags and no empty/non-string entries; preserves original order",
+      "max_score": 15
+    }
+  ]
+}

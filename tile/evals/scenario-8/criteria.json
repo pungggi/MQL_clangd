@@ -1,0 +1,32 @@
+{
+  "context": "Evaluates implementation of bounded Levenshtein distance and fuzzy dictionary matching for MQL function name spellchecking. The candidate must implement the DP algorithm correctly, with early termination, and the two-strategy dictionary lookup.",
+  "type": "weighted_checklist",
+  "capability_tested": "MQL Function Name Spellcheck",
+  "checklist": [
+    {
+      "name": "Levenshtein correctness",
+      "description": "levenshteinBounded returns the correct edit distance for various string pairs including identical strings (0), single substitutions (1), and multi-edit strings",
+      "max_score": 25
+    },
+    {
+      "name": "Early termination on length",
+      "description": "Returns Infinity immediately without full DP when string length difference exceeds maxDist",
+      "max_score": 20
+    },
+    {
+      "name": "Infinity threshold",
+      "description": "Returns Infinity when the computed distance exceeds maxDist (not just when lengths differ), enabling use as a filter without knowing the actual large distance",
+      "max_score": 20
+    },
+    {
+      "name": "Match sorting",
+      "description": "findClosestMatches returns results sorted by ascending distance as primary key and alphabetically as secondary key; results are capped at maxResults",
+      "max_score": 20
+    },
+    {
+      "name": "Guard conditions",
+      "description": "Returns empty array when word is already an exact match in dictionary, or when word is shorter than 3 characters; performs first-char strategy before adjacent-char fallback",
+      "max_score": 15
+    }
+  ]
+}
