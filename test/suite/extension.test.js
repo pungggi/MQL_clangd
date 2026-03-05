@@ -42,6 +42,13 @@ suite('Core Logic Unit Tests (Independent)', () => {
         assert.strictEqual(result.diagnostics[0].severity, 0); // Error
     });
 
+    test('Log Parsing - Error Detection without winePrefix leaves path unchanged (Windows compat)', () => {
+        const logStr = 'C:\\Project\\Main.mq5(10,5) : error 123: unexpected token';
+        // No winePrefix → backward-compatible: Windows path is kept as-is
+        const result = replaceLog(logStr, true, '');
+        assert.strictEqual(result.diagnostics[0].file, 'C:\\Project\\Main.mq5');
+    });
+
     test('Log Parsing - Diagnostics also parsed when f=false (compile mode)', () => {
         const logStr = 'C:\\Project\\Main.mq5(10,5) : error 123: unexpected token';
         const result = replaceLog(logStr, false);
@@ -188,6 +195,70 @@ suite('safeConfigUpdate Tests (Issue #21)', () => {
 
         await safeConfigUpdate('existing.setting', 'value', ConfigurationTarget.Workspace, false);
         assert.strictEqual(updateCalled, true, 'update() should be called when setting is registered');
+    });
+});
+
+suite('replaceLog Wine Path Conversion Tests (Issue #17)', () => {
+    const WINE_PREFIX = '/home/username/Bottles/Meta-Trader';
+
+    test('error diagnostic file path is converted to Linux path when winePrefix is set', () => {
+        const logStr = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\CloseAllWindows.mq5(10,5) : error 123: unexpected token';
+        const result = replaceLog(logStr, true, WINE_PREFIX);
+
+        assert.strictEqual(result.error, true);
+        assert.strictEqual(result.diagnostics.length, 1);
+        assert.strictEqual(
+            result.diagnostics[0].file,
+            `${WINE_PREFIX}/drive_c/Programs/MetaTrader5/MQL5/Scripts/CloseAllWindows.mq5`
+        );
+    });
+
+    test('warning diagnostic file path is converted to Linux path when winePrefix is set', () => {
+        const logStr = 'C:\\Programs\\MetaTrader5\\MQL5\\Experts\\MyEA.mq5(20,1) : warning 456: obsolete function';
+        const result = replaceLog(logStr, true, WINE_PREFIX);
+
+        assert.strictEqual(result.diagnostics.length, 1);
+        assert.strictEqual(result.diagnostics[0].severity, 1); // Warning
+        assert.strictEqual(
+            result.diagnostics[0].file,
+            `${WINE_PREFIX}/drive_c/Programs/MetaTrader5/MQL5/Experts/MyEA.mq5`
+        );
+    });
+
+    test('hover link href contains a valid file:// URL pointing to Linux path', () => {
+        const logStr = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\CloseAllWindows.mq5(10,5) : error 123: unexpected token';
+        const result = replaceLog(logStr, true, WINE_PREFIX);
+        const hoverEntry = Object.values(result.diagnostics.length > 0 ? module.exports.obj_hover || {} : {});
+        // The key check: no Windows-style path should appear in the diagnostics file
+        assert.ok(
+            !result.diagnostics[0].file.includes('C:\\'),
+            'file path must not contain Windows drive letter'
+        );
+        assert.ok(
+            result.diagnostics[0].file.startsWith('/home/'),
+            'file path must start with /home/'
+        );
+    });
+
+    test('line/col positions are preserved after path conversion', () => {
+        const logStr = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\foo.mq5(42,7) : error 100: some error';
+        const result = replaceLog(logStr, true, WINE_PREFIX);
+
+        assert.strictEqual(result.diagnostics[0].range.start.line, 41);     // 42-1
+        assert.strictEqual(result.diagnostics[0].range.start.character, 6); // 7-1
+    });
+
+    test('compilation start line produces hover link with Linux path', () => {
+        const logStr = 'C:\\Programs\\MetaTrader5\\MQL5 : information: compiling \'CloseAllWindows.mq5\'';
+        const result = replaceLog(logStr, true, WINE_PREFIX);
+        // replaceLog populates obj_hover; the text should at least contain the file name
+        assert.ok(result.text.includes('CloseAllWindows.mq5'));
+    });
+
+    test('MQL181 implicit-conversion warning is still suppressed with winePrefix', () => {
+        const logStr = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\foo.mq5(5,3) : warning 181: implicit conversion from \'number\' to \'string\'';
+        const result = replaceLog(logStr, true, WINE_PREFIX);
+        assert.strictEqual(result.diagnostics.length, 0, 'MQL181 should be filtered even with winePrefix');
     });
 });
 

@@ -142,9 +142,41 @@ async function toWineWindowsPath(localPath, wineBinary = 'wine64', winePrefix = 
 }
 
 /**
+ * Converts a Windows-style path from MetaEditor/Wine compiler output to a Linux path.
+ *
+ * MetaEditor running via Wine emits Windows paths (e.g. `C:\Programs\MT5\MQL5\foo.mq5`).
+ * This function maps the drive letter to the corresponding directory inside the Wine
+ * prefix (`{winePrefix}/drive_c/...`) and normalises backslashes to forward slashes.
+ *
+ * Conversion formula:
+ *   `C:\Programs\MT5\...`  →  `{winePrefix}/drive_c/Programs/MT5/...`
+ *
+ * When no winePrefix is supplied (empty string / undefined) the function returns the
+ * original path unchanged so that the Windows code-path is not affected.
+ *
+ * @param {string} winPath   - A Windows-style path as produced by MetaEditor output
+ * @param {string} winePrefix - The configured WINEPREFIX directory (e.g. `/home/user/Bottles/MT`)
+ * @returns {string} The corresponding Linux path, or the original string if conversion is not applicable
+ */
+function fromWineWindowsPath(winPath, winePrefix = '') {
+    if (!winePrefix || !winPath) return winPath;
+
+    // Match an optional leading slash followed by a Windows drive letter and colon
+    // e.g. "/C:\foo" (as url.pathToFileURL sometimes prepends a slash) or "C:\foo"
+    const match = winPath.match(/^\/?([a-zA-Z]):[/\\](.*)/s);
+    if (!match) return winPath;
+
+    const driveLetter = match[1].toLowerCase();
+    // Replace all backslashes with forward slashes in the rest of the path
+    const rest = match[2].replace(/\\/g, '/');
+
+    return `${winePrefix}/drive_${driveLetter}/${rest}`;
+}
+
+/**
  * Legacy wrapper for toWineWindowsPath that returns just the path string.
  * Use toWineWindowsPath directly for better error handling.
- * 
+ *
  * @param {string} localPath - The Unix/macOS path
  * @param {string} wineBinary - Path to wine executable
  * @param {string} [winePrefix] - Optional WINEPREFIX path
@@ -331,6 +363,7 @@ module.exports = {
     validateWinePath,
     toWineWindowsPath,
     toWineWindowsPathLegacy,
+    fromWineWindowsPath,
     isWineEnabled,
     getWineBinary,
     getWinePrefix,

@@ -5,7 +5,7 @@ const path = require('path');
 const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch } = require('../../src/createProperties');
 
 // Import Wine helper functions
-const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent } = require('../../src/wineHelper');
+const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent, fromWineWindowsPath } = require('../../src/wineHelper');
 
 function withPlatform(value, fn) {
     const original = process.platform;
@@ -446,6 +446,68 @@ suite('Pure Logic Unit Tests', () => {
                     assert.strictEqual(opts.shell, false);
                     assert.deepStrictEqual(opts.env, env);
                 });
+            });
+        });
+
+        suite('fromWineWindowsPath (Issue #17)', () => {
+            const PREFIX = '/home/user/Bottles/Meta-Trader';
+
+            test('should convert C: drive path to Linux path under winePrefix', () => {
+                const result = fromWineWindowsPath('C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\foo.mq5', PREFIX);
+                assert.strictEqual(result, `${PREFIX}/drive_c/Programs/MetaTrader5/MQL5/Scripts/foo.mq5`);
+            });
+
+            test('should convert D: drive to drive_d', () => {
+                const result = fromWineWindowsPath('D:\\Some\\Path\\file.mq5', PREFIX);
+                assert.strictEqual(result, `${PREFIX}/drive_d/Some/Path/file.mq5`);
+            });
+
+            test('should be case-insensitive for drive letter (uppercase)', () => {
+                const result = fromWineWindowsPath('C:\\foo\\bar.mq5', PREFIX);
+                assert.strictEqual(result, `${PREFIX}/drive_c/foo/bar.mq5`);
+            });
+
+            test('should be case-insensitive for drive letter (lowercase)', () => {
+                const result = fromWineWindowsPath('c:\\foo\\bar.mq5', PREFIX);
+                assert.strictEqual(result, `${PREFIX}/drive_c/foo/bar.mq5`);
+            });
+
+            test('should handle a leading slash before drive letter (pathToFileURL artefact)', () => {
+                // url.pathToFileURL on some platforms may produce "/C:\..." style strings
+                const result = fromWineWindowsPath('/C:\\Programs\\MT5\\file.mq5', PREFIX);
+                assert.strictEqual(result, `${PREFIX}/drive_c/Programs/MT5/file.mq5`);
+            });
+
+            test('should handle path with position suffix (e.g. "(10,5)")', () => {
+                // link_res in replaceLog includes the line/col position suffix
+                const result = fromWineWindowsPath('C:\\MQL5\\Scripts\\foo.mq5(10,5)', PREFIX);
+                assert.strictEqual(result, `${PREFIX}/drive_c/MQL5/Scripts/foo.mq5(10,5)`);
+            });
+
+            test('should return original path unchanged when winePrefix is empty string', () => {
+                const winPath = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\foo.mq5';
+                assert.strictEqual(fromWineWindowsPath(winPath, ''), winPath);
+            });
+
+            test('should return original path unchanged when winePrefix is undefined', () => {
+                const winPath = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\foo.mq5';
+                assert.strictEqual(fromWineWindowsPath(winPath, undefined), winPath);
+            });
+
+            test('should return original path unchanged when winPath is empty string', () => {
+                assert.strictEqual(fromWineWindowsPath('', PREFIX), '');
+            });
+
+            test('should return path unchanged when it is already a Linux path', () => {
+                const linuxPath = '/home/user/Bottles/Meta-Trader/drive_c/Programs/foo.mq5';
+                assert.strictEqual(fromWineWindowsPath(linuxPath, PREFIX), linuxPath);
+            });
+
+            test('real-world case from Issue #17', () => {
+                const winePrefix = '/home/username/Bottles/Meta-Trader';
+                const winPath = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\CloseAllWindows.mq5';
+                const expected = '/home/username/Bottles/Meta-Trader/drive_c/Programs/MetaTrader5/MQL5/Scripts/CloseAllWindows.mq5';
+                assert.strictEqual(fromWineWindowsPath(winPath, winePrefix), expected);
             });
         });
     });
