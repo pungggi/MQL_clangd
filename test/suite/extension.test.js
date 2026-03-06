@@ -12,7 +12,8 @@ Module._load = function (request) {
 };
 
 // 2. Load the modules under test (they will now get the mock)
-const { replaceLog, buildMetaEditorCmd } = require('../../src/extension');
+const extension = require('../../src/extension');
+const { replaceLog, buildMetaEditorCmd } = extension;
 const { normalizePath, generatePortableSwitch, safeConfigUpdate } = require('../../src/createProperties');
 
 suite('Core Logic Unit Tests (Independent)', () => {
@@ -228,16 +229,18 @@ suite('replaceLog Wine Path Conversion Tests (Issue #17)', () => {
     test('hover link href contains a valid file:// URL pointing to Linux path', () => {
         const logStr = 'C:\\Programs\\MetaTrader5\\MQL5\\Scripts\\CloseAllWindows.mq5(10,5) : error 123: unexpected token';
         const result = replaceLog(logStr, true, WINE_PREFIX);
-        const hoverEntry = Object.values(result.diagnostics.length > 0 ? module.exports.obj_hover || {} : {});
-        // The key check: no Windows-style path should appear in the diagnostics file
+        const hoverEntry = extension.obj_hover['unexpected token (10,5)'];
+
+        assert.strictEqual(result.diagnostics.length, 1);
+        assert.ok(hoverEntry, 'hover entry should be created for the diagnostic');
+        assert.strictEqual(hoverEntry.number, '123');
+        assert.ok(hoverEntry.link.startsWith('file://'), 'hover link should use file://');
+        assert.ok(hoverEntry.link.endsWith('#10,5'), 'hover link should preserve line/column fragment');
         assert.ok(
-            !result.diagnostics[0].file.includes('C:\\'),
-            'file path must not contain Windows drive letter'
+            hoverEntry.link.includes('/home/username/Bottles/Meta-Trader/drive_c/Programs/MetaTrader5/MQL5/Scripts/CloseAllWindows.mq5'),
+            'hover link should reference the converted Linux path'
         );
-        assert.ok(
-            result.diagnostics[0].file.startsWith('/home/'),
-            'file path must start with /home/'
-        );
+        assert.ok(!hoverEntry.link.includes('C:%5C'), 'hover link should not contain an encoded Windows path');
     });
 
     test('line/col positions are preserved after path conversion', () => {
