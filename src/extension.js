@@ -39,6 +39,7 @@ const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
 const {
     toWineWindowsPath,
+    fromWineWindowsPath,
     isWineEnabled,
     getWineBinary,
     getWinePrefix,
@@ -543,7 +544,9 @@ async function compilePath(rt, pathToCompile, _context) {
                 err && vscode.window.showErrorMessage(lg['err_remove_log']);
             });
 
-            log = replaceLog(data, rt === 0);
+            // Pass the Wine prefix so replaceLog can convert Windows paths from
+            // MetaEditor output to valid Linux paths when running under Wine.
+            log = replaceLog(data, rt === 0, useWine ? winePrefix : '');
 
             // Publish MetaEditor diagnostics to the Problems panel
             if (log.diagnostics.length > 0) {
@@ -761,7 +764,7 @@ async function Compile(rt, context) {
     }
 }
 
-function replaceLog(str, f) {
+function replaceLog(str, f, winePrefix) {
     let text = f ? '' : '\n\n', obj_hover = {}, ye = false, diagnostics = [];
     if (!str) return { text, obj_hover, error: ye, diagnostics };
 
@@ -778,7 +781,8 @@ function replaceLog(str, f) {
 
             if (mName && mPath) {
                 const name = mName[0];
-                const link = url.pathToFileURL(mPath[0]).href;
+                const resolvedPath = fromWineWindowsPath(mPath[0], winePrefix);
+                const link = url.pathToFileURL(resolvedPath).href;
                 obj_hover[name] = { link };
                 text += name + '\n';
             }
@@ -788,7 +792,8 @@ function replaceLog(str, f) {
             const mPath = item.match(/[a-zA-Z]:\\.+(?= :)/gi);
             if (mName && mPath) {
                 const name = mName[0];
-                const link = url.pathToFileURL(mPath[0]).href;
+                const resolvedPath = fromWineWindowsPath(mPath[0], winePrefix);
+                const link = url.pathToFileURL(resolvedPath).href;
                 obj_hover[name] = { link };
                 text += name + '\n';
             }
@@ -801,7 +806,8 @@ function replaceLog(str, f) {
             const mPath = item.match(/[a-zA-Z]:\\.+(?= :)/gi);
             if (mName && mPath) {
                 const name = mName[0];
-                const link = url.pathToFileURL(mPath[0]).href;
+                const resolvedPath = fromWineWindowsPath(mPath[0], winePrefix);
+                const link = url.pathToFileURL(resolvedPath).href;
                 obj_hover[name] = { link };
                 text += name + '\n';
             }
@@ -835,7 +841,10 @@ function replaceLog(str, f) {
                     const mPos = link_res.match(/\((\d+),(\d+)\)$/);
 
                     if (mFullPath && mPos) {
-                        const fullPath = mFullPath[0].replace(/\($/, '').trim();
+                        const rawPath = mFullPath[0].replace(/\($/, '').trim();
+                        // On Linux/Wine, convert the Windows path emitted by MetaEditor to a
+                        // proper Linux path using the Wine prefix (e.g. C:\... → {prefix}/drive_c/...)
+                        const fullPath = fromWineWindowsPath(rawPath, winePrefix);
                         const line = parseInt(mPos[1]) - 1;
                         const col = parseInt(mPos[2]) - 1;
                         const severity = item.toLowerCase().includes('error') ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning;
@@ -861,10 +870,14 @@ function replaceLog(str, f) {
                             errorCode: gh  // Include error code for documentation link
                         });
 
-                        const linePos = link_res.match(REG_LINE_POS);
+                        // Build hover link: resolve the raw Windows path portion of link_res
+                        // (which may include position suffix like "(10,5)") to a Linux path,
+                        // then let pathToFileURL produce a valid file:// URL.
+                        const resolvedLinkRes = fromWineWindowsPath(link_res, winePrefix);
+                        const linePos = resolvedLinkRes.match(REG_LINE_POS);
                         const hoverKey = (name_res + ' ' + (linePos ? linePos[0] : '')).trim();
                         obj_hover[hoverKey] = {
-                            link: url.pathToFileURL(link_res).href.replace(REG_LINE_FRAGMENT, '#').replace(/\)$/gm, ''),
+                            link: url.pathToFileURL(resolvedLinkRes).href.replace(REG_LINE_FRAGMENT, '#').replace(/\)$/gm, ''),
                             number: gh ? String(gh) : null
                         };
 
