@@ -3,7 +3,7 @@ const os = require('os');
 const path = require('path');
 
 // Import functions from createProperties
-const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch } = require('../../src/createProperties');
+const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry } = require('../../src/createProperties');
 
 // Import Wine helper functions
 const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent, fromWineWindowsPath } = require('../../src/wineHelper');
@@ -205,6 +205,52 @@ suite('Pure Logic Unit Tests', () => {
             assert.ok(!isSourceExtension(null));
             assert.ok(!isSourceExtension(undefined));
             assert.ok(!isSourceExtension(''));
+        });
+
+        test('should only treat .mq4 and .mq5 as translation units', () => {
+            assert.ok(isTranslationUnitExtension('.mq4'));
+            assert.ok(isTranslationUnitExtension('.mq5'));
+            assert.ok(isTranslationUnitExtension('.MQ4'));
+            assert.ok(isTranslationUnitExtension('.MQ5'));
+            assert.ok(!isTranslationUnitExtension('.mqh'));
+            assert.ok(!isTranslationUnitExtension('.ex5'));
+            assert.ok(!isTranslationUnitExtension(null));
+            assert.ok(!isTranslationUnitExtension(undefined));
+            assert.ok(!isTranslationUnitExtension(''));
+        });
+    });
+
+    suite('compile_commands entry generation', () => {
+        test('should build a compile command entry for .mq5 files', () => {
+            const flags = generateBaseFlags({
+                workspacePath: 'C:/Workspace',
+                includePath: 'C:/Workspace/Include'
+            });
+
+            const entry = buildCompileCommandEntry('C:/Workspace/Experts/TestEA.mq5', flags, 'C:/Workspace');
+
+            assert.ok(entry);
+            assert.strictEqual(entry.file, 'C:/Workspace/Experts/TestEA.mq5');
+            assert.strictEqual(entry.directory, 'C:/Workspace');
+            assert.ok(entry.arguments.includes('-D__MQL5__'));
+            assert.ok(entry.arguments.includes('-D__MQL5_BUILD__'));
+            assert.ok(entry.arguments.includes('-c'));
+            assert.strictEqual(entry.arguments[entry.arguments.length - 1], 'C:/Workspace/Experts/TestEA.mq5');
+        });
+
+        test('should build a compile command entry for .mq4 files with the correct defines', () => {
+            const flags = generateBaseFlags();
+            const entry = buildCompileCommandEntry('C:/Workspace/Experts/TestEA.mq4', flags, 'C:/Workspace');
+
+            assert.ok(entry);
+            assert.ok(entry.arguments.includes('-D__MQL4__'));
+            assert.ok(!entry.arguments.includes('-D__MQL5__'));
+            assert.ok(entry.arguments.includes('-D__MQL4_BUILD__'));
+        });
+
+        test('should skip .mqh header files so clangd can use fallback or inferred commands', () => {
+            const entry = buildCompileCommandEntry('C:/Workspace/Include/Trade.mqh', generateBaseFlags(), 'C:/Workspace');
+            assert.strictEqual(entry, null);
         });
     });
 
