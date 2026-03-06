@@ -72,6 +72,65 @@ function isSourceExtension(ext) {
 }
 
 /**
+ * Checks if a file extension should have a direct compile_commands.json entry.
+ * Headers rely on clangd fallback or inferred commands and must not be treated
+ * as standalone translation units.
+ * @param {string} ext - The file extension to check (e.g., '.mq5')
+ * @returns {boolean} - True for .mq4/.mq5, false otherwise
+ */
+function isTranslationUnitExtension(ext) {
+    if (!ext) return false;
+    const normalized = ext.toLowerCase();
+    return normalized === '.mq4' || normalized === '.mq5';
+}
+
+/**
+ * Builds one compile_commands.json entry for a translation unit.
+ * Returns null for headers so clangd can fall back to inferred commands.
+ * @param {string} filePath
+ * @param {string[]} sharedFlags
+ * @param {string} workspacePath
+ * @returns {{directory: string, arguments: string[], file: string} | null}
+ */
+function buildCompileCommandEntry(filePath, sharedFlags, workspacePath) {
+    const normalizedFilePath = normalizePath(filePath);
+    const ext = pathModule.extname(normalizedFilePath).toLowerCase();
+
+    if (!isTranslationUnitExtension(ext)) {
+        return null;
+    }
+
+    const args = ['clang++'];
+    const flags = Array.isArray(sharedFlags) ? sharedFlags : [];
+
+    flags.forEach(flag => {
+        if (!flag) {
+            return;
+        }
+
+        if (ext === '.mq4' && flag === '-D__MQL5__') {
+            args.push('-D__MQL4__');
+            return;
+        }
+
+        args.push(flag);
+    });
+
+    args.push(ext === '.mq4' ? '-D__MQL4_BUILD__' : '-D__MQL5_BUILD__');
+
+    // -c tells the driver to compile only (no linking), producing
+    // exactly one compiler job. Some clangd versions fail when this is missing.
+    args.push('-c');
+    args.push(normalizedFilePath);
+
+    return {
+        directory: normalizePath(workspacePath),
+        arguments: args,
+        file: normalizedFilePath
+    };
+}
+
+/**
  * Generates the portable switch string for MetaEditor commands.
  * Note: Returns the switch without leading space - callers should handle spacing.
  * @param {boolean} portableMode - Whether portable mode is enabled
@@ -393,43 +452,10 @@ async function CreateProperties(force = false) {
 
     // --- Generate compile_commands.json ---
     try {
-        const targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5,mqh}'));
-        const compileCommands = targetFiles.map(fileUri => {
-            const filePath = normalizePath(fileUri.fsPath);
-            const ext = pathModule.extname(filePath).toLowerCase();
-
-            // Build arguments with MQL4/MQL5 specific defines
-            const args = ['clang++'];
-            arrPath.forEach(flag => {
-                if (flag) {
-                    // Replace __MQL5__ with __MQL4__ for .mq4 files
-                    if (ext === '.mq4' && flag === '-D__MQL5__') {
-                        args.push('-D__MQL4__');
-                    } else {
-                        args.push(flag);
-                    }
-                }
-            });
-
-            // Add file-specific defines
-            if (ext === '.mq4') {
-                args.push('-D__MQL4_BUILD__');
-            } else if (ext === '.mq5') {
-                args.push('-D__MQL5_BUILD__');
-            }
-
-            // -c tells the driver to compile only (no linking), producing
-            // exactly one compiler job.  Some clangd versions fail with
-            // "fe_expected_compiler_job" when this is missing.
-            args.push('-c');
-            args.push(filePath);
-
-            return {
-                directory: normalizePath(workspacepath),
-                arguments: args,
-                file: filePath
-            };
-        });
+        const targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5}'));
+        const compileCommands = targetFiles
+            .map(fileUri => buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath))
+            .filter(Boolean);
 
         if (compileCommands.length > 0) {
             const dbPath = pathModule.join(workspacepath, 'compile_commands.json');
@@ -819,11 +845,13 @@ module.exports = {
     expandWorkspaceVariables,
     resolvePathRelativeToWorkspace,
     isSourceExtension,
+    isTranslationUnitExtension,
     detectMqlVersion,
     generateIncludeFlag,
     generateBaseFlags,
     generateProjectFlags,
     generatePortableSwitch,
+    buildCompileCommandEntry,
     parseClangdSuppressions,
     mergeClangdSuppressions,
     safeConfigUpdate
