@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.25
+
+### Bug Fixes
+- **Wine compiler output paths on Linux**: Fixed compiler diagnostics and output links under Wine by converting Windows-style paths (`C:\...`) from MetaEditor output into host Linux paths using the configured Wine prefix. VS Code file links now open the correct source files again (fixes #17).
+- **`.mqh` headers in `compile_commands.json`**: Fixed clangd errors for header files by generating direct compile commands only for real translation units (`.mq4`/`.mq5`), avoiding the "expected exactly one compiler job" error when opening `.mqh` files (fixes #18).
+
+
 ## 1.1.24
 
 ### Features
