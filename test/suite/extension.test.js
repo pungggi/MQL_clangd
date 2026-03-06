@@ -254,8 +254,15 @@ suite('replaceLog Wine Path Conversion Tests (Issue #17)', () => {
     test('compilation start line produces hover link with Linux path', () => {
         const logStr = 'C:\\Programs\\MetaTrader5\\MQL5 : information: compiling \'CloseAllWindows.mq5\'';
         const result = replaceLog(logStr, true, WINE_PREFIX);
-        // replaceLog populates obj_hover; the text should at least contain the file name
+        const hoverEntry = extension.obj_hover["'CloseAllWindows.mq5'"];
+
         assert.ok(result.text.includes('CloseAllWindows.mq5'));
+        assert.ok(hoverEntry, 'hover entry should be created for the compilation line');
+        assert.ok(hoverEntry.link.startsWith('file://'), 'hover link should use file://');
+        assert.ok(
+            hoverEntry.link.includes(`${WINE_PREFIX}/drive_c/Programs/MetaTrader5/MQL5`),
+            'hover link should reference the converted Linux path'
+        );
     });
 
     test('MQL181 implicit-conversion warning is still suppressed with winePrefix', () => {
