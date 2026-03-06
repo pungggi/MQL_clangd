@@ -6,6 +6,7 @@ const os = require('os');
 const nodePath = require('path');
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_WINE_DRIVE = 'c';
 
 /** @type {import('vscode').OutputChannel|null} */
 let outputChannel = null;
@@ -50,6 +51,32 @@ function logError(message) {
     if (outputChannel) {
         outputChannel.appendLine(`[Error] ${message}`);
     }
+}
+
+/**
+ * Expands a leading home-directory marker in a filesystem path.
+ *
+ * @param {string} pathValue
+ * @returns {string}
+ */
+function expandHomeDir(pathValue) {
+    if (!pathValue || typeof pathValue !== 'string') return '';
+    if (pathValue === '~') return os.homedir();
+    if (pathValue.startsWith('~/') || pathValue.startsWith('~\\')) {
+        return nodePath.join(os.homedir(), pathValue.slice(2));
+    }
+    return pathValue;
+}
+
+/**
+ * Normalises a Wine prefix path for safe path joining.
+ *
+ * @param {string} winePrefix
+ * @returns {string}
+ */
+function normalizeWinePrefix(winePrefix) {
+    const expandedPrefix = expandHomeDir(winePrefix);
+    return expandedPrefix ? expandedPrefix.replace(/[\\/]+$/, '') : '';
 }
 
 /**
@@ -142,9 +169,46 @@ async function toWineWindowsPath(localPath, wineBinary = 'wine64', winePrefix = 
 }
 
 /**
+ * Converts a Windows-style path from MetaEditor/Wine compiler output to a Linux path.
+ *
+ * MetaEditor running via Wine emits Windows paths (e.g. `C:\Programs\MT5\MQL5\foo.mq5`).
+ * This function maps the drive letter to the corresponding location inside the Wine
+ * prefix and normalises backslashes to forward slashes.
+ *
+ * Conversion formula:
+ *   `C:\Programs\MT5\...`  →  `{winePrefix}/drive_c/Programs/MT5/...`
+ *   `Z:\home\user\...`      →  `{winePrefix}/dosdevices/z:/home/user/...`
+ *
+ * When no winePrefix is supplied (empty string / undefined) the function returns the
+ * original path unchanged so that the Windows code-path is not affected.
+ *
+ * @param {string} winPath   - A Windows-style path as produced by MetaEditor output
+ * @param {string} winePrefix - The configured WINEPREFIX directory (e.g. `/home/user/Bottles/MT`)
+ * @returns {string} The corresponding Linux path, or the original string if conversion is not applicable
+ */
+function fromWineWindowsPath(winPath, winePrefix = '') {
+    const normalizedPrefix = normalizeWinePrefix(winePrefix);
+    if (!normalizedPrefix || !winPath) return winPath;
+
+    // Match an optional leading slash followed by a Windows drive letter and colon
+    // e.g. "/C:\foo" (as url.pathToFileURL sometimes prepends a slash) or "C:\foo"
+    const match = winPath.match(/^\/?([a-zA-Z]):[/\\](.*)/s);
+    if (!match) return winPath;
+
+    const driveLetter = match[1].toLowerCase();
+    // Replace all backslashes with forward slashes in the rest of the path
+    const rest = match[2].replace(/\\/g, '/');
+    const driveRoot = driveLetter === DEFAULT_WINE_DRIVE
+        ? nodePath.posix.join(normalizedPrefix, 'drive_c')
+        : nodePath.posix.join(normalizedPrefix, 'dosdevices', `${driveLetter}:`);
+
+    return rest ? nodePath.posix.join(driveRoot, rest) : driveRoot;
+}
+
+/**
  * Legacy wrapper for toWineWindowsPath that returns just the path string.
  * Use toWineWindowsPath directly for better error handling.
- * 
+ *
  * @param {string} localPath - The Unix/macOS path
  * @param {string} wineBinary - Path to wine executable
  * @param {string} [winePrefix] - Optional WINEPREFIX path
@@ -188,10 +252,20 @@ function getWineBinary(config) {
  * need to specify this to use the correct prefix.
  * 
  * @param {object} config - VS Code configuration object for mql_tools
- * @returns {string} The Wine prefix path (empty string if not configured)
+ * @returns {string} The Wine prefix path
  */
 function getWinePrefix(config) {
-    return (config.Wine && config.Wine.Prefix) || '';
+    const configuredPrefix = config.Wine && config.Wine.Prefix;
+    if (configuredPrefix) {
+        return normalizeWinePrefix(configuredPrefix);
+    }
+
+    const envPrefix = process.env.WINEPREFIX;
+    if (envPrefix) {
+        return normalizeWinePrefix(envPrefix);
+    }
+
+    return normalizeWinePrefix(nodePath.join(os.homedir(), '.wine'));
 }
 
 /**
@@ -331,6 +405,7 @@ module.exports = {
     validateWinePath,
     toWineWindowsPath,
     toWineWindowsPathLegacy,
+    fromWineWindowsPath,
     isWineEnabled,
     getWineBinary,
     getWinePrefix,
