@@ -210,8 +210,13 @@ suite('Pure Logic Unit Tests', () => {
         test('should only treat .mq4 and .mq5 as translation units', () => {
             assert.ok(isTranslationUnitExtension('.mq4'));
             assert.ok(isTranslationUnitExtension('.mq5'));
+            assert.ok(isTranslationUnitExtension('.MQ4'));
+            assert.ok(isTranslationUnitExtension('.MQ5'));
             assert.ok(!isTranslationUnitExtension('.mqh'));
             assert.ok(!isTranslationUnitExtension('.ex5'));
+            assert.ok(!isTranslationUnitExtension(null));
+            assert.ok(!isTranslationUnitExtension(undefined));
+            assert.ok(!isTranslationUnitExtension(''));
         });
     });
 
