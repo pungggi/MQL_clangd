@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.26
+
+### Bug Fixes
+- **Background checks and special literal formatting**: Fixed automatic syntax checks stealing editor focus while typing by avoiding Problems-panel focus during background runs, preserved `B'...'` binary literals during formatting normalization, and made `D'...'` literal spacing normalization consistent for both date-only and date-time forms.
+
 ## 1.1.25
 
 ### Bug Fixes
