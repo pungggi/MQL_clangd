@@ -665,7 +665,11 @@ async function compilePath(rt, pathToCompile, _context) {
     });
 }
 
-async function Compile(rt, context) {
+function shouldFocusProblemsPanel(hasErrors, options = {}) {
+    return Boolean(hasErrors) && !options.background;
+}
+
+async function Compile(rt, context, options = {}) {
     await FixFormatting();
     // Save after formatting. Guard against re-entrant CheckOnSave triggers.
     internalSaveDepth++;
@@ -757,9 +761,8 @@ async function Compile(rt, context) {
     // Refresh clangd diagnostics after compilation
     // This ensures the Problems panel reflects the actual compilation result
     await refreshClangdDiagnostics();
-
-    // Focus Problems panel if there were errors, otherwise Output panel stays focused
-    if (hasErrors) {
+    // Only steal focus for explicit user-invoked runs, not background checks.
+    if (shouldFocusProblemsPanel(hasErrors, options)) {
         await vscode.commands.executeCommand('workbench.panel.markers.view.focus');
     }
 }
@@ -949,52 +952,43 @@ function tf(date, t, d) {
     return d < 10 ? '0' + d.toString() : d.toString();
 }
 
+const SPECIAL_LITERAL_SPACING_RULES = [
+    { pattern: "\\bB '[01]+'", searchValue: "B ", replaceValue: "B" },
+    { pattern: "\\bC '\\d{1,3},\\d{1,3},\\d{1,3}'", searchValue: "C ", replaceValue: "C" },
+    { pattern: "\\bC '0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2}'", searchValue: "C ", replaceValue: "C" },
+    { pattern: "\\bD '(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})(?:\\s{1,}[\\d:]+)?'", searchValue: "D ", replaceValue: "D" }
+];
+
+function normalizeSpecialLiteralSpacing(text) {
+    return SPECIAL_LITERAL_SPACING_RULES.reduce((normalizedText, rule) => {
+        return normalizedText.replace(new RegExp(rule.pattern, 'g'), match => match.replace(rule.searchValue, rule.replaceValue));
+    }, text);
+}
+
 async function FixFormatting() {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return false;
     const document = editor.document;
-    const array = [];
-    const data = {
-        reg: [
-            "\\bC '\\d{1,3},\\d{1,3},\\d{1,3}'",
-            "\\bC '0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2}'",
-            "\\bD '(?:(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})|(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})\\s{1,}[\\d:]+)'"
-        ],
-        searchValue: [
-            'C ',
-            'C ',
-            'D '
-        ],
-        replaceValue: [
-            'C',
-            'C',
-            'D'
-        ]
-    };
+    const replacements = [];
+    const combinedPattern = new RegExp(SPECIAL_LITERAL_SPACING_RULES.map(rule => rule.pattern).join('|'), 'g');
 
-    Array.from(document.getText().matchAll(new RegExp(CollectRegEx(data.reg), 'g'))).forEach(match => {
-        for (const i in data.reg) {
-            if (match[0].match(new RegExp(data.reg[i], 'g'))) {
-                let range = new vscode.Range(document.positionAt(match.index), document.positionAt(match.index + match[0].length));
-                array.push({ range, to: document.getText(range).replace(data.searchValue[i], data.replaceValue[i]) });
-            }
+    Array.from(document.getText().matchAll(combinedPattern)).forEach(match => {
+        const replacement = normalizeSpecialLiteralSpacing(match[0]);
+        if (replacement === match[0]) {
+            return;
         }
+
+        const range = new vscode.Range(document.positionAt(match.index), document.positionAt(match.index + match[0].length));
+        replacements.push({ range, to: replacement });
     });
 
-    if (!array.length) return false;
+    if (!replacements.length) return false;
 
     return await editor.edit(editBuilder => {
-        for (const { range, to } of array) {
+        for (const { range, to } of replacements) {
             editBuilder.replace(range, to);
         }
     });
-}
-
-function CollectRegEx(dt, string = '') {
-    for (const i in dt) {
-        string += dt[i] + '|';
-    }
-    return string.slice(0, -1);
 }
 
 /**
@@ -2443,7 +2437,7 @@ function activate(context) {
             const checkingUri = activeDoc?.uri.toString();
 
             try {
-                await Compile(0, context); // Syntax check (no compilation)
+                await Compile(0, context, { background: true }); // Syntax check (no compilation)
             } finally {
                 // Record the final document version after our edits complete
                 // This prevents re-triggering from FixFormatting or save changes
@@ -2487,7 +2481,7 @@ function activate(context) {
 
         isAutoCheckRunning = true;
         try {
-            await Compile(0, context); // Syntax check
+            await Compile(0, context, { background: true }); // Syntax check
         } finally {
             isAutoCheckRunning = false;
         }
@@ -2503,7 +2497,7 @@ function activate(context) {
             if (['.mq4', '.mq5', '.mqh'].includes(ext)) {
                 isAutoCheckRunning = true;
                 try {
-                    await Compile(0, context); // Syntax check on startup
+                    await Compile(0, context, { background: true }); // Syntax check on startup
                 } finally {
                     isAutoCheckRunning = false;
                 }
@@ -2566,5 +2560,7 @@ module.exports = {
     deactivate,
     replaceLog,
     tf,
-    buildMetaEditorCmd
+    buildMetaEditorCmd,
+    normalizeSpecialLiteralSpacing,
+    shouldFocusProblemsPanel
 };
