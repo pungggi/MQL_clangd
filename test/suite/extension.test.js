@@ -13,7 +13,12 @@ Module._load = function (request) {
 
 // 2. Load the modules under test (they will now get the mock)
 const extension = require('../../src/extension');
-const { replaceLog, buildMetaEditorCmd } = extension;
+const {
+    replaceLog,
+    buildMetaEditorCmd,
+    normalizeSpecialLiteralSpacing,
+    shouldFocusProblemsPanel
+} = extension;
 const { normalizePath, generatePortableSwitch, safeConfigUpdate } = require('../../src/createProperties');
 
 suite('Core Logic Unit Tests (Independent)', () => {
@@ -71,6 +76,36 @@ suite('Core Logic Unit Tests (Independent)', () => {
         const logStr = '0 error(s), 0 warning(s), compile time: 100 msec';
         const result = replaceLog(logStr, true);
         assert.strictEqual(result.error, false);
+    });
+});
+
+suite('Formatting helper tests', () => {
+    test('normalizeSpecialLiteralSpacing fixes spaced B/C/D prefixed literals', () => {
+        const input = "int flags = B '111'; color shade = C '1,2,3'; datetime open = D '2024.01.02 03:04';";
+        const result = normalizeSpecialLiteralSpacing(input);
+
+        assert.ok(result.includes("B'111'"));
+        assert.ok(result.includes("C'1,2,3'"));
+        assert.ok(result.includes("D'2024.01.02 03:04'"));
+    });
+
+    test('normalizeSpecialLiteralSpacing leaves already-correct literals unchanged', () => {
+        const input = "int flags = B'111'; color shade = C'1,2,3';";
+        assert.strictEqual(normalizeSpecialLiteralSpacing(input), input);
+    });
+});
+
+suite('Problems panel focus helper tests', () => {
+    test('returns false when there are no errors', () => {
+        assert.strictEqual(shouldFocusProblemsPanel(false), false);
+    });
+
+    test('returns true for manual error runs', () => {
+        assert.strictEqual(shouldFocusProblemsPanel(true), true);
+    });
+
+    test('returns false for background error runs', () => {
+        assert.strictEqual(shouldFocusProblemsPanel(true, { background: true }), false);
     });
 });
 
