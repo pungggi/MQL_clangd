@@ -956,7 +956,7 @@ const SPECIAL_LITERAL_SPACING_RULES = [
     { pattern: "\\bB '[01]+'", searchValue: "B ", replaceValue: "B" },
     { pattern: "\\bC '\\d{1,3},\\d{1,3},\\d{1,3}'", searchValue: "C ", replaceValue: "C" },
     { pattern: "\\bC '0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2}'", searchValue: "C ", replaceValue: "C" },
-    { pattern: "\\bD '(?:(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})|(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})\\s{1,}[\\d:]+)'", searchValue: "D ", replaceValue: "D" }
+    { pattern: "\\bD '(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})(?:\\s{1,}[\\d:]+)?'", searchValue: "D ", replaceValue: "D" }
 ];
 
 function normalizeSpecialLiteralSpacing(text) {

@@ -89,6 +89,11 @@ suite('Formatting helper tests', () => {
         assert.ok(result.includes("D'2024.01.02 03:04'"));
     });
 
+    test('normalizeSpecialLiteralSpacing fixes spaced D literals without a time suffix', () => {
+        const input = "datetime open = D '2024.01.02';";
+        assert.ok(normalizeSpecialLiteralSpacing(input).includes("D'2024.01.02'"));
+    });
+
     test('normalizeSpecialLiteralSpacing leaves already-correct literals unchanged', () => {
         const input = "int flags = B'111'; color shade = C'1,2,3';";
         assert.strictEqual(normalizeSpecialLiteralSpacing(input), input);
