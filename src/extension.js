@@ -306,6 +306,36 @@ function buildMetaEditorCmd(executable, args) {
 }
 
 /**
+ * Infers the MQL data folder (the one containing Include/, Experts/, Logs/, …)
+ * by walking up the directory tree from the given source file path.
+ *
+ * This mirrors the heuristic used by LogTailer.inferDataFolder() but works
+ * directly on a file path rather than reading from the active editor, so it
+ * can be called during headless compilation (e.g. from compilePath).
+ *
+ * @param {string} filePath - Absolute path to the MQL source file being compiled
+ * @param {boolean} isMql5  - true for MQL5, false for MQL4
+ * @returns {string|null}   - Inferred data-folder path, or null if not found
+ */
+function inferMqlDataDirFromPath(filePath, isMql5) {
+    const targetDirName = isMql5 ? 'MQL5' : 'MQL4';
+    let current = pathModule.dirname(filePath);
+    const root = pathModule.parse(current).root;
+    while (current && current !== root) {
+        if (pathModule.basename(current).toUpperCase() === targetDirName) {
+            if (fs.existsSync(pathModule.join(current, 'Include')) ||
+                fs.existsSync(pathModule.join(current, 'Logs'))) {
+                return current;
+            }
+        }
+        const parent = pathModule.dirname(current);
+        if (parent === current) break;
+        current = parent;
+    }
+    return null;
+}
+
+/**
  * Compile a single file path
  * Extracted from Compile() to support compiling multiple targets
  */
@@ -415,6 +445,18 @@ async function compilePath(rt, pathToCompile, _context) {
         if (!pathValidation.valid) {
             vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
             return undefined;
+        }
+
+        // When no Include dir is configured, try to infer the MQL data folder
+        // by walking up from the source file (looks for MQL5/MQL4 dir with Include/ or Logs/).
+        // MetaEditor CLI needs an explicit /inc: flag to locate user headers on Wine/Linux;
+        // without it, it only searches its own installation Include directory.
+        if (!incDir) {
+            const inferred = inferMqlDataDirFromPath(pathToCompile, isMql5);
+            if (inferred) {
+                outputChannel.appendLine(`[Wine] Include${isMql5 ? '5' : '4'}Dir not configured; auto-inferred data folder: ${inferred}`);
+                incDir = inferred;
+            }
         }
     }
 
@@ -2562,5 +2604,6 @@ module.exports = {
     tf,
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
-    shouldFocusProblemsPanel
+    shouldFocusProblemsPanel,
+    inferMqlDataDirFromPath
 };
