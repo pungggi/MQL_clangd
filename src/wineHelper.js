@@ -198,9 +198,22 @@ function fromWineWindowsPath(winPath, winePrefix = '') {
     const driveLetter = match[1].toLowerCase();
     // Replace all backslashes with forward slashes in the rest of the path
     const rest = match[2].replace(/\\/g, '/');
-    const driveRoot = driveLetter === DEFAULT_WINE_DRIVE
-        ? nodePath.posix.join(normalizedPrefix, 'drive_c')
-        : nodePath.posix.join(normalizedPrefix, 'dosdevices', `${driveLetter}:`);
+    let driveRoot;
+    if (driveLetter === DEFAULT_WINE_DRIVE) {
+        driveRoot = nodePath.posix.join(normalizedPrefix, 'drive_c');
+    } else {
+        // For non-C: drives (e.g. Z: which Wine maps to '/'), resolve the
+        // dosdevices symlink so we get the canonical Linux path rather than
+        // a path that goes through the dosdevices directory itself.
+        const dosdevicePath = nodePath.posix.join(normalizedPrefix, 'dosdevices', `${driveLetter}:`);
+        try {
+            driveRoot = fs.realpathSync(dosdevicePath);
+        } catch (_) {
+            // Symlink doesn't exist (test environment, missing drive, etc.) –
+            // fall back to the old dosdevices path so existing behaviour is preserved.
+            driveRoot = dosdevicePath;
+        }
+    }
 
     return rest ? nodePath.posix.join(driveRoot, rest) : driveRoot;
 }

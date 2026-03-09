@@ -536,7 +536,11 @@ suite('Pure Logic Unit Tests', () => {
                 assert.strictEqual(result, `${PREFIX}/dosdevices/d:/Some/Path/file.mq5`);
             });
 
-            test('should convert Z: drive via dosdevices/z: for Wine-generated host paths', () => {
+            test('should convert Z: drive via dosdevices/z: for Wine-generated host paths (falls back to dosdevices path when symlink absent)', () => {
+                // In a real Wine setup dosdevices/z: → '/', so the result would be
+                // '/home/user/project/file.mq5' (the canonical Linux path).
+                // In this test environment the symlink does not exist, so fromWineWindowsPath
+                // falls back to the old dosdevices path to preserve backwards compatibility.
                 const result = fromWineWindowsPath('Z:\\home\\user\\project\\file.mq5', PREFIX);
                 assert.strictEqual(result, `${PREFIX}/dosdevices/z:/home/user/project/file.mq5`);
             });
