@@ -7,6 +7,8 @@
   - `fromWineWindowsPath` now resolves the `dosdevices/z:` symlink to its canonical Linux target (typically `/`) so diagnostics reference real file paths instead of the `~/.wine/dosdevices/z:/…` symlink path. Results are cached per drive letter to avoid repeated `realpathSync` calls during log parsing.
   - When `mql_tools.Metaeditor.Include5Dir` (or `Include4Dir`) is not configured and Wine is enabled, the extension now automatically infers the MQL data folder by walking up the directory tree from the compiled file, looking for an `MQL5`/`MQL4` directory that contains an `Include/` or `Logs/` subdirectory. The inferred path is passed to MetaEditor as `/inc:`, allowing it to locate user-defined headers without requiring manual configuration.
 
+## 1.1.26
+
 ### Bug Fixes
 - **Background checks and special literal formatting**: Fixed automatic syntax checks stealing editor focus while typing by avoiding Problems-panel focus during background runs, preserved `B'...'` binary literals during formatting normalization, and made `D'...'` literal spacing normalization consistent for both date-only and date-time forms.
 
