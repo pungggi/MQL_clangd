@@ -1,4 +1,5 @@
 const assert = require('assert');
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
@@ -7,6 +8,9 @@ const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace,
 
 // Import Wine helper functions
 const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent, fromWineWindowsPath } = require('../../src/wineHelper');
+
+// Import extension helpers
+const { inferMqlDataDirFromPath } = require('../../src/extension');
 
 function withPlatform(value, fn) {
     const original = process.platform;
@@ -592,6 +596,121 @@ suite('Pure Logic Unit Tests', () => {
                 const expected = '/home/username/Bottles/Meta-Trader/drive_c/Programs/MetaTrader5/MQL5/Scripts/CloseAllWindows.mq5';
                 assert.strictEqual(fromWineWindowsPath(winPath, winePrefix), expected);
             });
+
+            test('should resolve Z: drive to canonical path when dosdevices/z: symlink exists', () => {
+                // Build a temporary Wine prefix with a real dosdevices/z: symlink so we
+                // can exercise the realpathSync code path (not the fallback).
+                const tmpBase = os.tmpdir();
+                const testPrefix = path.join(tmpBase, `wine-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                const dosdevicesDir = path.join(testPrefix, 'dosdevices');
+                const zLink = path.join(dosdevicesDir, 'z:');
+                // Point the z: symlink at a known directory (tmpBase itself).
+                fs.mkdirSync(dosdevicesDir, { recursive: true });
+                fs.symlinkSync(tmpBase, zLink);
+                try {
+                    // Clear the module-level cache so this test starts fresh.
+                    fromWineWindowsPath._driveRootCache.clear();
+                    const result = fromWineWindowsPath('Z:\\subdir\\file.mq5', testPrefix);
+                    // Expected: canonical target of z: + the rest of the path
+                    const expectedBase = fs.realpathSync(zLink); // resolves to tmpBase
+                    assert.strictEqual(result, path.posix.join(expectedBase, 'subdir/file.mq5'));
+                } finally {
+                    fromWineWindowsPath._driveRootCache.clear();
+                    fs.rmSync(testPrefix, { recursive: true, force: true });
+                }
+            });
+
+            test('should cache dosdevices symlink resolution across multiple calls', () => {
+                const tmpBase = os.tmpdir();
+                const testPrefix = path.join(tmpBase, `wine-cache-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+                const dosdevicesDir = path.join(testPrefix, 'dosdevices');
+                const zLink = path.join(dosdevicesDir, 'z:');
+                fs.mkdirSync(dosdevicesDir, { recursive: true });
+                fs.symlinkSync(tmpBase, zLink);
+                try {
+                    fromWineWindowsPath._driveRootCache.clear();
+                    const r1 = fromWineWindowsPath('Z:\\a\\b.mq5', testPrefix);
+                    const r2 = fromWineWindowsPath('Z:\\c\\d.mq5', testPrefix);
+                    // Both calls should resolve through the same cached symlink target.
+                    const expectedBase = fs.realpathSync(zLink);
+                    assert.strictEqual(r1, path.posix.join(expectedBase, 'a/b.mq5'));
+                    assert.strictEqual(r2, path.posix.join(expectedBase, 'c/d.mq5'));
+                    // Cache should have exactly one entry for this prefix+drive.
+                    const cacheKey = `${testPrefix}\0z`;
+                    assert.ok(fromWineWindowsPath._driveRootCache.has(cacheKey));
+                } finally {
+                    fromWineWindowsPath._driveRootCache.clear();
+                    fs.rmSync(testPrefix, { recursive: true, force: true });
+                }
+            });
         });
+    });
+});
+
+suite('inferMqlDataDirFromPath', () => {
+    // Helper: create a temporary directory tree and return a cleanup function.
+    function makeTmpTree(structure) {
+        const base = path.join(os.tmpdir(), `mql-infer-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        for (const [rel, isFile] of Object.entries(structure)) {
+            const full = path.join(base, rel);
+            if (isFile) {
+                fs.mkdirSync(path.dirname(full), { recursive: true });
+                fs.writeFileSync(full, '');
+            } else {
+                fs.mkdirSync(full, { recursive: true });
+            }
+        }
+        return { base, cleanup: () => fs.rmSync(base, { recursive: true, force: true }) };
+    }
+
+    test('finds MQL5 folder with Include/ when walking up from a nested file', () => {
+        const { base, cleanup } = makeTmpTree({
+            'MQL5/Include': false,
+            'MQL5/Experts/MyEA.mq5': true,
+        });
+        try {
+            const result = inferMqlDataDirFromPath(path.join(base, 'MQL5/Experts/MyEA.mq5'), true);
+            assert.strictEqual(result, path.join(base, 'MQL5'));
+        } finally { cleanup(); }
+    });
+
+    test('finds MQL4 folder with Logs/ when walking up', () => {
+        const { base, cleanup } = makeTmpTree({
+            'MQL4/Logs': false,
+            'MQL4/Experts/MyEA.mq4': true,
+        });
+        try {
+            const result = inferMqlDataDirFromPath(path.join(base, 'MQL4/Experts/MyEA.mq4'), false);
+            assert.strictEqual(result, path.join(base, 'MQL4'));
+        } finally { cleanup(); }
+    });
+
+    test('returns null when source file is not under any MQL5/MQL4 folder', () => {
+        const { base, cleanup } = makeTmpTree({ 'projects/foo.mq5': true });
+        try {
+            const result = inferMqlDataDirFromPath(path.join(base, 'projects/foo.mq5'), true);
+            assert.strictEqual(result, null);
+        } finally { cleanup(); }
+    });
+
+    test('requires Include/ or Logs/ marker – rejects a bare MQL5 folder', () => {
+        // MQL5 dir exists but has no Include/ or Logs/ subdirectory.
+        const { base, cleanup } = makeTmpTree({ 'MQL5/foo.mq5': true });
+        try {
+            const result = inferMqlDataDirFromPath(path.join(base, 'MQL5/foo.mq5'), true);
+            assert.strictEqual(result, null);
+        } finally { cleanup(); }
+    });
+
+    test('folder name matching is case-insensitive', () => {
+        // Directory named 'mql5' (lowercase) should still be found.
+        const { base, cleanup } = makeTmpTree({
+            'mql5/Include': false,
+            'mql5/script.mq5': true,
+        });
+        try {
+            const result = inferMqlDataDirFromPath(path.join(base, 'mql5/script.mq5'), true);
+            assert.strictEqual(result, path.join(base, 'mql5'));
+        } finally { cleanup(); }
     });
 });

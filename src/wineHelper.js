@@ -172,17 +172,20 @@ async function toWineWindowsPath(localPath, wineBinary = 'wine64', winePrefix = 
  * Converts a Windows-style path from MetaEditor/Wine compiler output to a Linux path.
  *
  * MetaEditor running via Wine emits Windows paths (e.g. `C:\Programs\MT5\MQL5\foo.mq5`).
- * This function maps the drive letter to the corresponding location inside the Wine
- * prefix and normalises backslashes to forward slashes.
+ * This function maps the drive letter to the corresponding location on the Linux
+ * filesystem and normalises backslashes to forward slashes.
  *
  * Conversion formula:
  *   `C:\Programs\MT5\...`  →  `{winePrefix}/drive_c/Programs/MT5/...`
- *   `Z:\home\user\...`      →  `{winePrefix}/dosdevices/z:/home/user/...`
+ *   `Z:\home\user\...`      →  canonical target of `{winePrefix}/dosdevices/z:` + `/home/user/...`
+ *                               (Wine maps Z: to `/` by default via a dosdevices symlink, so the
+ *                                result is typically `/home/user/...`; falls back to
+ *                                `{winePrefix}/dosdevices/z:/home/user/...` when the symlink is absent)
  *
  * When no winePrefix is supplied (empty string / undefined) the function returns the
  * original path unchanged so that the Windows code-path is not affected.
  *
- * @param {string} winPath   - A Windows-style path as produced by MetaEditor output
+ * @param {string} winPath    - A Windows-style path as produced by MetaEditor output
  * @param {string} winePrefix - The configured WINEPREFIX directory (e.g. `/home/user/Bottles/MT`)
  * @returns {string} The corresponding Linux path, or the original string if conversion is not applicable
  */
@@ -205,18 +208,29 @@ function fromWineWindowsPath(winPath, winePrefix = '') {
         // For non-C: drives (e.g. Z: which Wine maps to '/'), resolve the
         // dosdevices symlink so we get the canonical Linux path rather than
         // a path that goes through the dosdevices directory itself.
+        // Results are cached per (prefix, drive) pair because this function is
+        // called in a per-log-line loop and the symlink target never changes
+        // within a single compilation run.
+        const cacheKey = `${normalizedPrefix}\0${driveLetter}`;
         const dosdevicePath = nodePath.posix.join(normalizedPrefix, 'dosdevices', `${driveLetter}:`);
-        try {
-            driveRoot = fs.realpathSync(dosdevicePath);
-        } catch (_) {
-            // Symlink doesn't exist (test environment, missing drive, etc.) –
-            // fall back to the old dosdevices path so existing behaviour is preserved.
-            driveRoot = dosdevicePath;
+        let cached = fromWineWindowsPath._driveRootCache.get(cacheKey);
+        if (cached === undefined) {
+            try {
+                cached = fs.realpathSync(dosdevicePath);
+            } catch (_) {
+                // Symlink doesn't exist (test environment, missing drive, etc.) –
+                // fall back to the dosdevices path so existing behaviour is preserved.
+                cached = dosdevicePath;
+            }
+            fromWineWindowsPath._driveRootCache.set(cacheKey, cached);
         }
+        driveRoot = cached;
     }
 
     return rest ? nodePath.posix.join(driveRoot, rest) : driveRoot;
 }
+/** @type {Map<string,string>} Cache for resolved dosdevices symlink targets. */
+fromWineWindowsPath._driveRootCache = new Map();
 
 /**
  * Legacy wrapper for toWineWindowsPath that returns just the path string.

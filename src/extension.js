@@ -2604,5 +2604,6 @@ module.exports = {
     tf,
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
-    shouldFocusProblemsPanel
+    shouldFocusProblemsPanel,
+    inferMqlDataDirFromPath
 };
