@@ -21,6 +21,8 @@
         "mqh",
         "mq4",
         "mq5",
+        "mql-tools",
+        "cpp",
         "clangd",
         "metatrader",
         "intellisense"
