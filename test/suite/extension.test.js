@@ -15,6 +15,7 @@ Module._load = function (request) {
 const extension = require('../../src/extension');
 const {
     replaceLog,
+    extractPropertyVersion,
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,
@@ -99,6 +100,23 @@ suite('Formatting helper tests', () => {
     test('normalizeSpecialLiteralSpacing leaves already-correct literals unchanged', () => {
         const input = "int flags = B'111'; color shade = C'1,2,3';";
         assert.strictEqual(normalizeSpecialLiteralSpacing(input), input);
+    });
+});
+
+suite('Property version extraction tests', () => {
+    test('extracts version from #property directive', () => {
+        const source = '#property version "4.57"\nvoid OnStart() {}';
+        assert.strictEqual(extractPropertyVersion(source), '4.57');
+    });
+
+    test('ignores commented property version lines', () => {
+        const source = '// #property version "4.57"\nvoid OnStart() {}';
+        assert.strictEqual(extractPropertyVersion(source), null);
+    });
+
+    test('supports extra whitespace in property version directive', () => {
+        const source = '   #property   version   "4.57"\nvoid OnStart() {}';
+        assert.strictEqual(extractPropertyVersion(source), '4.57');
     });
 });
 

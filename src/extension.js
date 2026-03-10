@@ -19,6 +19,7 @@ const REG_ERROR_CODE = /(?<=error |warning )\d+/;
 const REG_FULL_PATH = /[a-z]:\\.+/gi;
 const REG_LINE_POS = /\((?:\d+,\d+)\)$/gm;
 const REG_LINE_FRAGMENT = /\((?=(\d+,\d+).$)/gm;
+const REG_PROPERTY_VERSION = /^\s*#property\s+version\s+["']([^\r\n"']+)["']/im;
 
 // NOTE: diagnosticCollection and outputChannel are initialized in activate()
 let diagnosticCollection = null;
@@ -345,6 +346,7 @@ async function compilePath(rt, pathToCompile, _context) {
     const extension = pathModule.extname(pathToCompile).toLowerCase();
     const startT = new Date();
     const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
+    const propertyVersion = await getPropertyVersionFromFile(pathToCompile);
 
     let logFile, command, MetaDir, incDir, CommM, CommI, teq, includefile, log, portableMode;
 
@@ -614,8 +616,9 @@ async function compilePath(rt, pathToCompile, _context) {
 
             const endT = new Date();
             const timeCompile = (endT - startT) / 1000;
+            const versionLabel = formatPropertyVersionLabel(propertyVersion);
 
-            outputChannel.appendLine(`[${time}] ${teq} '${fileName}' [${timeCompile}s]`);
+            outputChannel.appendLine(`[${time}] ${teq} '${fileName}'${versionLabel} [${timeCompile}s]`);
 
             if (rt === 2 && !log.error) {
                 if (useWine) {
@@ -1011,6 +1014,77 @@ function tf(date, t, d) {
     }
 
     return d < 10 ? '0' + d.toString() : d.toString();
+}
+
+function extractPropertyVersion(text) {
+    if (typeof text !== 'string' || !text) return null;
+
+    const match = text.match(REG_PROPERTY_VERSION);
+    const version = match && match[1] ? match[1].trim() : '';
+
+    return version || null;
+}
+
+function decodeTextBuffer(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) return '';
+
+    const hasUtf16LeBom = buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe;
+    if (hasUtf16LeBom) {
+        return buffer.toString('utf16le', 2);
+    }
+
+    const utf8Text = buffer.toString('utf8');
+    const sampleLength = Math.min(buffer.length, 256);
+    let nullByteCount = 0;
+
+    for (let i = 0; i < sampleLength; i++) {
+        if (buffer[i] === 0x00) {
+            nullByteCount++;
+        }
+    }
+
+    if (nullByteCount > sampleLength / 4) {
+        return buffer.toString('utf16le');
+    }
+
+    return utf8Text;
+}
+
+function getOpenDocumentText(filePath) {
+    const documents = vscode.workspace.textDocuments;
+    if (!Array.isArray(documents) || !filePath) return null;
+
+    const openDocument = documents.find(doc => doc && doc.fileName === filePath);
+    return openDocument ? openDocument.getText() : null;
+}
+
+async function getPropertyVersionFromFile(filePath) {
+    if (!filePath) return null;
+
+    const openDocumentText = getOpenDocumentText(filePath);
+    if (openDocumentText) {
+        return extractPropertyVersion(openDocumentText);
+    }
+
+    try {
+        const buffer = await fsPromises.readFile(filePath);
+        return extractPropertyVersion(decodeTextBuffer(buffer));
+    } catch {
+        return null;
+    }
+}
+
+function formatPropertyVersionLabel(version) {
+    if (!version) return '';
+
+    const normalizedVersion = version.trim();
+    if (!normalizedVersion) return '';
+
+    const prefixedVersion = /^v/i.test(normalizedVersion)
+        ? normalizedVersion
+        : `v${normalizedVersion}`;
+
+    return ` ${prefixedVersion}`;
 }
 
 const SPECIAL_LITERAL_SPACING_RULES = [
@@ -2622,6 +2696,7 @@ module.exports = {
     deactivate,
     replaceLog,
     tf,
+    extractPropertyVersion,
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,
