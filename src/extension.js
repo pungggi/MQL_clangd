@@ -616,9 +616,9 @@ async function compilePath(rt, pathToCompile, _context) {
 
             const endT = new Date();
             const timeCompile = (endT - startT) / 1000;
-            const versionLabel = formatPropertyVersionLabel(propertyVersion);
+            const targetLabel = formatCompileTargetLabel(fileName, propertyVersion);
 
-            outputChannel.appendLine(`[${time}] ${teq} '${fileName}'${versionLabel} [${timeCompile}s]`);
+            outputChannel.appendLine(`[${time}] ${teq} ${targetLabel} [${timeCompile}s]`);
 
             if (rt === 2 && !log.error) {
                 if (useWine) {
@@ -804,11 +804,19 @@ async function Compile(rt, context, options = {}) {
     const teq = rt === 0 ? lg['checking'] : (rt === 1 ? lg['compiling'] : lg['comp_usi_script']);
 
 
+    let progressTitle = buildCompileProgressTitle(teq);
+    if (pathsToCompile.length === 1) {
+        const progressTargetPath = pathsToCompile[0];
+        const progressTargetVersion = await getPropertyVersionFromFile(progressTargetPath);
+        const progressTargetLabel = formatCompileTargetLabel(pathModule.basename(progressTargetPath), progressTargetVersion);
+        progressTitle = buildCompileProgressTitle(teq, progressTargetLabel);
+    }
+
     let hasErrors = false;
     await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Window,
-            title: `MQL Tools: ${teq}`,
+            title: progressTitle,
         },
         async () => {
             for (const pathToCompile of pathsToCompile) {
@@ -1085,6 +1093,16 @@ function formatPropertyVersionLabel(version) {
         : `v${normalizedVersion}`;
 
     return ` ${prefixedVersion}`;
+}
+
+function formatCompileTargetLabel(fileName, propertyVersion) {
+    if (!fileName) return '';
+
+    return `'${fileName}'${formatPropertyVersionLabel(propertyVersion)}`;
+}
+
+function buildCompileProgressTitle(teq, targetLabel = '') {
+    return targetLabel ? `MQL Tools: ${teq} ${targetLabel}` : `MQL Tools: ${teq}`;
 }
 
 const SPECIAL_LITERAL_SPACING_RULES = [
@@ -2697,6 +2715,8 @@ module.exports = {
     replaceLog,
     tf,
     extractPropertyVersion,
+    formatCompileTargetLabel,
+    buildCompileProgressTitle,
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,

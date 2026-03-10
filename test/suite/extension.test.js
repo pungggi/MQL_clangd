@@ -16,6 +16,8 @@ const extension = require('../../src/extension');
 const {
     replaceLog,
     extractPropertyVersion,
+    formatCompileTargetLabel,
+    buildCompileProgressTitle,
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,
@@ -117,6 +119,15 @@ suite('Property version extraction tests', () => {
     test('supports extra whitespace in property version directive', () => {
         const source = '   #property   version   "4.57"\nvoid OnStart() {}';
         assert.strictEqual(extractPropertyVersion(source), '4.57');
+    });
+
+    test('formats compile target label with version', () => {
+        assert.strictEqual(formatCompileTargetLabel('SMC.mq5', '4.57'), "'SMC.mq5' v4.57");
+    });
+
+    test('builds progress title with compile target label', () => {
+        const targetLabel = formatCompileTargetLabel('SMC.mq5', '4.57');
+        assert.strictEqual(buildCompileProgressTitle('Syntax checking', targetLabel), "MQL Tools: Syntax checking 'SMC.mq5' v4.57");
     });
 });
 
