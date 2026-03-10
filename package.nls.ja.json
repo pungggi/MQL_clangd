@@ -11,6 +11,7 @@
     "mql_tools.configuration.ShowButtonCompile.description": "コンパイルボタンを表示",
     "mql_tools.configuration.ShowButtonCheck.description": "構文チェックボタンを表示",
     "mql_tools.configuration.ShowButtonScript.description": "スクリプトを使用したコンパイルボタンを表示",
+    "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "コンパイルしてターミナルを開くボタンを表示",
     "mql_tools.configuration.Wine.Enabled.description": "macOS/Linux で MetaEditor を実行するための Wine ラッパーを有効にします。有効にすると、MetaEditor は Wine 経由で実行され、パスは winepath を使用して変換されます。",
     "mql_tools.configuration.Wine.Binary.description": "Wine バイナリへのパス（例：'wine64'、'wine'、または '/usr/local/bin/wine64' のような完全なパス）。",
     "mql_tools.configuration.HelpON.description": "Shift+F1 で MQL4/MQL5 ウェブドキュメントを開く",

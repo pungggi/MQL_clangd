@@ -9,6 +9,7 @@
     "mql_tools.configuration.ShowButtonCompile.description": "Fordítás gomb megjelenítése",
     "mql_tools.configuration.ShowButtonCheck.description": "Szintaxis ellenőrző gomb megjelenítése",
     "mql_tools.configuration.ShowButtonScript.description": "Szkripttel történő fordítás gomb megjelenítése",
+    "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "Fordítás és terminál megnyitása gomb megjelenítése",
     "mql_tools.configuration.Wine.Enabled.description": "Wine wrapper engedélyezése a MetaEditor macOS/Linux rendszeren való futtatásához. Ha engedélyezve van, a MetaEditor a Wine-on keresztül fut és az útvonalak a winepath segítségével konvertálódnak.",
     "mql_tools.configuration.Wine.Binary.description": "A Wine bináris fájl elérési útja (például 'wine64', 'wine' vagy teljes útvonal, mint '/usr/local/bin/wine64').",
     "mql_tools.configuration.HelpON.description": "MQL4/MQL5 webes dokumentáció megnyitása Shift+F1-gyel",

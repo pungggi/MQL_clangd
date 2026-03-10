@@ -18,7 +18,8 @@ const {
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,
-    shouldRunCompileSuccessAction
+    shouldRunCompileSuccessAction,
+    runCompileSuccessAction
 } = extension;
 const { normalizePath, generatePortableSwitch, safeConfigUpdate } = require('../../src/createProperties');
 
@@ -126,6 +127,39 @@ suite('Compile success action helper tests', () => {
 
     test('returns false when no success action is provided', () => {
         assert.strictEqual(shouldRunCompileSuccessAction(false, {}), false);
+    });
+
+    test('runs the success action when provided', async () => {
+        let called = false;
+
+        await runCompileSuccessAction({
+            onSuccess: async () => {
+                called = true;
+            }
+        }, {
+            error: () => assert.fail('logger.error should not be called for successful callbacks')
+        });
+
+        assert.strictEqual(called, true);
+    });
+
+    test('logs and swallows errors thrown by the success action', async () => {
+        const expectedError = new Error('boom');
+        const logged = [];
+
+        await assert.doesNotReject(async () => {
+            await runCompileSuccessAction({
+                onSuccess: async () => {
+                    throw expectedError;
+                }
+            }, {
+                error: (...args) => logged.push(args)
+            });
+        });
+
+        assert.strictEqual(logged.length, 1);
+        assert.match(logged[0][0], /Compile succeeded, but the onSuccess handler failed:/);
+        assert.strictEqual(logged[0][1], expectedError);
     });
 });
 

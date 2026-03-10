@@ -715,6 +715,17 @@ function shouldRunCompileSuccessAction(hasErrors, options = {}) {
     return !hasErrors && typeof options.onSuccess === 'function';
 }
 
+async function runCompileSuccessAction(options = {}, logger = console) {
+    const { onSuccess } = options;
+    if (typeof onSuccess !== 'function') return;
+
+    try {
+        await onSuccess();
+    } catch (error) {
+        logger.error('Compile succeeded, but the onSuccess handler failed:', error);
+    }
+}
+
 async function Compile(rt, context, options = {}) {
     await FixFormatting();
     // Save after formatting. Guard against re-entrant CheckOnSave triggers.
@@ -813,7 +824,7 @@ async function Compile(rt, context, options = {}) {
     }
 
     if (shouldRunCompileSuccessAction(hasErrors, options)) {
-        await options.onSuccess();
+        await runCompileSuccessAction(options);
     }
 }
 
@@ -2615,5 +2626,6 @@ module.exports = {
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,
     shouldRunCompileSuccessAction,
+    runCompileSuccessAction,
     inferMqlDataDirFromPath
 };

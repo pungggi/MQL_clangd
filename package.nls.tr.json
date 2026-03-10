@@ -11,6 +11,7 @@
     "mql_tools.configuration.ShowButtonCompile.description": "Derleme düğmesini göster",
     "mql_tools.configuration.ShowButtonCheck.description": "Sözdizimi kontrol düğmesini göster",
     "mql_tools.configuration.ShowButtonScript.description": "Betikle derleme düğmesini göster",
+    "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "Derle ve terminali aç düğmesini göster",
     "mql_tools.configuration.Wine.Enabled.description": "macOS/Linux'ta MetaEditor'ü çalıştırmak için Wine sarmalayıcısını etkinleştir. Etkinleştirildiğinde, MetaEditor Wine aracılığıyla çalıştırılır ve yollar winepath kullanılarak dönüştürülür.",
     "mql_tools.configuration.Wine.Binary.description": "Wine ikili dosyasının yolu (örneğin, 'wine64', 'wine' veya '/usr/local/bin/wine64' gibi tam yol).",
     "mql_tools.configuration.HelpON.description": "Shift+F1 ile MQL4/MQL5 web belgelerini aç",

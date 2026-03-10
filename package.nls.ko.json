@@ -11,6 +11,7 @@
     "mql_tools.configuration.ShowButtonCompile.description": "컴파일 버튼 표시",
     "mql_tools.configuration.ShowButtonCheck.description": "구문 검사 버튼 표시",
     "mql_tools.configuration.ShowButtonScript.description": "스크립트를 사용한 컴파일 버튼 표시",
+    "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "컴파일 및 터미널 열기 버튼 표시",
     "mql_tools.configuration.Wine.Enabled.description": "macOS/Linux에서 MetaEditor를 실행하기 위한 Wine 래퍼를 활성화합니다. 활성화되면 MetaEditor는 Wine을 통해 실행되고 경로는 winepath를 사용하여 변환됩니다.",
     "mql_tools.configuration.Wine.Binary.description": "Wine 바이너리의 경로 (예: 'wine64', 'wine' 또는 '/usr/local/bin/wine64'와 같은 전체 경로).",
     "mql_tools.configuration.HelpON.description": "Shift+F1로 MQL4/MQL5 웹 문서 열기",

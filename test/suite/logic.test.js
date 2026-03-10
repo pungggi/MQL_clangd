@@ -598,49 +598,52 @@ suite('Pure Logic Unit Tests', () => {
             });
 
             test('should resolve Z: drive to canonical path when dosdevices/z: symlink exists', () => {
-                // Build a temporary Wine prefix with a real dosdevices/z: symlink so we
-                // can exercise the realpathSync code path (not the fallback).
-                const tmpBase = os.tmpdir();
-                const testPrefix = path.join(tmpBase, `wine-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-                const dosdevicesDir = path.join(testPrefix, 'dosdevices');
-                const zLink = path.join(dosdevicesDir, 'z:');
-                // Point the z: symlink at a known directory (tmpBase itself).
-                fs.mkdirSync(dosdevicesDir, { recursive: true });
-                fs.symlinkSync(tmpBase, zLink);
+                const originalRealpathSync = fs.realpathSync;
+                const testPrefix = '/tmp/wine-test-prefix';
+                const canonicalBase = '/canonical/wine-root';
+                const calls = [];
                 try {
-                    // Clear the module-level cache so this test starts fresh.
                     fromWineWindowsPath._driveRootCache.clear();
+                    fs.realpathSync = input => {
+                        calls.push(input);
+                        return canonicalBase;
+                    };
+
                     const result = fromWineWindowsPath('Z:\\subdir\\file.mq5', testPrefix);
-                    // Expected: canonical target of z: + the rest of the path
-                    const expectedBase = fs.realpathSync(zLink); // resolves to tmpBase
-                    assert.strictEqual(result, path.posix.join(expectedBase, 'subdir/file.mq5'));
+
+                    assert.strictEqual(result, path.posix.join(canonicalBase, 'subdir/file.mq5'));
+                    assert.strictEqual(calls.length, 1);
+                    assert.match(calls[0].replace(/\\/g, '/'), /\/dosdevices\/z:$/);
                 } finally {
+                    fs.realpathSync = originalRealpathSync;
                     fromWineWindowsPath._driveRootCache.clear();
-                    fs.rmSync(testPrefix, { recursive: true, force: true });
                 }
             });
 
             test('should cache dosdevices symlink resolution across multiple calls', () => {
-                const tmpBase = os.tmpdir();
-                const testPrefix = path.join(tmpBase, `wine-cache-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-                const dosdevicesDir = path.join(testPrefix, 'dosdevices');
-                const zLink = path.join(dosdevicesDir, 'z:');
-                fs.mkdirSync(dosdevicesDir, { recursive: true });
-                fs.symlinkSync(tmpBase, zLink);
+                const originalRealpathSync = fs.realpathSync;
+                const testPrefix = '/tmp/wine-cache-prefix';
+                const canonicalBase = '/canonical/wine-root';
+                const calls = [];
                 try {
                     fromWineWindowsPath._driveRootCache.clear();
+                    fs.realpathSync = input => {
+                        calls.push(input);
+                        return canonicalBase;
+                    };
+
                     const r1 = fromWineWindowsPath('Z:\\a\\b.mq5', testPrefix);
                     const r2 = fromWineWindowsPath('Z:\\c\\d.mq5', testPrefix);
-                    // Both calls should resolve through the same cached symlink target.
-                    const expectedBase = fs.realpathSync(zLink);
-                    assert.strictEqual(r1, path.posix.join(expectedBase, 'a/b.mq5'));
-                    assert.strictEqual(r2, path.posix.join(expectedBase, 'c/d.mq5'));
-                    // Cache should have exactly one entry for this prefix+drive.
+
+                    assert.strictEqual(r1, path.posix.join(canonicalBase, 'a/b.mq5'));
+                    assert.strictEqual(r2, path.posix.join(canonicalBase, 'c/d.mq5'));
+                    assert.strictEqual(calls.length, 1);
+
                     const cacheKey = `${testPrefix}\0z`;
-                    assert.ok(fromWineWindowsPath._driveRootCache.has(cacheKey));
+                    assert.strictEqual(fromWineWindowsPath._driveRootCache.get(cacheKey), canonicalBase);
                 } finally {
+                    fs.realpathSync = originalRealpathSync;
                     fromWineWindowsPath._driveRootCache.clear();
-                    fs.rmSync(testPrefix, { recursive: true, force: true });
                 }
             });
         });

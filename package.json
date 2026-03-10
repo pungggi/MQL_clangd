@@ -102,6 +102,11 @@
                     "default": true,
                     "description": "%mql_tools.configuration.ShowButtonScript.description%"
                 },
+                "mql_tools.ShowButton.CompileAndOpenTerminal": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description%"
+                },
                 "mql_tools.AutoCheck.Enabled": {
                     "type": "boolean",
                     "default": false,
@@ -403,7 +408,7 @@
                     "group": "navigation"
                 },
                 {
-                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Compile == true",
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.CompileAndOpenTerminal == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.CompileAndOpenTerminal == true || resourceExtname == .mqh && config.mql_tools.ShowButton.CompileAndOpenTerminal == true",
                     "command": "mql_tools.compileFileAndOpenTerminal",
                     "group": "navigation"
                 },

@@ -9,6 +9,7 @@
     "mql_tools.configuration.ShowButtonCompile.description": "Zobrazit tlačítko kompilace",
     "mql_tools.configuration.ShowButtonCheck.description": "Zobrazit tlačítko kontroly syntaxe",
     "mql_tools.configuration.ShowButtonScript.description": "Zobrazit tlačítko kompilace se skriptem",
+    "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "Zobrazit tlačítko kompilace a otevření terminálu",
     "mql_tools.configuration.Wine.Enabled.description": "Povolit obálku Wine pro spuštění MetaEditor na macOS/Linux. Pokud je povoleno, MetaEditor se spouští přes Wine a cesty se konvertují pomocí winepath.",
     "mql_tools.configuration.Wine.Binary.description": "Cesta k binárnímu souboru Wine (např. 'wine64', 'wine' nebo úplná cesta jako '/usr/local/bin/wine64').",
     "mql_tools.configuration.HelpON.description": "Otevřít webovou dokumentaci MQL4/MQL5 pomocí Shift+F1",

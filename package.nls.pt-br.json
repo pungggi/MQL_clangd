@@ -11,6 +11,7 @@
     "mql_tools.configuration.ShowButtonCompile.description": "Mostrar botão de compilação",
     "mql_tools.configuration.ShowButtonCheck.description": "Mostrar botão de verificação de sintaxe",
     "mql_tools.configuration.ShowButtonScript.description": "Mostrar botão de compilação com script",
+    "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "Mostrar botão de compilar e abrir terminal",
     "mql_tools.configuration.Wine.Enabled.description": "Ativar o wrapper Wine para executar MetaEditor no macOS/Linux. Quando ativado, MetaEditor é executado via Wine e os caminhos são convertidos usando winepath.",
     "mql_tools.configuration.Wine.Binary.description": "Caminho para o binário Wine (por exemplo, 'wine64', 'wine' ou caminho completo como '/usr/local/bin/wine64').",
     "mql_tools.configuration.HelpON.description": "Abrir documentação web MQL4/MQL5 com Shift+F1",
