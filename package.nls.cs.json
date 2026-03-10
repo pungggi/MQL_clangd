@@ -15,6 +15,7 @@
     "mql_tools.configuration.ForcedIncludes.description": "Další hlavičkové soubory pro vynucené zahrnutí do analýzy clangd (např. [\"Include/JAson.mqh\"] pro knihovny třetích stran)",
     "mql_tools.configuration.context": "Nevypínejte!",
     "mql_tools.commands.compileFile.title": "Kompilovat soubor MQL",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "Kompilovat soubor MQL a otevřít terminál MetaTrader",
     "mql_tools.commands.checkFile.title": "Zkontrolovat syntaxi MQL",
     "mql_tools.commands.compileScript.title": "Kompilovat soubor MQL pomocí skriptu",
     "mql_tools.commands.help.title": "Získat nápovědu MQL4/MQL5",

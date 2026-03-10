@@ -17,6 +17,7 @@
     "mql_tools.configuration.ForcedIncludes.description": "Zusätzliche Header-Dateien zur erzwungenen Einbindung in die clangd-Analyse (z.B. [\"Include/JAson.mqh\"] für Drittanbieter-Bibliotheken)",
     "mql_tools.configuration.context": "Nicht deaktivieren!",
     "mql_tools.commands.compileFile.title": "MQL-Datei kompilieren",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "MQL-Datei kompilieren und MetaTrader-Terminal öffnen",
     "mql_tools.commands.checkFile.title": "MQL-Syntax prüfen",
     "mql_tools.commands.compileScript.title": "MQL-Datei mit Skript kompilieren",
     "mql_tools.commands.help.title": "MQL4/MQL5-Hilfe aufrufen",

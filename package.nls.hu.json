@@ -15,6 +15,7 @@
     "mql_tools.configuration.ForcedIncludes.description": "További fejlécfájlok kényszerített bevonása a clangd elemzésbe (pl. [\"Include/JAson.mqh\"] harmadik féltől származó könyvtárakhoz)",
     "mql_tools.configuration.context": "Ne kapcsolja ki!",
     "mql_tools.commands.compileFile.title": "MQL fájl fordítása",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "MQL fájl fordítása és a MetaTrader terminál megnyitása",
     "mql_tools.commands.checkFile.title": "MQL szintaxis ellenőrzése",
     "mql_tools.commands.compileScript.title": "MQL fájl fordítása szkripttel",
     "mql_tools.commands.help.title": "MQL4/MQL5 súgó megnyitása",

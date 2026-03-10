@@ -17,6 +17,7 @@
     "mql_tools.configuration.ForcedIncludes.description": "clangd 分析に強制的に含める追加のヘッダーファイル（例：サードパーティライブラリ用の [\"Include/JAson.mqh\"]）",
     "mql_tools.configuration.context": "無効にしないでください！",
     "mql_tools.commands.compileFile.title": "MQL ファイルをコンパイル",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "MQL ファイルをコンパイルして MetaTrader ターミナルを開く",
     "mql_tools.commands.checkFile.title": "MQL 構文をチェック",
     "mql_tools.commands.compileScript.title": "スクリプトを使用して MQL ファイルをコンパイル",
     "mql_tools.commands.help.title": "MQL4/MQL5 ヘルプを取得",

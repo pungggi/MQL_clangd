@@ -17,6 +17,7 @@
     "mql_tools.configuration.ForcedIncludes.description": "clangd analizine zorla dahil edilecek ek başlık dosyaları (örn: üçüncü taraf kütüphaneler için [\"Include/JAson.mqh\"])",
     "mql_tools.configuration.context": "Devre dışı bırakmayın!",
     "mql_tools.commands.compileFile.title": "MQL dosyasını derle",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "MQL dosyasını derle ve MetaTrader terminalini aç",
     "mql_tools.commands.checkFile.title": "MQL sözdizimini kontrol et",
     "mql_tools.commands.compileScript.title": "Betik kullanarak MQL dosyasını derle",
     "mql_tools.commands.help.title": "MQL4/MQL5 yardımını al",

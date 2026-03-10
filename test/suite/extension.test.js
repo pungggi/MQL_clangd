@@ -17,7 +17,8 @@ const {
     replaceLog,
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
-    shouldFocusProblemsPanel
+    shouldFocusProblemsPanel,
+    shouldRunCompileSuccessAction
 } = extension;
 const { normalizePath, generatePortableSwitch, safeConfigUpdate } = require('../../src/createProperties');
 
@@ -111,6 +112,20 @@ suite('Problems panel focus helper tests', () => {
 
     test('returns false for background error runs', () => {
         assert.strictEqual(shouldFocusProblemsPanel(true, { background: true }), false);
+    });
+});
+
+suite('Compile success action helper tests', () => {
+    test('returns true when compile succeeds and a success action exists', () => {
+        assert.strictEqual(shouldRunCompileSuccessAction(false, { onSuccess: () => Promise.resolve() }), true);
+    });
+
+    test('returns false when compile has errors', () => {
+        assert.strictEqual(shouldRunCompileSuccessAction(true, { onSuccess: () => Promise.resolve() }), false);
+    });
+
+    test('returns false when no success action is provided', () => {
+        assert.strictEqual(shouldRunCompileSuccessAction(false, {}), false);
     });
 });
 

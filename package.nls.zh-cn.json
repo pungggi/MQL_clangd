@@ -16,6 +16,7 @@
     "mql_tools.configuration.ForcedIncludes.description": "强制包含到 clangd 分析的额外头文件（例如 [\"Include/JAson.mqh\"] 用于第三方库）",
     "mql_tools.configuration.context": "请勿禁用！",
     "mql_tools.commands.compileFile.title": "编译 MQL 文件",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "编译 MQL 文件并打开 MetaTrader 终端",
     "mql_tools.commands.checkFile.title": "检查 MQL 语法",
     "mql_tools.commands.compileScript.title": "使用脚本编译 MQL 文件",
     "mql_tools.commands.help.title": "获取 MQL4/MQL5 帮助",

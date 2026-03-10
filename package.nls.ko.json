@@ -17,6 +17,7 @@
     "mql_tools.configuration.ForcedIncludes.description": "clangd 분석에 강제로 포함할 추가 헤더 파일 (예: 타사 라이브러리용 [\"Include/JAson.mqh\"])",
     "mql_tools.configuration.context": "비활성화하지 마세요!",
     "mql_tools.commands.compileFile.title": "MQL 파일 컴파일",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "MQL 파일을 컴파일하고 MetaTrader 터미널 열기",
     "mql_tools.commands.checkFile.title": "MQL 구문 검사",
     "mql_tools.commands.compileScript.title": "스크립트를 사용하여 MQL 파일 컴파일",
     "mql_tools.commands.help.title": "MQL4/MQL5 도움말 보기",

@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.1.27",
+    "version": "1.1.30",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
@@ -260,6 +260,15 @@
                 }
             },
             {
+                "command": "mql_tools.compileFileAndOpenTerminal",
+                "title": "%mql_tools.commands.compileFileAndOpenTerminal.title%",
+                "category": "MQL",
+                "icon": {
+                    "dark": "./media/compile_terminal_dark.svg",
+                    "light": "./media/compile_terminal_light.svg"
+                }
+            },
+            {
                 "command": "mql_tools.checkFile",
                 "title": "%mql_tools.commands.checkFile.title%",
                 "category": "MQL",
@@ -391,6 +400,11 @@
                 {
                     "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Compile == true",
                     "command": "mql_tools.compileFile",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.Compile == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Compile == true",
+                    "command": "mql_tools.compileFileAndOpenTerminal",
                     "group": "navigation"
                 },
                 {

@@ -711,6 +711,10 @@ function shouldFocusProblemsPanel(hasErrors, options = {}) {
     return Boolean(hasErrors) && !options.background;
 }
 
+function shouldRunCompileSuccessAction(hasErrors, options = {}) {
+    return !hasErrors && typeof options.onSuccess === 'function';
+}
+
 async function Compile(rt, context, options = {}) {
     await FixFormatting();
     // Save after formatting. Guard against re-entrant CheckOnSave triggers.
@@ -806,6 +810,10 @@ async function Compile(rt, context, options = {}) {
     // Only steal focus for explicit user-invoked runs, not background checks.
     if (shouldFocusProblemsPanel(hasErrors, options)) {
         await vscode.commands.executeCommand('workbench.panel.markers.view.focus');
+    }
+
+    if (shouldRunCompileSuccessAction(hasErrors, options)) {
+        await options.onSuccess();
     }
 }
 
@@ -995,10 +1003,10 @@ function tf(date, t, d) {
 }
 
 const SPECIAL_LITERAL_SPACING_RULES = [
-    { pattern: "\\bB '[01]+'", searchValue: "B ", replaceValue: "B" },
-    { pattern: "\\bC '\\d{1,3},\\d{1,3},\\d{1,3}'", searchValue: "C ", replaceValue: "C" },
-    { pattern: "\\bC '0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2}'", searchValue: "C ", replaceValue: "C" },
-    { pattern: "\\bD '(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})(?:\\s{1,}[\\d:]+)?'", searchValue: "D ", replaceValue: "D" }
+    { pattern: '\\bB \'[01]+\'', searchValue: 'B ', replaceValue: 'B' },
+    { pattern: '\\bC \'\\d{1,3},\\d{1,3},\\d{1,3}\'', searchValue: 'C ', replaceValue: 'C' },
+    { pattern: '\\bC \'0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2},0x[A-Fa-f0-9]{2}\'', searchValue: 'C ', replaceValue: 'C' },
+    { pattern: '\\bD \'(?:\\d{2}|\\d{4})\\.\\d{2}\\.(?:\\d{2}|\\d{4})(?:\\s{1,}[\\d:]+)?\'', searchValue: 'D ', replaceValue: 'D' }
 ];
 
 function normalizeSpecialLiteralSpacing(text) {
@@ -2245,6 +2253,7 @@ function activate(context) {
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(0, context)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => Compile(1, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFileAndOpenTerminal', () => Compile(1, context, { onSuccess: OpenTradingTerminal })));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => Compile(2, context)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.help', (keyword, version) => Help(keyword, version)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.offlineHelp', () => OfflineHelp()));
@@ -2605,5 +2614,6 @@ module.exports = {
     buildMetaEditorCmd,
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,
+    shouldRunCompileSuccessAction,
     inferMqlDataDirFromPath
 };

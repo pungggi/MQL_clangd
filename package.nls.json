@@ -15,6 +15,7 @@
     "mql_tools.configuration.Wine.Binary.description": "Path to the Wine binary (e.g., 'wine64', 'wine', or full path like '/usr/local/bin/wine64').",
     "mql_tools.configuration.context": "Do not disable!",
     "mql_tools.commands.compileFile.title": "Compile MQL file",
+    "mql_tools.commands.compileFileAndOpenTerminal.title": "Compile MQL file and open MetaTrader terminal",
     "mql_tools.commands.checkFile.title": "Check MQL syntax",
     "mql_tools.commands.compileScript.title": "Compile MQL file using script",
     "mql_tools.commands.help.title": "Get the MQL4/MQL5 help",
