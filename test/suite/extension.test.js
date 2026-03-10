@@ -103,6 +103,23 @@ suite('Formatting helper tests', () => {
         const input = "int flags = B'111'; color shade = C'1,2,3';";
         assert.strictEqual(normalizeSpecialLiteralSpacing(input), input);
     });
+
+    test('formats compile target label with version', () => {
+        assert.strictEqual(formatCompileTargetLabel('SMC.mq5', '4.57'), "'SMC.mq5' v4.57");
+    });
+
+    test('builds progress title with compile target label', () => {
+        const targetLabel = formatCompileTargetLabel('SMC.mq5', '4.57');
+        assert.strictEqual(buildCompileProgressTitle('Syntax checking', targetLabel), "MQL Tools: Syntax checking 'SMC.mq5' v4.57");
+    });
+
+    test('formatCompileTargetLabel omits version suffix when version is null', () => {
+        assert.strictEqual(formatCompileTargetLabel('SMC.mq5', null), "'SMC.mq5'");
+    });
+
+    test('formatCompileTargetLabel omits version suffix when version is undefined', () => {
+        assert.strictEqual(formatCompileTargetLabel('SMC.mq5', undefined), "'SMC.mq5'");
+    });
 });
 
 suite('Property version extraction tests', () => {
@@ -121,14 +138,6 @@ suite('Property version extraction tests', () => {
         assert.strictEqual(extractPropertyVersion(source), '4.57');
     });
 
-    test('formats compile target label with version', () => {
-        assert.strictEqual(formatCompileTargetLabel('SMC.mq5', '4.57'), "'SMC.mq5' v4.57");
-    });
-
-    test('builds progress title with compile target label', () => {
-        const targetLabel = formatCompileTargetLabel('SMC.mq5', '4.57');
-        assert.strictEqual(buildCompileProgressTitle('Syntax checking', targetLabel), "MQL Tools: Syntax checking 'SMC.mq5' v4.57");
-    });
 });
 
 suite('Problems panel focus helper tests', () => {

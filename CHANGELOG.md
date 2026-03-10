@@ -1,8 +1,10 @@
 # Changelog
 
-## 1.1.28
+## 1.1.31
 
-### 
+### Features
+- **Compile & Open Terminal**: New command `MQL: Compile and Open Terminal` compiles the current MQL file and automatically launches the MetaTrader terminal on successful compilation. A dedicated toolbar button (configurable via `mql_tools.ShowButtonCompileAndOpenTerminal`) appears alongside the existing compile button.
+- **Version Label in Compilation Output**: The `#property version` value is now extracted from the compiled file and displayed in compilation success messages and the progress notification title. Supports both UTF-8 and UTF-16 LE encoded files.
 
 ## 1.1.27
 
