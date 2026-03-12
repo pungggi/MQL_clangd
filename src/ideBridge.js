@@ -51,6 +51,13 @@ class IDEBridge {
         this._listeners.get(channel).push(callback);
     }
 
+    off(channel, callback) {
+        const listeners = this._listeners.get(channel);
+        if (!listeners) return;
+        const idx = listeners.indexOf(callback);
+        if (idx !== -1) listeners.splice(idx, 1);
+    }
+
     _emit(channel, data) {
         const listeners = this._listeners.get(channel);
         if (listeners) {

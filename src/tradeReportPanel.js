@@ -82,6 +82,12 @@ class TradeReportPanel {
 
     dispose() {
         TradeReportPanel.currentPanel = null;
+
+        // Unregister bridge listeners to prevent leaked references
+        this._bridge.off('trades', this._tradeListener);
+        this._bridge.off('equity', this._equityListener);
+        this._bridge.off('metrics', this._metricListener);
+
         this._panel.dispose();
         while (this._disposables.length) {
             const d = this._disposables.pop();
