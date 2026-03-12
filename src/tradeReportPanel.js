@@ -91,8 +91,10 @@ class TradeReportPanel {
 
     _getHtml(bridge) {
         const summary = bridge.getSummary();
-        const tradesJson = JSON.stringify(bridge.trades);
-        const equityJson = JSON.stringify(bridge.equity);
+        // Escape </script> sequences to prevent XSS via inline JSON
+        const safeJson = (obj) => JSON.stringify(obj).replace(/<\//g, '<\\/');
+        const tradesJson = safeJson(bridge.trades);
+        const equityJson = safeJson(bridge.equity);
 
         return /*html*/`<!DOCTYPE html>
 <html lang="en">
