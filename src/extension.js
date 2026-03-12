@@ -2545,14 +2545,12 @@ function activate(context) {
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleIDEBridge', () => ideBridge.toggle()));
 
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', () => {
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', async () => {
         if (!ideBridge.isRunning) {
-            ideBridge.start().then(() => {
-                TradeReportPanel.createOrShow(context, ideBridge);
-            });
-        } else {
-            TradeReportPanel.createOrShow(context, ideBridge);
+            await ideBridge.start();
+            if (!ideBridge.isRunning) return; // start failed (e.g. missing config)
         }
+        TradeReportPanel.createOrShow(context, ideBridge);
     }));
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.installIDEBridge', async () => {
