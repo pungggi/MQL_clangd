@@ -386,6 +386,21 @@
                 "command": "mql_tools.switchLogMode",
                 "title": "Switch Log Tail Mode (Live/Standard)",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.toggleIDEBridge",
+                "title": "Toggle IDE Bridge (Trade Report Watcher)",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.openTradeReport",
+                "title": "Open Trade Report",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.installIDEBridge",
+                "title": "Install IDE Bridge Library",
+                "category": "MQL"
             }
         ],
         "menus": {

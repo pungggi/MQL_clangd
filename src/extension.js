@@ -56,6 +56,8 @@ const {
     cleanupBatchFile
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
+const ideBridge = require('./ideBridge');
+const { TradeReportPanel } = require('./tradeReportPanel');
 
 
 // =============================================================================
@@ -2537,6 +2539,56 @@ function activate(context) {
     }));
 
     logTailer.initStatusBar();
+
+    // IDE Bridge commands for trade report integration
+    ideBridge.initStatusBar();
+
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleIDEBridge', () => ideBridge.toggle()));
+
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', () => {
+        if (!ideBridge.isRunning) {
+            ideBridge.start().then(() => {
+                TradeReportPanel.createOrShow(context, ideBridge);
+            });
+        } else {
+            TradeReportPanel.createOrShow(context, ideBridge);
+        }
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.installIDEBridge', async () => {
+        const version = ideBridge.detectMqlVersion() || 'mql5';
+        const config = vscode.workspace.getConfiguration('mql_tools');
+        const settingKey = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
+        let rawIncDir = config.get(`Metaeditor.${settingKey}`);
+
+        if (!rawIncDir) {
+            rawIncDir = ideBridge.inferDataFolder(version);
+        }
+
+        if (!rawIncDir) {
+            vscode.window.showErrorMessage('Cannot determine MQL folder path. Please configure Include directory settings.');
+            return;
+        }
+
+        let basePath = rawIncDir;
+        if (pathModule.basename(basePath).toLowerCase() === 'include') {
+            basePath = pathModule.dirname(basePath);
+        }
+        ideBridge.basePath = basePath;
+
+        const success = ideBridge.deployLibrary();
+        if (success) {
+            vscode.window.showInformationMessage(
+                'IDEBridge.mqh installed! Add `#include <IDEBridge.mqh>` to your EA and call IDEBridgeInit() in OnInit().'
+            );
+        }
+    }));
+
+    context.subscriptions.push({
+        dispose: () => {
+            if (ideBridge.isRunning) ideBridge.stop();
+        }
+    });
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider('mql-output', DefinitionProvider()));
