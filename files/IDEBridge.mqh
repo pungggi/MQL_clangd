@@ -102,7 +102,7 @@ bool IDEBridgeInit() {
 //+------------------------------------------------------------------+
 int IDEBridgeOpenFile(string filename) {
    int handle = FileOpen(filename,
-      FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI |
+      FILE_WRITE | FILE_READ | FILE_TXT | FILE_UNICODE |
       FILE_SHARE_READ | FILE_SHARE_WRITE);
 
    if (handle == INVALID_HANDLE) {
@@ -347,13 +347,15 @@ void IDEBridgeReportHistory() {
 //| Close all file handles cleanly                                   |
 //+------------------------------------------------------------------+
 void IDEBridgeClose() {
-   if (__ideTrades != INVALID_HANDLE) {
+   if (__ideLog != INVALID_HANDLE) {
       IDEBridgeWriteLine(__ideLog, IDEBridgeLogJSON(IDE_INFO, "IDEBridge session ended"));
-      FileClose(__ideTrades);  __ideTrades  = INVALID_HANDLE;
-      FileClose(__ideEquity);  __ideEquity  = INVALID_HANDLE;
-      FileClose(__ideMetrics); __ideMetrics = INVALID_HANDLE;
-      FileClose(__ideLog);     __ideLog     = INVALID_HANDLE;
    }
+
+   if (__ideTrades  != INVALID_HANDLE) { FileClose(__ideTrades);  __ideTrades  = INVALID_HANDLE; }
+   if (__ideEquity  != INVALID_HANDLE) { FileClose(__ideEquity);  __ideEquity  = INVALID_HANDLE; }
+   if (__ideMetrics != INVALID_HANDLE) { FileClose(__ideMetrics); __ideMetrics = INVALID_HANDLE; }
+   if (__ideLog     != INVALID_HANDLE) { FileClose(__ideLog);     __ideLog     = INVALID_HANDLE; }
+
    __ideReady = false;
 }
 //+------------------------------------------------------------------+

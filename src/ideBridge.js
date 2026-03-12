@@ -20,6 +20,7 @@ class IDEBridge {
         this.bridgeDir = null;      // Full path to Files/IDEBridge/
         this.watchers = new Map();  // channel name → fs.FSWatcher
         this.offsets = new Map();   // channel name → last read position
+        this._isUtf16 = new Map();  // channel name → boolean (UTF-16LE detected)
         this.isRunning = false;
         this.pollTimer = null;
         this.mqlVersion = null;
@@ -272,6 +273,7 @@ class IDEBridge {
             watcher.close();
         }
         this.watchers.clear();
+        this._isUtf16.clear();
 
         if (this.pollTimer) {
             clearTimeout(this.pollTimer);
@@ -355,7 +357,29 @@ class IDEBridge {
 
             this.offsets.set(channel, stats.size);
 
-            const content = buffer.toString('utf8');
+            // MQL FILE_UNICODE writes UTF-16LE (with BOM on first write).
+            // Detect encoding: UTF-16LE BOM is FF FE at byte 0.
+            let content;
+            if (lastOffset === 0 && buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+                content = buffer.subarray(2).toString('utf16le');
+            } else if (this._isUtf16.get(channel)) {
+                content = buffer.toString('utf16le');
+            } else {
+                // Heuristic: UTF-16LE text has null bytes between ASCII chars
+                const hasNullBytes = buffer.length >= 4 && (buffer[1] === 0 || buffer[3] === 0);
+                if (hasNullBytes) {
+                    this._isUtf16.set(channel, true);
+                    content = buffer.toString('utf16le');
+                } else {
+                    content = buffer.toString('utf8');
+                }
+            }
+
+            // Track that this channel uses UTF-16LE for subsequent reads
+            if (lastOffset === 0 && buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+                this._isUtf16.set(channel, true);
+            }
+
             const lines = content.split('\n').filter(l => l.trim());
 
             for (const line of lines) {
