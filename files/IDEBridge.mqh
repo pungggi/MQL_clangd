@@ -201,7 +201,7 @@ void IDEBridgeReportTrade(long ticket, string symbol, int type,
    string typeStr = (type == 0) ? "buy" : (type == 1) ? "sell" : "other";
 
    string json = StringFormat(
-      "{\"ts\":\"%s\",\"ticket\":%d,\"symbol\":\"%s\",\"type\":\"%s\","
+      "{\"ts\":\"%s\",\"ticket\":%I64d,\"symbol\":\"%s\",\"type\":\"%s\","
       "\"lots\":%.2f,\"open_price\":%.5f,\"close_price\":%.5f,"
       "\"sl\":%.5f,\"tp\":%.5f,\"profit\":%.2f,\"commission\":%.2f,"
       "\"swap\":%.2f,\"open_time\":\"%s\",\"close_time\":\"%s\","
