@@ -151,10 +151,6 @@
                     "maximum": 300000,
                     "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
-                "mql_tools.context": {
-                    "type": "boolean",
-                    "default": false
-                },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
                     "enum": [
@@ -435,7 +431,6 @@
             ],
             "explorer/context": [
                 {
-                    "when": "config.mql_tools.context == true",
                     "command": "mql_tools.Showfiles",
                     "group": "z_commands"
                 },
