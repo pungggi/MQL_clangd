@@ -355,12 +355,11 @@ class IDEBridge {
             fs.readSync(fd, buffer, 0, length, lastOffset);
             fs.closeSync(fd);
 
-            this.offsets.set(channel, stats.size);
-
             // MQL FILE_UNICODE writes UTF-16LE (with BOM on first write).
             // Detect encoding: UTF-16LE BOM is FF FE at byte 0.
             let content;
             if (lastOffset === 0 && buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+                this._isUtf16.set(channel, true);
                 content = buffer.subarray(2).toString('utf16le');
             } else if (this._isUtf16.get(channel)) {
                 content = buffer.toString('utf16le');
@@ -375,12 +374,21 @@ class IDEBridge {
                 }
             }
 
-            // Track that this channel uses UTF-16LE for subsequent reads
-            if (lastOffset === 0 && buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
-                this._isUtf16.set(channel, true);
+            // Only advance the offset by the bytes consumed by complete lines.
+            // If the read ends mid-line (no trailing newline), leave those bytes
+            // for the next poll so the partial line is not silently dropped.
+            const newlineIndex = content.lastIndexOf('\n');
+            if (newlineIndex === -1) {
+                // No complete line in this chunk — wait for more data
+                return;
             }
 
-            const lines = content.split('\n').filter(l => l.trim());
+            const isUtf16 = this._isUtf16.get(channel);
+            const consumedChars = newlineIndex + 1; // chars up to and including last '\n'
+            const consumedBytes = isUtf16 ? consumedChars * 2 : Buffer.byteLength(content.slice(0, consumedChars), 'utf8');
+            this.offsets.set(channel, lastOffset + consumedBytes);
+
+            const lines = content.slice(0, consumedChars).split('\n').filter(l => l.trim());
 
             for (const line of lines) {
                 this.processLine(channel, line);

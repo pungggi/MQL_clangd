@@ -297,6 +297,15 @@ tr:hover td {
         vscode.postMessage({ type: 'refresh' });
     }
 
+    function esc(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }
     function fmt(v, d) { return (d === undefined ? 2 : d, Number(v).toFixed(d === undefined ? 2 : d)); }
 
@@ -317,16 +326,16 @@ tr:hover td {
             var pCls = t.profit >= 0 ? 'positive' : 'negative';
             h += '<tr>'
                + '<td>' + (i+1) + '</td>'
-               + '<td>' + (t.ticket || '') + '</td>'
-               + '<td>' + (t.symbol || '') + '</td>'
-               + '<td class="' + cls + '">' + (t.type || '').toUpperCase() + '</td>'
+               + '<td>' + esc(t.ticket) + '</td>'
+               + '<td>' + esc(t.symbol) + '</td>'
+               + '<td class="' + cls + '">' + esc((t.type || '').toUpperCase()) + '</td>'
                + '<td>' + fmt(t.lots) + '</td>'
                + '<td>' + (t.open_price ? fmt(t.open_price, 5) : '-') + '</td>'
                + '<td>' + (t.close_price ? fmt(t.close_price, 5) : '-') + '</td>'
                + '<td>' + (t.sl ? fmt(t.sl, 5) : '-') + '</td>'
                + '<td>' + (t.tp ? fmt(t.tp, 5) : '-') + '</td>'
                + '<td class="' + pCls + '">' + fmt(t.profit) + '</td>'
-               + '<td style="color:var(--text-dim);font-size:11px">' + (t.close_time || '') + '</td>'
+               + '<td style="color:var(--text-dim);font-size:11px">' + esc(t.close_time) + '</td>'
                + '</tr>';
         });
         h += '</tbody></table>';
@@ -348,7 +357,7 @@ tr:hover td {
         var h = '<h2>Metrics</h2><div class="metrics-grid">';
         keys.forEach(function(k) {
             var val = m[k].value !== undefined ? m[k].value : m[k].value_str;
-            h += '<div class="metric-item"><span class="key">' + k + '</span><span class="val">' + val + '</span></div>';
+            h += '<div class="metric-item"><span class="key">' + esc(k) + '</span><span class="val">' + esc(val) + '</span></div>';
         });
         h += '</div>';
         return h;
