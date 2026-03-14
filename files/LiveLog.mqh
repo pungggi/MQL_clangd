@@ -238,7 +238,7 @@ void LLF(string fmt, double a1, int a2, string a3 = "", string a4 = "") {
   LiveLogWrite(msg);
   #ifndef LIVELOG_REDIRECT
   Print(msg);
-  #endif
+#endif
 }
 
 //+------------------------------------------------------------------+
@@ -249,10 +249,18 @@ void LLF(string fmt, double a1, int a2, string a3 = "", string a4 = "") {
 //| the exact MQL source line. Click the yellow source badges in     |
 //| the Trade Report to jump straight to the code.                   |
 //+------------------------------------------------------------------+
-#define LogDebug(msg) LL("[DEBUG] {" + __FILE__ + ":" + __FUNCTION__ + ":" + IntegerToString(__LINE__) + "}: " + msg)
-#define LogInfo(msg)  LL("[INFO] {"  + __FILE__ + ":" + __FUNCTION__ + ":" + IntegerToString(__LINE__) + "}: " + msg)
-#define LogWarn(msg)  LL("[WARN] {"  + __FILE__ + ":" + __FUNCTION__ + ":" + IntegerToString(__LINE__) + "}: " + msg)
-#define LogError(msg) LL("[ERROR] {" + __FILE__ + ":" + __FUNCTION__ + ":" + IntegerToString(__LINE__) + "}: " + msg)
+#define LogDebug(msg)                                                          \
+  LL("[DEBUG] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                       \
+     IntegerToString(__LINE__) + "}: " + (msg))
+#define LogInfo(msg)                                                           \
+  LL("[INFO] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                        \
+     IntegerToString(__LINE__) + "}: " + (msg))
+#define LogWarn(msg)                                                           \
+  LL("[WARN] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                        \
+     IntegerToString(__LINE__) + "}: " + (msg))
+#define LogError(msg)                                                          \
+  LL("[ERROR] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                       \
+     IntegerToString(__LINE__) + "}: " + (msg))
 
 //+------------------------------------------------------------------+
 //| PrintLive - Similar to Print() but with immediate file flush     |
@@ -350,9 +358,10 @@ void PrintFormatLive(string fmt, double a1, int a2, string a3 = "",
 //+------------------------------------------------------------------+
 //| TRADE level - used by the Trade Report parser for source nav     |
 //+------------------------------------------------------------------+
-#define LogTrade(msg)     LL("[TRADE] {" + __FILE__ + ":" + __FUNCTION__ + ":" + IntegerToString(__LINE__) + "}: " + msg)
+#define LogTrade(msg)                                                          \
+  LL("[TRADE] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                       \
+     IntegerToString(__LINE__) + "}: " + (msg))
 #define LogTradeLive(msg) LogTrade(msg)
-
 //+------------------------------------------------------------------+
 //| AUTOMATIC REDIRECTION (opt-in)                                    |
 //| Define LIVELOG_REDIRECT before including this file to             |

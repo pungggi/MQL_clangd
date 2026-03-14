@@ -284,12 +284,13 @@ function parseLogFile(logPath) {
 
     // ---- Compute summary from parsed trades ---------------------------------
     const wins = trades.filter(t => t.netPnl > 0).length;
-    const losses = trades.filter(t => t.netPnl <= 0).length;
+    const losses = trades.filter(t => t.netPnl < 0).length;
+    const breakeven = trades.filter(t => t.netPnl === 0).length;
     const grossProfit = trades.reduce((s, t) => s + (t.grossPnl > 0 ? t.grossPnl : 0), 0);
     const grossLoss = trades.reduce((s, t) => s + (t.grossPnl < 0 ? t.grossPnl : 0), 0);
     const totalCommission = trades.reduce((s, t) => s + (t.commission || 0), 0);
     const netPnl = trades.reduce((s, t) => s + (t.netPnl || 0), 0);
-    const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
+    const winRate = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
 
     return {
         logPath,
@@ -312,12 +313,14 @@ function parseLogFile(logPath) {
             tradeCount: trades.length,
             wins,
             losses,
+            breakeven,
             winRate,
             grossProfit,
             grossLoss,
             commission: totalCommission,
             netPnl
-        }
+        },
+        logSummary
     };
 }
 
@@ -444,6 +447,7 @@ function parseLogSummary(logPath) {
     let netPnl = 0;
     let wins = 0;
     let losses = 0;
+    let breakeven = 0;
 
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i];
@@ -474,11 +478,13 @@ function parseLogSummary(logPath) {
             tradeCount++;
             const pnl = parseFloat(pnlMatch[1]);
             netPnl += pnl;
-            if (pnl > 0) wins++; else losses++;
+            if (pnl > 0) wins++;
+            else if (pnl < 0) losses++;
+            else breakeven++;
         }
     }
 
-    const winRate = tradeCount > 0 ? (wins / tradeCount) * 100 : 0;
+    const winRate = (wins + losses) > 0 ? (wins / (wins + losses)) * 100 : 0;
 
     return {
         eaName: eaName || path.basename(logPath, '.log'),
@@ -490,6 +496,7 @@ function parseLogSummary(logPath) {
         netPnl,
         wins,
         losses,
+        breakeven,
         winRate
     };
 }

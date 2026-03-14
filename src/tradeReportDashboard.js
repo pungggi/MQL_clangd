@@ -42,6 +42,7 @@ class TradeReportDashboard {
         this._context = context;
         this._expertsDir = expertsDir;
         this._disposables = [];
+        this._isDisposing = false;
 
         const data = this._scan(expertsDir);
         this._panel.webview.html = this._getHtml(data);
@@ -68,7 +69,12 @@ class TradeReportDashboard {
 
     _scan(expertsDir) {
         let eas;
-        try { eas = discoverEAs(expertsDir); } catch { eas = []; }
+        try {
+            eas = discoverEAs(expertsDir);
+        } catch (e) {
+            console.error(`discoverEAs failed for expertsDir: ${expertsDir}`, e);
+            eas = [];
+        }
         // Quick-parse summary for each EA's runs (latest 10 per EA for speed)
         return eas.map(ea => {
             const runs = ea.runs.slice(0, 10).map(run => {
@@ -76,7 +82,8 @@ class TradeReportDashboard {
                 try {
                     const s = parseLogSummary(run.path);
                     data = { ...run, ...s };
-                } catch {
+                } catch (e) {
+                    console.error(`parseLogSummary failed for EA: ${ea.name}, run.path: ${run.path}`, e);
                     data = { ...run, tradeCount: 0, netPnl: 0, winRate: 0, symbol: '?', from: '?', to: '?' };
                 }
                 // Check if a source snapshot exists for this run
@@ -122,6 +129,8 @@ class TradeReportDashboard {
     }
 
     dispose() {
+        if (this._isDisposing) return;
+        this._isDisposing = true;
         TradeReportDashboard.currentPanel = null;
         this._panel.dispose();
         while (this._disposables.length) {

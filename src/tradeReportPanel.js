@@ -18,12 +18,12 @@ class TradeReportPanel {
      * @param {object} parsedData - Output of logParser.parseLogFile()
      * @param {string} logFilePath - Absolute path to the source .log file
      */
-    static createOrShow(context, parsedData, logFilePath) {
+    static async createOrShow(context, parsedData, logFilePath) {
         const column = vscode.ViewColumn.Beside;
 
         if (TradeReportPanel.currentPanel) {
             TradeReportPanel.currentPanel._panel.reveal(column);
-            TradeReportPanel.currentPanel._setData(parsedData, logFilePath);
+            await TradeReportPanel.currentPanel._setData(parsedData, logFilePath);
             return TradeReportPanel.currentPanel;
         }
 
@@ -42,17 +42,20 @@ class TradeReportPanel {
         this._panel = panel;
         this._context = context;
         this._logFilePath = logFilePath;
+        this._eaName = parsedData.eaName;
+        this._eaFile = parsedData.testConfig ? parsedData.testConfig.eaFile : null;
         this._disposables = [];
         this._fileCache = new Map();
         this._snapshotDir = null;
 
-        this._buildSourceMap().then(() => {
+        this._buildSourceMapPromise = this._buildSourceMap();
+        this._buildSourceMapPromise.then(() => {
             this._ensureSnapshot(parsedData);
         });
 
         this._panel.webview.html = this._getHtml(parsedData);
 
-        this._panel.webview.onDidReceiveMessage(msg => {
+        this._panel.webview.onDidReceiveMessage(async msg => {
             switch (msg.type) {
                 case 'openLine': {
                     const uri = vscode.Uri.file(this._logFilePath);
@@ -63,12 +66,15 @@ class TradeReportPanel {
                             selection: new vscode.Range(line, 0, line, 0),
                             preserveFocus: false
                         });
-                    });
-                    break;
+                    }).catch(err => {
+                        vscode.window.showErrorMessage(`Failed to open log file: ${err.message}`);
+                    }); break;
                 }
                 case 'refresh': {
+                    await this._buildSourceMapPromise;
                     try {
                         const fresh = parseLogFile(this._logFilePath);
+                        this._ensureSnapshot(fresh);
                         this._panel.webview.postMessage({
                             type: 'fullUpdate',
                             trades: fresh.trades,
@@ -93,8 +99,11 @@ class TradeReportPanel {
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
-    _setData(parsedData, logFilePath) {
+    async _setData(parsedData, logFilePath) {
+        await this._buildSourceMapPromise;
         this._logFilePath = logFilePath;
+        this._eaName = parsedData.eaName;
+        this._eaFile = parsedData.testConfig ? parsedData.testConfig.eaFile : null;
         this._snapshotDir = null;
         this._ensureSnapshot(parsedData);
         this._panel.webview.postMessage({
@@ -109,17 +118,53 @@ class TradeReportPanel {
     }
 
     async _buildSourceMap() {
+        this._fileCache.clear();
         try {
             const uris = await vscode.workspace.findFiles('**/*.{mq4,mq5,mqh}', '**/node_modules/**');
             for (const uri of uris) {
                 const basename = path.basename(uri.fsPath);
                 if (!this._fileCache.has(basename)) {
-                    this._fileCache.set(basename, uri);
+                    this._fileCache.set(basename, []);
                 }
+                this._fileCache.get(basename).push(uri);
             }
         } catch (e) {
             console.error('Failed to build MQL source map', e);
         }
+    }
+
+    /**
+     * Resolve a filename (possibly including directory parts) to a workspace URI.
+     * Uses the file cache and additional context to disambiguate.
+     */
+    _resolveUri(filename) {
+        if (!filename) return null;
+        const basename = path.basename(filename);
+        const candidates = this._fileCache.get(basename);
+        if (!candidates || candidates.length === 0) return null;
+
+        if (candidates.length === 1) return candidates[0];
+
+        // Multiple candidates, try to match by path suffix (e.g. "Include/File.mqh")
+        const normalizedFilename = filename.replace(/\\/g, '/');
+        for (const uri of candidates) {
+            if (uri.fsPath.replace(/\\/g, '/').endsWith(normalizedFilename)) {
+                return uri;
+            }
+        }
+
+        // Try to match using EA name or EA file path as a hint
+        if (this._eaName) {
+            const match = candidates.find(u => u.fsPath.includes(this._eaName));
+            if (match) return match;
+        }
+        if (this._eaFile) {
+            const eaBasename = path.basename(this._eaFile, path.extname(this._eaFile));
+            const match = candidates.find(u => u.fsPath.includes(eaBasename));
+            if (match) return match;
+        }
+
+        return candidates[0];
     }
 
     /**
@@ -168,9 +213,11 @@ class TradeReportPanel {
             fs.mkdirSync(snapDir, { recursive: true });
             let copied = 0;
             for (const filename of sourceFiles) {
-                const uri = this._fileCache.get(filename);
+                const uri = this._resolveUri(filename);
                 if (uri && fs.existsSync(uri.fsPath)) {
-                    fs.copyFileSync(uri.fsPath, path.join(snapDir, filename));
+                    // Sanitize: use only the basename to prevent path traversal
+                    const safeFilename = path.basename(filename);
+                    fs.copyFileSync(uri.fsPath, path.join(snapDir, safeFilename));
                     copied++;
                 }
             }
@@ -209,12 +256,15 @@ class TradeReportPanel {
         }
 
         // Live target (original behavior)
-        let uri = this._fileCache.get(filename);
+        let uri = this._resolveUri(filename);
         if (!uri) {
-            const uris = await vscode.workspace.findFiles(`**/${filename}`, null, 1);
+            const escapedFilename = this._escapeGlob(filename);
+            const uris = await vscode.workspace.findFiles(`**/${escapedFilename}`, null, 1);
             if (uris && uris.length > 0) {
                 uri = uris[0];
-                this._fileCache.set(filename, uri);
+                const b = path.basename(uri.fsPath);
+                if (!this._fileCache.has(b)) this._fileCache.set(b, []);
+                this._fileCache.get(b).push(uri);
             }
         }
 
@@ -225,24 +275,30 @@ class TradeReportPanel {
                     selection: new vscode.Range(line, 0, line, 0),
                     preserveFocus: false
                 });
+            }).catch(err => {
+                vscode.window.showWarningMessage(`Could not open source file: ${err.message}`);
             });
         } else {
             vscode.window.showWarningMessage(`Could not find source file: ${filename}`);
         }
     }
 
-    dispose() {
-        TradeReportPanel.currentPanel = null;
-        this._panel.dispose();
-        while (this._disposables.length) {
-            const d = this._disposables.pop();
-            if (d) d.dispose();
-        }
-    }
+_escapeGlob(pattern) {
+    return pattern.replace(/[*?[\]{}]/g, '[$&]');
+}
 
-    _getHtml(data) {
-        const safeJson = (obj) => JSON.stringify(obj).replace(/<\//g, '<\\/');
-        return /*html*/`<!DOCTYPE html>
+dispose() {
+    TradeReportPanel.currentPanel = null;
+    this._panel.dispose();
+    while (this._disposables.length) {
+        const d = this._disposables.pop();
+        if (d) d.dispose();
+    }
+}
+
+_getHtml(data) {
+    const safeJson = (obj) => JSON.stringify(obj).replace(/<\//g, '<\\/');
+    return /*html*/`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -737,7 +793,7 @@ tr:hover td { background: var(--surface); }
 </script>
 </body>
 </html>`;
-    }
+}
 }
 
 module.exports = { TradeReportPanel };

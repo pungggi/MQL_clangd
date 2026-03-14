@@ -3,6 +3,7 @@ const url = require('url');
 const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const pathModule = require('path');
 
 const sleep = require('util').promisify(setTimeout);
@@ -2541,8 +2542,6 @@ function activate(context) {
 
     // Trade Report Dashboard — discover EAs and their test runs
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', () => {
-        const fs = require('fs');
-        const os = require('os');
 
         // Resolve the Experts/ folder via multiple strategies
         function findExpertsDir() {
@@ -2574,15 +2573,24 @@ function activate(context) {
                 let candidates = [];
                 try {
                     for (const termId of fs.readdirSync(mqRoot)) {
-                        const d = pathModule.join(mqRoot, termId, mqlDir, 'Experts');
-                        if (fs.existsSync(d)) candidates.push(d);
+                        try {
+                            const d = pathModule.join(mqRoot, termId, mqlDir, 'Experts');
+                            if (fs.existsSync(d)) candidates.push(d);
+                        } catch (err) {
+                            console.error(`Error checking path for termId ${termId} in ${mqRoot} (${mqlDir}):`, err.message);
+                        }
                     }
-                } catch { /* ignore */ }
+                } catch (err) {
+                    console.error(`Error reading MetaQuotes root directory ${mqRoot}:`, err.message);
+                }
                 // Pick the one with the most recently modified Experts subfolder
                 if (candidates.length === 1) return candidates[0];
                 if (candidates.length > 1) {
                     candidates.sort((a, b) => {
-                        try { return fs.statSync(b).mtime - fs.statSync(a).mtime; } catch { return 0; }
+                        try { return fs.statSync(b).mtime - fs.statSync(a).mtime; } catch (err) {
+                            console.error(`Error comparing modification times for candidates ${a} and ${b}:`, err.message);
+                            return 0;
+                        }
                     });
                     return candidates[0];
                 }
@@ -2604,7 +2612,12 @@ function activate(context) {
             return;
         }
 
-        TradeReportDashboard.createOrShow(context, expertsDir);
+        try {
+            TradeReportDashboard.createOrShow(context, expertsDir);
+        } catch (error) {
+            console.error('Failed to create or show Trade Report Dashboard:', error);
+            vscode.window.showErrorMessage(`Failed to open Trade Report Dashboard: ${error.message}`);
+        }
     }));
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));

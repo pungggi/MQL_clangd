@@ -405,28 +405,53 @@
         "description": "Enum definition"
     },
     "LogInfo": {
-        "prefix": "loginfo",
-        "body": "LogInfo(${1:\"message\"});$0",
+        "prefix": [
+            "loginfo",
+            "LogInfo"
+        ],
+        "body": [
+            "LogInfo(${1:\"message\"});$0"
+        ],
         "description": "Log INFO with source location (LiveLog)"
     },
     "LogDebug": {
-        "prefix": "logdebug",
-        "body": "LogDebug(${1:\"message\"});$0",
+        "prefix": [
+            "logdebug",
+            "LogDebug"
+        ],
+        "body": [
+            "LogDebug(${1:\"message\"});$0"
+        ],
         "description": "Log DEBUG with source location (LiveLog)"
     },
     "LogWarn": {
-        "prefix": "logwarn",
-        "body": "LogWarn(${1:\"message\"});$0",
+        "prefix": [
+            "logwarn",
+            "LogWarn"
+        ],
+        "body": [
+            "LogWarn(${1:\"message\"});$0"
+        ],
         "description": "Log WARN with source location (LiveLog)"
     },
     "LogError": {
-        "prefix": "logerror",
-        "body": "LogError(${1:\"message\"});$0",
+        "prefix": [
+            "logerror",
+            "LogError"
+        ],
+        "body": [
+            "LogError(${1:\"message\"});$0"
+        ],
         "description": "Log ERROR with source location (LiveLog)"
     },
     "LogTrade": {
-        "prefix": "logtrade",
-        "body": "LogTrade(${1:\"message\"});$0",
+        "prefix": [
+            "logtrade",
+            "LogTrade"
+        ],
+        "body": [
+            "LogTrade(${1:\"message\"});$0"
+        ],
         "description": "Log TRADE with source location (LiveLog)"
     }
 }
