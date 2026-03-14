@@ -215,9 +215,11 @@ class TradeReportPanel {
             for (const filename of sourceFiles) {
                 const uri = this._resolveUri(filename);
                 if (uri && fs.existsSync(uri.fsPath)) {
-                    // Sanitize: use only the basename to prevent path traversal
-                    const safeFilename = path.basename(filename);
-                    fs.copyFileSync(uri.fsPath, path.join(snapDir, safeFilename));
+                    // Sanitize to retain folder structure without path traversal
+                    const safeRelativePath = filename.replace(/^[\/\\]+/, '').replace(/\.\.(?:[\/\\]|$)/g, '');
+                    const destPath = path.join(snapDir, safeRelativePath);
+                    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+                    fs.copyFileSync(uri.fsPath, destPath);
                     copied++;
                 }
             }
@@ -242,7 +244,8 @@ class TradeReportPanel {
 
         // Snapshot target
         if (target === 'snapshot' && this._snapshotDir) {
-            const snapFile = path.join(this._snapshotDir, filename);
+            const safeRelativePath = filename.replace(/^[\/\\]+/, '').replace(/\.\.(?:[\/\\]|$)/g, '');
+            const snapFile = path.join(this._snapshotDir, safeRelativePath);
             if (fs.existsSync(snapFile)) {
                 const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(snapFile));
                 await vscode.window.showTextDocument(doc, {
@@ -719,7 +722,7 @@ tr:hover td { background: var(--surface); }
     }
 
     function renderFilters() {
-        var levels = ['ALL', 'TRADE', 'INFO', 'DEBUG', 'ERROR'];
+        var levels = ['ALL', 'TRADE', 'INFO', 'WARN', 'DEBUG', 'ERROR'];
         var h = '';
         levels.forEach(function(lv) {
             var active = currentFilter === lv ? ' active' : '';
