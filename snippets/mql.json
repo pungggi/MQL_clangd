@@ -403,5 +403,30 @@
             "};"
         ],
         "description": "Enum definition"
+    },
+    "LogInfo": {
+        "prefix": "loginfo",
+        "body": "LogInfo(${1:\"message\"});$0",
+        "description": "Log INFO with source location (LiveLog)"
+    },
+    "LogDebug": {
+        "prefix": "logdebug",
+        "body": "LogDebug(${1:\"message\"});$0",
+        "description": "Log DEBUG with source location (LiveLog)"
+    },
+    "LogWarn": {
+        "prefix": "logwarn",
+        "body": "LogWarn(${1:\"message\"});$0",
+        "description": "Log WARN with source location (LiveLog)"
+    },
+    "LogError": {
+        "prefix": "logerror",
+        "body": "LogError(${1:\"message\"});$0",
+        "description": "Log ERROR with source location (LiveLog)"
+    },
+    "LogTrade": {
+        "prefix": "logtrade",
+        "body": "LogTrade(${1:\"message\"});$0",
+        "description": "Log TRADE with source location (LiveLog)"
     }
 }

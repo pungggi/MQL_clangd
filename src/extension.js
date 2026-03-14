@@ -56,8 +56,7 @@ const {
     cleanupBatchFile
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
-const ideBridge = require('./ideBridge');
-const { TradeReportPanel } = require('./tradeReportPanel');
+const { TradeReportDashboard } = require('./tradeReportDashboard');
 
 
 // =============================================================================
@@ -2540,53 +2539,73 @@ function activate(context) {
 
     logTailer.initStatusBar();
 
-    // IDE Bridge commands for trade report integration
-    ideBridge.initStatusBar();
+    // Trade Report Dashboard — discover EAs and their test runs
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', () => {
+        const fs = require('fs');
+        const os = require('os');
 
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleIDEBridge', () => ideBridge.toggle()));
+        // Resolve the Experts/ folder via multiple strategies
+        function findExpertsDir() {
+            // Strategy 1: logTailer already resolved basePath (Live Log was used)
+            if (logTailer.basePath) {
+                const d = pathModule.join(logTailer.basePath, 'Experts');
+                if (fs.existsSync(d)) return d;
+            }
 
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', async () => {
-        if (!ideBridge.isRunning) {
-            await ideBridge.start();
-            if (!ideBridge.isRunning) return; // start failed (e.g. missing config)
+            // Strategy 2: User-configured Include dir setting
+            const config = vscode.workspace.getConfiguration('mql_tools');
+            const version = (logTailer.detectMqlVersion ? logTailer.detectMqlVersion() : null) || 'mql5';
+            const settingKey = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
+            let rawIncDir = config.get(`Metaeditor.${settingKey}`);
+            if (rawIncDir) {
+                const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+                rawIncDir = rawIncDir.replace(/\$\{workspaceFolder\}/g, wsFolder);
+                let base = rawIncDir;
+                if (pathModule.basename(base).toLowerCase() === 'include') base = pathModule.dirname(base);
+                const d = pathModule.join(base, 'Experts');
+                if (fs.existsSync(d)) return d;
+            }
+
+            // Strategy 3: Scan MetaQuotes AppData — find all terminal data folders
+            const appData = process.env.APPDATA || pathModule.join(os.homedir(), 'AppData', 'Roaming');
+            const mqRoot = pathModule.join(appData, 'MetaQuotes', 'Terminal');
+            if (fs.existsSync(mqRoot)) {
+                const mqlDir = version === 'mql4' ? 'MQL4' : 'MQL5';
+                let candidates = [];
+                try {
+                    for (const termId of fs.readdirSync(mqRoot)) {
+                        const d = pathModule.join(mqRoot, termId, mqlDir, 'Experts');
+                        if (fs.existsSync(d)) candidates.push(d);
+                    }
+                } catch { /* ignore */ }
+                // Pick the one with the most recently modified Experts subfolder
+                if (candidates.length === 1) return candidates[0];
+                if (candidates.length > 1) {
+                    candidates.sort((a, b) => {
+                        try { return fs.statSync(b).mtime - fs.statSync(a).mtime; } catch { return 0; }
+                    });
+                    return candidates[0];
+                }
+            }
+
+            return null;
         }
-        TradeReportPanel.createOrShow(context, ideBridge);
-    }));
 
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.installIDEBridge', async () => {
-        const version = ideBridge.detectMqlVersion() || 'mql5';
-        const config = vscode.workspace.getConfiguration('mql_tools');
-        const settingKey = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
-        let rawIncDir = config.get(`Metaeditor.${settingKey}`);
-
-        if (!rawIncDir) {
-            rawIncDir = ideBridge.inferDataFolder(version);
-        }
-
-        if (!rawIncDir) {
-            vscode.window.showErrorMessage('Cannot determine MQL folder path. Please configure Include directory settings.');
+        const expertsDir = findExpertsDir();
+        if (!expertsDir) {
+            vscode.window.showErrorMessage(
+                'Cannot find MQL Experts folder. Please configure your MQL Include directory setting.',
+                'Configure'
+            ).then(sel => {
+                if (sel === 'Configure') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Metaeditor');
+                }
+            });
             return;
         }
 
-        let basePath = rawIncDir;
-        if (pathModule.basename(basePath).toLowerCase() === 'include') {
-            basePath = pathModule.dirname(basePath);
-        }
-        ideBridge.basePath = basePath;
-
-        const success = ideBridge.deployLibrary();
-        if (success) {
-            vscode.window.showInformationMessage(
-                'IDEBridge.mqh installed! Add `#include <IDEBridge.mqh>` to your EA and call IDEBridgeInit() in OnInit().'
-            );
-        }
+        TradeReportDashboard.createOrShow(context, expertsDir);
     }));
-
-    context.subscriptions.push({
-        dispose: () => {
-            if (ideBridge.isRunning) ideBridge.stop();
-        }
-    });
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider('mql-output', DefinitionProvider()));

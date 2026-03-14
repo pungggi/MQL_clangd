@@ -1,9 +1,11 @@
 'use strict';
 const vscode = require('vscode');
+const path = require('path');
+const { parseLogFile } = require('./logParser');
 
 /**
  * Manages the Trade Report WebviewPanel.
- * Receives trade/equity/metric data from ideBridge and renders an interactive dashboard.
+ * Displays parsed MT5 tester log data with clickable log-line navigation.
  */
 class TradeReportPanel {
     static currentPanel = null;
@@ -12,14 +14,15 @@ class TradeReportPanel {
     /**
      * Show or create the trade report panel.
      * @param {vscode.ExtensionContext} context
-     * @param {import('./ideBridge')} bridge
+     * @param {object} parsedData - Output of logParser.parseLogFile()
+     * @param {string} logFilePath - Absolute path to the source .log file
      */
-    static createOrShow(context, bridge) {
+    static createOrShow(context, parsedData, logFilePath) {
         const column = vscode.ViewColumn.Beside;
 
         if (TradeReportPanel.currentPanel) {
             TradeReportPanel.currentPanel._panel.reveal(column);
-            TradeReportPanel.currentPanel._update(bridge);
+            TradeReportPanel.currentPanel._setData(parsedData, logFilePath);
             return TradeReportPanel.currentPanel;
         }
 
@@ -27,67 +30,117 @@ class TradeReportPanel {
             TradeReportPanel.viewType,
             'MQL Trade Report',
             column,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true
-            }
+            { enableScripts: true, retainContextWhenHidden: true }
         );
 
-        TradeReportPanel.currentPanel = new TradeReportPanel(panel, context, bridge);
+        TradeReportPanel.currentPanel = new TradeReportPanel(panel, context, parsedData, logFilePath);
         return TradeReportPanel.currentPanel;
     }
 
-    constructor(panel, context, bridge) {
+    constructor(panel, context, parsedData, logFilePath) {
         this._panel = panel;
         this._context = context;
-        this._bridge = bridge;
+        this._logFilePath = logFilePath;
         this._disposables = [];
+        this._fileCache = new Map();
 
-        this._panel.webview.html = this._getHtml(bridge);
+        this._buildSourceMap();
 
-        // Listen for bridge events and push updates to webview
-        this._tradeListener = (trade) => {
-            this._panel.webview.postMessage({ type: 'trade', data: trade, summary: bridge.getSummary() });
-        };
-        this._equityListener = (eq) => {
-            this._panel.webview.postMessage({ type: 'equity', data: eq });
-        };
-        this._metricListener = (m) => {
-            this._panel.webview.postMessage({ type: 'metric', data: m });
-        };
+        this._panel.webview.html = this._getHtml(parsedData);
 
-        bridge.on('trades', this._tradeListener);
-        bridge.on('equity', this._equityListener);
-        bridge.on('metrics', this._metricListener);
-
-        // Handle messages from webview
         this._panel.webview.onDidReceiveMessage(msg => {
-            if (msg.type === 'refresh') {
-                this._update(bridge);
+            switch (msg.type) {
+                case 'openLine': {
+                    const uri = vscode.Uri.file(this._logFilePath);
+                    const line = Math.max(0, msg.lineNumber - 1);
+                    vscode.workspace.openTextDocument(uri).then(doc => {
+                        vscode.window.showTextDocument(doc, {
+                            viewColumn: vscode.ViewColumn.One,
+                            selection: new vscode.Range(line, 0, line, 0),
+                            preserveFocus: false
+                        });
+                    });
+                    break;
+                }
+                case 'refresh': {
+                    try {
+                        const fresh = parseLogFile(this._logFilePath);
+                        this._panel.webview.postMessage({
+                            type: 'fullUpdate',
+                            trades: fresh.trades,
+                            allEntries: fresh.allEntries,
+                            summary: fresh.summary,
+                            testConfig: fresh.testConfig,
+                            eaName: fresh.eaName
+                        });
+                    } catch (e) {
+                        vscode.window.showErrorMessage(`Failed to re-parse log: ${e.message}`);
+                    }
+                    break;
+                }
+                case 'openSource': {
+                    this._openSource(msg.file, msg.line);
+                    break;
+                }
             }
         }, null, this._disposables);
 
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
-    _update(bridge) {
+    _setData(parsedData, logFilePath) {
+        this._logFilePath = logFilePath;
         this._panel.webview.postMessage({
             type: 'fullUpdate',
-            trades: bridge.trades,
-            equity: bridge.equity,
-            metrics: Object.fromEntries(bridge.metrics),
-            summary: bridge.getSummary()
+            trades: parsedData.trades,
+            allEntries: parsedData.allEntries,
+            summary: parsedData.summary,
+            testConfig: parsedData.testConfig,
+            eaName: parsedData.eaName
         });
+    }
+
+    async _buildSourceMap() {
+        try {
+            const uris = await vscode.workspace.findFiles('**/*.{mq4,mq5,mqh}', '**/node_modules/**');
+            for (const uri of uris) {
+                const basename = path.basename(uri.fsPath);
+                if (!this._fileCache.has(basename)) {
+                    this._fileCache.set(basename, uri);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to build MQL source map', e);
+        }
+    }
+
+    async _openSource(filename, lineNumber) {
+        const line = Math.max(0, lineNumber - 1);
+        let uri = this._fileCache.get(filename);
+        
+        if (!uri) {
+            const uris = await vscode.workspace.findFiles(`**/${filename}`, null, 1);
+            if (uris && uris.length > 0) {
+                uri = uris[0];
+                this._fileCache.set(filename, uri);
+            }
+        }
+
+        if (uri) {
+            vscode.workspace.openTextDocument(uri).then(doc => {
+                vscode.window.showTextDocument(doc, {
+                    viewColumn: vscode.ViewColumn.One,
+                    selection: new vscode.Range(line, 0, line, 0),
+                    preserveFocus: false
+                });
+            });
+        } else {
+            vscode.window.showWarningMessage(`Could not find source file: ${filename}`);
+        }
     }
 
     dispose() {
         TradeReportPanel.currentPanel = null;
-
-        // Unregister bridge listeners to prevent leaked references
-        this._bridge.off('trades', this._tradeListener);
-        this._bridge.off('equity', this._equityListener);
-        this._bridge.off('metrics', this._metricListener);
-
         this._panel.dispose();
         while (this._disposables.length) {
             const d = this._disposables.pop();
@@ -95,13 +148,8 @@ class TradeReportPanel {
         }
     }
 
-    _getHtml(bridge) {
-        const summary = bridge.getSummary();
-        // Escape </script> sequences to prevent XSS via inline JSON
+    _getHtml(data) {
         const safeJson = (obj) => JSON.stringify(obj).replace(/<\//g, '<\\/');
-        const tradesJson = safeJson(bridge.trades);
-        const equityJson = safeJson(bridge.equity);
-
         return /*html*/`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -129,9 +177,41 @@ body {
     padding: 16px;
     font-size: 13px;
 }
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.toolbar button {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.toolbar button:hover { background: var(--border); }
+
+.meta-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.meta-bar span { white-space: nowrap; }
+.meta-bar .val { color: var(--text); font-weight: 600; }
+
 .cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 12px;
     margin-bottom: 20px;
 }
@@ -190,44 +270,69 @@ td {
     border-bottom: 1px solid var(--border);
     font-variant-numeric: tabular-nums;
 }
-tr:hover td {
-    background: var(--surface);
-}
+tr:hover td { background: var(--surface); }
 .type-buy  { color: var(--blue); }
 .type-sell { color: var(--red); }
 
-.equity-chart {
-    width: 100%;
-    height: 120px;
-    background: var(--surface);
+.log-link {
+    display: inline-block;
+    background: var(--surface2);
+    color: var(--blue);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 16px;
-    position: relative;
-    overflow: hidden;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: monospace;
 }
-.equity-chart canvas {
-    width: 100%;
-    height: 100%;
+.log-link:hover {
+    background: var(--border);
+    color: var(--text);
 }
 
-.metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 8px;
-    margin-bottom: 16px;
-}
-.metric-item {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px;
-    display: flex;
-    justify-content: space-between;
+.src-link {
+    display: inline-flex;
     align-items: center;
+    gap: 4px;
+    background: rgba(249, 226, 175, 0.12);
+    color: var(--yellow);
+    border: 1px solid rgba(249, 226, 175, 0.35);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: monospace;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s;
 }
-.metric-item .key { color: var(--text-dim); font-size: 11px; }
-.metric-item .val { font-weight: 600; font-variant-numeric: tabular-nums; }
+.src-link::before {
+    content: '\u{1F4C4}';
+    font-size: 10px;
+}
+.src-link:hover {
+    background: rgba(249, 226, 175, 0.25);
+    border-color: var(--yellow);
+    color: #fff;
+}
+
+/* Prominent source column in trades table */
+.src-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.src-cell .src-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-dim);
+    margin-bottom: -2px;
+}
+.src-cell .src-link {
+    margin-left: 0;
+}
 
 .empty-state {
     text-align: center;
@@ -236,258 +341,278 @@ tr:hover td {
 }
 .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
 .empty-state p { font-size: 13px; line-height: 1.6; }
-.empty-state code {
-    background: var(--surface2);
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 12px;
-}
 
-.toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+/* Log entries section */
+.log-section {
+    max-height: 400px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 11px;
     margin-bottom: 16px;
 }
-.toolbar button {
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 6px 14px;
-    border-radius: 4px;
+.log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 2px 4px;
+    border-radius: 3px;
     cursor: pointer;
-    font-size: 12px;
 }
-.toolbar button:hover {
+.log-entry:hover { background: var(--surface2); }
+.log-entry .ln {
+    color: var(--text-dim);
+    min-width: 40px;
+    text-align: right;
+    flex-shrink: 0;
+    user-select: none;
+}
+.log-entry .lvl {
+    min-width: 42px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.log-entry .msg { word-break: break-all; }
+.lvl-INFO  { color: var(--blue); }
+.lvl-TRADE { color: var(--green); }
+.lvl-DEBUG { color: var(--text-dim); }
+.lvl-ERROR { color: var(--red); }
+.lvl-WARN  { color: var(--yellow); }
+
+.filter-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.filter-btn {
+    background: var(--surface2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 3px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+.filter-btn.active {
     background: var(--border);
+    color: var(--text);
 }
+.filter-btn:hover { background: var(--border); }
 </style>
 </head>
 <body>
 
 <div class="toolbar">
     <div style="font-size:16px; font-weight:600;">Trade Report</div>
-    <button onclick="refresh()">Refresh</button>
+    <button onclick="refresh()">Reload</button>
 </div>
 
-<div class="cards" id="summaryCards">
-    ${this._renderCards(summary)}
-</div>
-
-<div id="metricsSection"></div>
-
-<div id="equitySection">
-    <h2>Equity Curve</h2>
-    <div class="equity-chart"><canvas id="equityCanvas"></canvas></div>
-</div>
+<div class="meta-bar" id="metaBar"></div>
+<div class="cards" id="summaryCards"></div>
 
 <h2>Trades</h2>
-<div id="tradesSection">
-    ${bridge.trades.length === 0 ? this._renderEmptyState() : this._renderTable(bridge.trades)}
-</div>
+<div id="tradesSection"></div>
+
+<h2>Log <span id="logCount" style="font-size:11px;font-weight:400;color:var(--text-dim)"></span></h2>
+<div class="filter-bar" id="filterBar"></div>
+<div class="log-section" id="logSection"></div>
 
 <script>
     const vscode = acquireVsCodeApi();
 
-    let trades = ${tradesJson};
-    let equity = ${equityJson};
-    let metrics = {};
+    let trades = ${safeJson(data.trades)};
+    let allEntries = ${safeJson(data.allEntries)};
+    let summary = ${safeJson(data.summary)};
+    let testConfig = ${safeJson(data.testConfig)};
+    let eaName = ${safeJson(data.eaName)};
+    let currentFilter = 'ALL';
 
-    function refresh() {
-        vscode.postMessage({ type: 'refresh' });
-    }
+    function refresh() { vscode.postMessage({ type: 'refresh' }); }
 
-    function esc(v) {
-        return String(v == null ? '' : v)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
-    function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }
-    function fmt(v, d) { return (d === undefined ? 2 : d, Number(v).toFixed(d === undefined ? 2 : d)); }
-
-    function renderCards(s) {
-        return '<div class="card"><div class="label">Trades</div><div class="value neutral">' + s.tradeCount + '</div></div>'
-             + '<div class="card"><div class="label">Net P&L</div><div class="value ' + pnlClass(s.netPnl) + '">' + fmt(s.netPnl) + '</div></div>'
-             + '<div class="card"><div class="label">Win Rate</div><div class="value neutral">' + fmt(s.winRate, 1) + '%</div></div>'
-             + '<div class="card"><div class="label">Gross Profit</div><div class="value positive">' + fmt(s.grossProfit) + '</div></div>'
-             + '<div class="card"><div class="label">Gross Loss</div><div class="value negative">' + fmt(s.grossLoss) + '</div></div>'
-             + '<div class="card"><div class="label">Commission</div><div class="value neutral">' + fmt(s.commission) + '</div></div>';
-    }
-
-    function renderTable(trades) {
-        if (!trades.length) return renderEmpty();
-        let h = '<table><thead><tr><th>#</th><th>Ticket</th><th>Symbol</th><th>Type</th><th>Lots</th><th>Open</th><th>Close</th><th>SL</th><th>TP</th><th>P&L</th><th>Time</th></tr></thead><tbody>';
-        trades.forEach(function(t, i) {
-            var cls = t.type === 'buy' ? 'type-buy' : 'type-sell';
-            var pCls = t.profit >= 0 ? 'positive' : 'negative';
-            h += '<tr>'
-               + '<td>' + (i+1) + '</td>'
-               + '<td>' + esc(t.ticket) + '</td>'
-               + '<td>' + esc(t.symbol) + '</td>'
-               + '<td class="' + cls + '">' + esc((t.type || '').toUpperCase()) + '</td>'
-               + '<td>' + fmt(t.lots) + '</td>'
-               + '<td>' + (t.open_price ? fmt(t.open_price, 5) : '-') + '</td>'
-               + '<td>' + (t.close_price ? fmt(t.close_price, 5) : '-') + '</td>'
-               + '<td>' + (t.sl ? fmt(t.sl, 5) : '-') + '</td>'
-               + '<td>' + (t.tp ? fmt(t.tp, 5) : '-') + '</td>'
-               + '<td class="' + pCls + '">' + fmt(t.profit) + '</td>'
-               + '<td style="color:var(--text-dim);font-size:11px">' + esc(t.close_time) + '</td>'
-               + '</tr>';
-        });
-        h += '</tbody></table>';
-        return h;
-    }
-
-    function renderEmpty() {
-        return '<div class="empty-state">'
-             + '<h3>Waiting for trade data...</h3>'
-             + '<p>Add <code>#include &lt;IDEBridge.mqh&gt;</code> to your EA<br>'
-             + 'Call <code>IDEBridgeInit()</code> in OnInit()<br>'
-             + 'Call <code>IDEBridgeReportTrade(...)</code> or <code>IDEBridgeReportHistory()</code></p>'
-             + '</div>';
-    }
-
-    function renderMetrics(m) {
-        var keys = Object.keys(m);
-        if (!keys.length) return '';
-        var h = '<h2>Metrics</h2><div class="metrics-grid">';
-        keys.forEach(function(k) {
-            var val = m[k].value !== undefined ? m[k].value : m[k].value_str;
-            h += '<div class="metric-item"><span class="key">' + esc(k) + '</span><span class="val">' + esc(val) + '</span></div>';
-        });
-        h += '</div>';
-        return h;
-    }
-
-    function drawEquity(equityData) {
-        var canvas = document.getElementById('equityCanvas');
-        if (!canvas || !equityData.length) return;
-        var ctx = canvas.getContext('2d');
-        var w = canvas.width = canvas.parentElement.clientWidth;
-        var h = canvas.height = canvas.parentElement.clientHeight;
-
-        var values = equityData.map(function(e) { return e.equity; });
-        var mn = Math.min.apply(null, values);
-        var mx = Math.max.apply(null, values);
-        var range = mx - mn || 1;
-        var pad = 8;
-
-        ctx.clearRect(0, 0, w, h);
-
-        // Fill
-        ctx.beginPath();
-        ctx.moveTo(pad, h - pad);
-        for (var i = 0; i < values.length; i++) {
-            var x = pad + (i / (values.length - 1 || 1)) * (w - 2*pad);
-            var y = h - pad - ((values[i] - mn) / range) * (h - 2*pad);
-            ctx.lineTo(x, y);
+    // Event delegation for all clickable elements — avoids inline onclick with string escaping
+    document.addEventListener('click', function(e) {
+        var srcEl = e.target.closest('[data-src-file]');
+        if (srcEl) {
+            e.stopPropagation();
+            vscode.postMessage({ type: 'openSource', file: srcEl.dataset.srcFile, line: parseInt(srcEl.dataset.srcLine, 10) });
+            return;
         }
-        ctx.lineTo(w - pad, h - pad);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(137, 180, 250, 0.1)';
-        ctx.fill();
-
-        // Line
-        ctx.beginPath();
-        for (var i = 0; i < values.length; i++) {
-            var x = pad + (i / (values.length - 1 || 1)) * (w - 2*pad);
-            var y = h - pad - ((values[i] - mn) / range) * (h - 2*pad);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+        var logLink = e.target.closest('[data-log-line]');
+        if (logLink) {
+            e.stopPropagation();
+            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logLink.dataset.logLine, 10) });
+            return;
         }
-        ctx.strokeStyle = '#89b4fa';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-    }
-
-    // Message handler
-    window.addEventListener('message', function(event) {
-        var msg = event.data;
-        switch (msg.type) {
-            case 'trade':
-                trades.push(msg.data);
-                document.getElementById('summaryCards').innerHTML = renderCards(msg.summary);
-                document.getElementById('tradesSection').innerHTML = renderTable(trades);
-                break;
-            case 'equity':
-                equity.push(msg.data);
-                drawEquity(equity);
-                break;
-            case 'metric':
-                if (msg.data.key) {
-                    metrics[msg.data.key] = msg.data;
-                    document.getElementById('metricsSection').innerHTML = renderMetrics(metrics);
-                }
-                break;
-            case 'fullUpdate':
-                trades = msg.trades || [];
-                equity = msg.equity || [];
-                metrics = msg.metrics || {};
-                document.getElementById('summaryCards').innerHTML = renderCards(msg.summary);
-                document.getElementById('tradesSection').innerHTML = renderTable(trades);
-                document.getElementById('metricsSection').innerHTML = renderMetrics(metrics);
-                drawEquity(equity);
-                break;
+        var logEntry = e.target.closest('.log-entry');
+        if (logEntry && logEntry.dataset.line) {
+            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logEntry.dataset.line, 10) });
+            return;
+        }
+        var filterBtn = e.target.closest('[data-filter]');
+        if (filterBtn) {
+            setFilter(filterBtn.dataset.filter);
+            return;
         }
     });
 
-    // Initial draw
-    drawEquity(equity);
+    function esc(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }
+    function fmt(v, d) { d = d === undefined ? 2 : d; return Number(v || 0).toFixed(d); }
+
+    function renderMeta() {
+        document.getElementById('metaBar').innerHTML =
+            '<span>EA: <span class="val">' + esc(eaName) + '</span></span>' +
+            '<span>Symbol: <span class="val">' + esc(testConfig.symbol) + '</span></span>' +
+            '<span>TF: <span class="val">' + esc(testConfig.timeframe) + '</span></span>' +
+            '<span>Period: <span class="val">' + esc(testConfig.from) + ' &mdash; ' + esc(testConfig.to) + '</span></span>' +
+            '<span>Deposit: <span class="val">' + esc(testConfig.initialDeposit) + '</span></span>' +
+            '<span>Leverage: <span class="val">' + esc(testConfig.leverage) + '</span></span>' +
+            '<span>Model: <span class="val">' + esc(testConfig.testModel) + '</span></span>';
+    }
+
+    function renderCards() {
+        var s = summary;
+        var pc = s.netPnl >= 0 ? 'positive' : 'negative';
+        document.getElementById('summaryCards').innerHTML =
+            '<div class="card"><div class="label">Trades</div><div class="value neutral">' + s.tradeCount + '</div></div>' +
+            '<div class="card"><div class="label">Net P&L</div><div class="value ' + pc + '">' + fmt(s.netPnl) + '</div></div>' +
+            '<div class="card"><div class="label">Win Rate</div><div class="value neutral">' + fmt(s.winRate, 1) + '%</div></div>' +
+            '<div class="card"><div class="label">Gross Profit</div><div class="value positive">' + fmt(s.grossProfit) + '</div></div>' +
+            '<div class="card"><div class="label">Gross Loss</div><div class="value negative">' + fmt(s.grossLoss) + '</div></div>' +
+            '<div class="card"><div class="label">Commission</div><div class="value neutral">' + fmt(s.commission) + '</div></div>';
+    }
+
+    function renderTable() {
+        if (!trades.length) {
+            document.getElementById('tradesSection').innerHTML =
+                '<div class="empty-state"><h3>No trades found</h3><p>This log file does not contain any parsed trades.</p></div>';
+            return;
+        }
+        var h = '<table><thead><tr>' +
+            '<th>#</th><th>Type</th><th>Entry</th><th>SL</th><th>TP</th><th>Lots</th>' +
+            '<th>Close</th><th>Exit</th><th>P&L</th><th>Net</th><th>Source</th><th>Log</th>' +
+            '</tr></thead><tbody>';
+        trades.forEach(function(t, i) {
+            var cls = t.type === 'buy' ? 'type-buy' : 'type-sell';
+            var pc = (t.netPnl || 0) >= 0 ? 'positive' : 'negative';
+
+            // Source column — prominent clickable links to MQL code
+            var srcHtml = '<div class="src-cell">';
+            if (t.orderSourceFile && t.orderSourceLine) {
+                var entryLabel = t.orderSourceFunc ? t.orderSourceFunc + ':' + t.orderSourceLine : t.orderSourceFile + ':' + t.orderSourceLine;
+                srcHtml += '<div><span class="src-label">entry</span></div>' +
+                    '<span class="src-link" data-src-file="' + esc(t.orderSourceFile) + '" data-src-line="' + t.orderSourceLine + '" title="Open ' + esc(t.orderSourceFile) + ' line ' + t.orderSourceLine + '">' + esc(entryLabel) + '</span>';
+            }
+            if (t.exitSourceFile && t.exitSourceLine) {
+                var exitLabel = t.exitSourceFunc ? t.exitSourceFunc + ':' + t.exitSourceLine : t.exitSourceFile + ':' + t.exitSourceLine;
+                srcHtml += '<div style="margin-top:4px"><span class="src-label">exit</span></div>' +
+                    '<span class="src-link" data-src-file="' + esc(t.exitSourceFile) + '" data-src-line="' + t.exitSourceLine + '" title="Open ' + esc(t.exitSourceFile) + ' line ' + t.exitSourceLine + '">' + esc(exitLabel) + '</span>';
+            }
+            if (!t.orderSourceFile && !t.exitSourceFile) {
+                srcHtml += '<span style="color:var(--text-dim);font-size:10px">no source info</span>';
+            }
+            srcHtml += '</div>';
+
+            h += '<tr>' +
+                '<td>' + (i + 1) + '</td>' +
+                '<td class="' + cls + '">' + esc((t.type || '').toUpperCase()) + '</td>' +
+                '<td>' + fmt(t.entryPrice, 5) + '</td>' +
+                '<td>' + fmt(t.sl, 5) + '</td>' +
+                '<td>' + fmt(t.tp, 5) + '</td>' +
+                '<td>' + fmt(t.lots) + '</td>' +
+                '<td>' + fmt(t.closePrice, 5) + '</td>' +
+                '<td>' + esc(t.exitReason || '') + '</td>' +
+                '<td class="' + pc + '">' + fmt(t.grossPnl) + '</td>' +
+                '<td class="' + pc + '">' + fmt(t.netPnl) + '</td>' +
+                '<td>' + srcHtml + '</td>' +
+                '<td>' +
+                    '<span class="log-link" data-log-line="' + t.orderLine + '" title="Go to order line in log">L' + t.orderLine + '</span>' +
+                    (t.exitLine ? ' <span class="log-link" data-log-line="' + t.exitLine + '" title="Go to exit line in log">L' + t.exitLine + '</span>' : '') +
+                '</td>' +
+                '</tr>';
+        });
+        h += '</tbody></table>';
+        document.getElementById('tradesSection').innerHTML = h;
+    }
+
+    function renderFilters() {
+        var levels = ['ALL', 'TRADE', 'INFO', 'DEBUG', 'ERROR'];
+        var h = '';
+        levels.forEach(function(lv) {
+            var active = currentFilter === lv ? ' active' : '';
+            h += '<button class="filter-btn' + active + '" data-filter="' + lv + '">' + lv + '</button>';
+        });
+        document.getElementById('filterBar').innerHTML = h;
+    }
+
+    function setFilter(lv) {
+        currentFilter = lv;
+        renderFilters();
+        renderLog();
+    }
+
+    function renderLog() {
+        var filtered = currentFilter === 'ALL'
+            ? allEntries
+            : allEntries.filter(function(e) { return e.level === currentFilter; });
+
+        document.getElementById('logCount').textContent = '(' + filtered.length + ' of ' + allEntries.length + ')';
+
+        // Limit rendered entries for performance
+        var max = 2000;
+        var entries = filtered.length > max ? filtered.slice(0, max) : filtered;
+        var h = '';
+        entries.forEach(function(e) {
+            var srcSpan = '';
+            if (e.sourceFile && e.sourceLine) {
+                var srcLabel = e.sourceFunc ? e.sourceFunc + ':' + e.sourceLine : e.sourceFile + ':' + e.sourceLine;
+                srcSpan = '<span class="src-link" data-src-file="' + esc(e.sourceFile) + '" data-src-line="' + e.sourceLine + '" title="Open ' + esc(e.sourceFile) + ' line ' + e.sourceLine + '">' + esc(srcLabel) + '</span>';
+            }
+            h += '<div class="log-entry" data-line="' + e.lineNumber + '">' +
+                '<span class="ln">' + e.lineNumber + '</span>' +
+                '<span class="lvl lvl-' + e.level + '">' + e.level + '</span>' +
+                srcSpan +
+                '<span class="msg">' + esc(e.message) + '</span>' +
+                '</div>';
+        });
+        if (filtered.length > max) {
+            h += '<div style="text-align:center;padding:8px;color:var(--text-dim)">Showing first ' + max + ' of ' + filtered.length + ' entries</div>';
+        }
+        document.getElementById('logSection').innerHTML = h;
+    }
+
+    function renderAll() {
+        renderMeta();
+        renderCards();
+        renderTable();
+        renderFilters();
+        renderLog();
+    }
+
+    window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (msg.type === 'fullUpdate') {
+            trades = msg.trades || [];
+            allEntries = msg.allEntries || [];
+            summary = msg.summary || {};
+            testConfig = msg.testConfig || {};
+            eaName = msg.eaName || '';
+            renderAll();
+        }
+    });
+
+    renderAll();
 </script>
 </body>
 </html>`;
-    }
-
-    _renderCards(summary) {
-        const pnlCls = summary.netPnl >= 0 ? 'positive' : 'negative';
-        return `
-            <div class="card"><div class="label">Trades</div><div class="value neutral">${summary.tradeCount}</div></div>
-            <div class="card"><div class="label">Net P&L</div><div class="value ${pnlCls}">${summary.netPnl.toFixed(2)}</div></div>
-            <div class="card"><div class="label">Win Rate</div><div class="value neutral">${summary.winRate.toFixed(1)}%</div></div>
-            <div class="card"><div class="label">Gross Profit</div><div class="value positive">${summary.grossProfit.toFixed(2)}</div></div>
-            <div class="card"><div class="label">Gross Loss</div><div class="value negative">${summary.grossLoss.toFixed(2)}</div></div>
-            <div class="card"><div class="label">Commission</div><div class="value neutral">${summary.commission.toFixed(2)}</div></div>`;
-    }
-
-    _renderEmptyState() {
-        return `<div class="empty-state">
-            <h3>Waiting for trade data...</h3>
-            <p>Add <code>#include &lt;IDEBridge.mqh&gt;</code> to your EA<br>
-            Call <code>IDEBridgeInit()</code> in OnInit()<br>
-            Call <code>IDEBridgeReportTrade(...)</code> or <code>IDEBridgeReportHistory()</code></p>
-        </div>`;
-    }
-
-    _renderTable(trades) {
-        let html = `<table><thead><tr>
-            <th>#</th><th>Ticket</th><th>Symbol</th><th>Type</th><th>Lots</th>
-            <th>Open</th><th>Close</th><th>SL</th><th>TP</th><th>P&L</th><th>Time</th>
-        </tr></thead><tbody>`;
-
-        trades.forEach((t, i) => {
-            const typeCls = t.type === 'buy' ? 'type-buy' : 'type-sell';
-            const pnlCls = t.profit >= 0 ? 'positive' : 'negative';
-            html += `<tr>
-                <td>${i + 1}</td>
-                <td>${t.ticket || ''}</td>
-                <td>${t.symbol || ''}</td>
-                <td class="${typeCls}">${(t.type || '').toUpperCase()}</td>
-                <td>${(t.lots || 0).toFixed(2)}</td>
-                <td>${t.open_price ? t.open_price.toFixed(5) : '-'}</td>
-                <td>${t.close_price ? t.close_price.toFixed(5) : '-'}</td>
-                <td>${t.sl ? t.sl.toFixed(5) : '-'}</td>
-                <td>${t.tp ? t.tp.toFixed(5) : '-'}</td>
-                <td class="${pnlCls}">${(t.profit || 0).toFixed(2)}</td>
-                <td style="color:var(--text-dim);font-size:11px">${t.close_time || ''}</td>
-            </tr>`;
-        });
-
-        html += '</tbody></table>';
-        return html;
     }
 }
 

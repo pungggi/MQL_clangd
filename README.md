@@ -159,17 +159,20 @@ MetaTrader's standard `Print()` function buffers output and doesn't flush to dis
    #include <LiveLog.mqh>
    ```
 
-3. **Use `PrintLive()` instead of `Print()`**:
+3. **Use `PrintLive()` or the level-prefixed log functions**:
    ```mql5
    PrintLive("Hello, World!");
    PrintFormatLive("Value: %d, Price: %.5f", 42, 1.23456);
-   
-   // Or use the convenience functions:
-   LogDebugLive("Debug message");
-   LogInfoLive("Info message");
-   LogWarnLive("Warning message");
-   LogErrorLive("Error message");
+
+   // Level-prefixed logging (automatically includes source location for Trade Report):
+   LogDebug("Debug message");
+   LogInfo("Info message");
+   LogWarn("Warning message");
+   LogError("Error message");
+   LogTrade("SIMULATED BUY MARKET");
    ```
+
+   The `Log*()` functions automatically embed `{File:Function:Line}` tags, enabling **click-to-source** navigation in the Trade Report (see below).
 
 4. **Optional - Redirect all Print() calls automatically**:
    Add `#define LIVELOG_REDIRECT` **before** the include to automatically redirect all `Print()` and `PrintFormat()` calls:
@@ -206,7 +209,47 @@ MetaTrader's standard `Print()` function buffers output and doesn't flush to dis
 
 ---
 
+### Trade Report Dashboard
 
+Analyze your Strategy Tester results directly in VS Code. The Trade Report parses MT5 tester log files and displays trades, P&L, and log entries in an interactive dashboard.
+
+**Command:** `MQL: Open Trade Report Dashboard`
+
+**Features:**
+- Auto-discovers EAs with test runs under `MQL5/Experts/`
+- Shows trade summary: count, net P&L, win rate, gross profit/loss, commissions
+- Individual trade table with entry/exit prices, SL, TP, lots, and exit reason
+- Filterable log viewer (ALL, TRADE, INFO, DEBUG, ERROR)
+- Click any log line number to jump to that line in the `.log` file
+
+#### Source Code Navigation (Click-to-Source)
+
+When using **LiveLog** `Log*()` functions, each log entry and trade automatically includes a source location tag. In the Trade Report, these appear as clickable yellow badges that jump straight to the corresponding line in your MQL source code.
+
+**Setup:** Just use LiveLog's level-prefixed functions — source tags are embedded automatically:
+
+```mql5
+#include <LiveLog.mqh>
+
+void OnTick()
+{
+    LogInfo("Checking for entry signal");
+
+    if (buySignal)
+    {
+        LogTrade("SIMULATED BUY MARKET");
+        LogInfo("Entry: " + DoubleToString(price, 5) + " | SL: " + DoubleToString(sl, 5) + " | TP: " + DoubleToString(tp, 5) + " | Lots: 0.10");
+    }
+}
+```
+
+The Trade Report will show:
+- **Source column** in the trades table with clickable entry/exit source links
+- **Yellow source badges** on each log entry (e.g. `OnTick:12`) that open the file at that line
+
+> **Note:** Source navigation requires LiveLog. Without it, trades and log entries still appear but without clickable source links.
+
+---
 
 ### Troubleshooting clangd diagnostics (MQL-specific)
 
