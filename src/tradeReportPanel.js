@@ -1,6 +1,7 @@
 'use strict';
 const vscode = require('vscode');
 const path = require('path');
+const fs = require('fs');
 const { parseLogFile } = require('./logParser');
 
 /**
@@ -43,8 +44,11 @@ class TradeReportPanel {
         this._logFilePath = logFilePath;
         this._disposables = [];
         this._fileCache = new Map();
+        this._snapshotDir = null;
 
-        this._buildSourceMap();
+        this._buildSourceMap().then(() => {
+            this._ensureSnapshot(parsedData);
+        });
 
         this._panel.webview.html = this._getHtml(parsedData);
 
@@ -71,7 +75,8 @@ class TradeReportPanel {
                             allEntries: fresh.allEntries,
                             summary: fresh.summary,
                             testConfig: fresh.testConfig,
-                            eaName: fresh.eaName
+                            eaName: fresh.eaName,
+                            hasSnapshot: !!this._snapshotDir
                         });
                     } catch (e) {
                         vscode.window.showErrorMessage(`Failed to re-parse log: ${e.message}`);
@@ -79,7 +84,7 @@ class TradeReportPanel {
                     break;
                 }
                 case 'openSource': {
-                    this._openSource(msg.file, msg.line);
+                    this._openSource(msg.file, msg.line, msg.target || 'live');
                     break;
                 }
             }
@@ -90,13 +95,16 @@ class TradeReportPanel {
 
     _setData(parsedData, logFilePath) {
         this._logFilePath = logFilePath;
+        this._snapshotDir = null;
+        this._ensureSnapshot(parsedData);
         this._panel.webview.postMessage({
             type: 'fullUpdate',
             trades: parsedData.trades,
             allEntries: parsedData.allEntries,
             summary: parsedData.summary,
             testConfig: parsedData.testConfig,
-            eaName: parsedData.eaName
+            eaName: parsedData.eaName,
+            hasSnapshot: !!this._snapshotDir
         });
     }
 
@@ -114,10 +122,94 @@ class TradeReportPanel {
         }
     }
 
-    async _openSource(filename, lineNumber) {
+    /**
+     * Compute the snapshot directory for the current log file.
+     * Layout: <logDir>/snapshot/<logBaseName>/
+     */
+    _snapshotDirForLog(logFilePath) {
+        const logDir = path.dirname(logFilePath);
+        const logBase = path.basename(logFilePath, path.extname(logFilePath));
+        return path.join(logDir, 'snapshot', logBase);
+    }
+
+    /**
+     * If SnapshotSources is enabled and no snapshot exists yet, copy all
+     * referenced source files into the snapshot directory.
+     * If a snapshot already exists (from a previous open), just record its path.
+     */
+    _ensureSnapshot(parsedData) {
+        const snapDir = this._snapshotDirForLog(this._logFilePath);
+
+        // If snapshot already exists, just record it
+        if (fs.existsSync(snapDir)) {
+            this._snapshotDir = snapDir;
+            // Notify webview that snapshot is available
+            this._panel.webview.postMessage({ type: 'snapshotStatus', hasSnapshot: true });
+            return;
+        }
+
+        // Check setting
+        const config = vscode.workspace.getConfiguration('mql_tools');
+        if (!config.get('TradeReport.SnapshotSources')) return;
+
+        // Collect unique source filenames referenced in trades + log entries
+        const sourceFiles = new Set();
+        for (const t of parsedData.trades) {
+            if (t.orderSourceFile) sourceFiles.add(t.orderSourceFile);
+            if (t.exitSourceFile) sourceFiles.add(t.exitSourceFile);
+        }
+        for (const e of parsedData.allEntries) {
+            if (e.sourceFile) sourceFiles.add(e.sourceFile);
+        }
+        if (sourceFiles.size === 0) return;
+
+        // Resolve each filename to its workspace path and copy
+        try {
+            fs.mkdirSync(snapDir, { recursive: true });
+            let copied = 0;
+            for (const filename of sourceFiles) {
+                const uri = this._fileCache.get(filename);
+                if (uri && fs.existsSync(uri.fsPath)) {
+                    fs.copyFileSync(uri.fsPath, path.join(snapDir, filename));
+                    copied++;
+                }
+            }
+            if (copied > 0) {
+                this._snapshotDir = snapDir;
+                this._panel.webview.postMessage({ type: 'snapshotStatus', hasSnapshot: true });
+            } else {
+                // Clean up empty dir
+                try { fs.rmdirSync(snapDir); } catch { /* ignore */ }
+            }
+        } catch (e) {
+            console.error('Failed to create source snapshot', e);
+        }
+    }
+
+    /**
+     * Open a source file at the given line.
+     * @param {'live'|'snapshot'} target - Whether to open the live workspace file or the snapshot copy
+     */
+    async _openSource(filename, lineNumber, target) {
         const line = Math.max(0, lineNumber - 1);
+
+        // Snapshot target
+        if (target === 'snapshot' && this._snapshotDir) {
+            const snapFile = path.join(this._snapshotDir, filename);
+            if (fs.existsSync(snapFile)) {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(snapFile));
+                await vscode.window.showTextDocument(doc, {
+                    viewColumn: vscode.ViewColumn.One,
+                    selection: new vscode.Range(line, 0, line, 0),
+                    preserveFocus: false
+                });
+                return;
+            }
+            // Fallback to live if snapshot file missing
+        }
+
+        // Live target (original behavior)
         let uri = this._fileCache.get(filename);
-        
         if (!uri) {
             const uris = await vscode.workspace.findFiles(`**/${filename}`, null, 1);
             if (uris && uris.length > 0) {
@@ -316,6 +408,24 @@ tr:hover td { background: var(--surface); }
     border-color: var(--yellow);
     color: #fff;
 }
+.src-link.src-snapshot {
+    background: rgba(166, 227, 161, 0.12);
+    color: var(--green);
+    border-color: rgba(166, 227, 161, 0.35);
+}
+.src-link.src-snapshot::before {
+    content: '\u{1F4CB}';
+}
+.src-link.src-snapshot:hover {
+    background: rgba(166, 227, 161, 0.25);
+    border-color: var(--green);
+    color: #fff;
+}
+.src-pair {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+}
 
 /* Prominent source column in trades table */
 .src-cell {
@@ -428,6 +538,7 @@ tr:hover td { background: var(--surface); }
     let summary = ${safeJson(data.summary)};
     let testConfig = ${safeJson(data.testConfig)};
     let eaName = ${safeJson(data.eaName)};
+    let hasSnapshot = ${safeJson(!!this._snapshotDir)};
     let currentFilter = 'ALL';
 
     function refresh() { vscode.postMessage({ type: 'refresh' }); }
@@ -437,7 +548,8 @@ tr:hover td { background: var(--surface); }
         var srcEl = e.target.closest('[data-src-file]');
         if (srcEl) {
             e.stopPropagation();
-            vscode.postMessage({ type: 'openSource', file: srcEl.dataset.srcFile, line: parseInt(srcEl.dataset.srcLine, 10) });
+            var target = srcEl.dataset.srcTarget || 'live';
+            vscode.postMessage({ type: 'openSource', file: srcEl.dataset.srcFile, line: parseInt(srcEl.dataset.srcLine, 10), target: target });
             return;
         }
         var logLink = e.target.closest('[data-log-line]');
@@ -466,6 +578,13 @@ tr:hover td { background: var(--surface); }
     }
     function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }
     function fmt(v, d) { d = d === undefined ? 2 : d; return Number(v || 0).toFixed(d); }
+
+    function srcLinkHtml(file, line, label, showSnapshot) {
+        var liveLink = '<span class="src-link" data-src-file="' + esc(file) + '" data-src-line="' + line + '" data-src-target="live" title="Open current source: ' + esc(file) + ' line ' + line + '">' + esc(label) + '</span>';
+        if (!showSnapshot) return liveLink;
+        var snapLink = '<span class="src-link src-snapshot" data-src-file="' + esc(file) + '" data-src-line="' + line + '" data-src-target="snapshot" title="Open snapshot (frozen at test time): ' + esc(file) + ' line ' + line + '">' + esc(label) + '</span>';
+        return '<span class="src-pair">' + snapLink + liveLink + '</span>';
+    }
 
     function renderMeta() {
         document.getElementById('metaBar').innerHTML =
@@ -509,12 +628,12 @@ tr:hover td { background: var(--surface); }
             if (t.orderSourceFile && t.orderSourceLine) {
                 var entryLabel = t.orderSourceFunc ? t.orderSourceFunc + ':' + t.orderSourceLine : t.orderSourceFile + ':' + t.orderSourceLine;
                 srcHtml += '<div><span class="src-label">entry</span></div>' +
-                    '<span class="src-link" data-src-file="' + esc(t.orderSourceFile) + '" data-src-line="' + t.orderSourceLine + '" title="Open ' + esc(t.orderSourceFile) + ' line ' + t.orderSourceLine + '">' + esc(entryLabel) + '</span>';
+                    srcLinkHtml(t.orderSourceFile, t.orderSourceLine, entryLabel, hasSnapshot);
             }
             if (t.exitSourceFile && t.exitSourceLine) {
                 var exitLabel = t.exitSourceFunc ? t.exitSourceFunc + ':' + t.exitSourceLine : t.exitSourceFile + ':' + t.exitSourceLine;
                 srcHtml += '<div style="margin-top:4px"><span class="src-label">exit</span></div>' +
-                    '<span class="src-link" data-src-file="' + esc(t.exitSourceFile) + '" data-src-line="' + t.exitSourceLine + '" title="Open ' + esc(t.exitSourceFile) + ' line ' + t.exitSourceLine + '">' + esc(exitLabel) + '</span>';
+                    srcLinkHtml(t.exitSourceFile, t.exitSourceLine, exitLabel, hasSnapshot);
             }
             if (!t.orderSourceFile && !t.exitSourceFile) {
                 srcHtml += '<span style="color:var(--text-dim);font-size:10px">no source info</span>';
@@ -574,7 +693,7 @@ tr:hover td { background: var(--surface); }
             var srcSpan = '';
             if (e.sourceFile && e.sourceLine) {
                 var srcLabel = e.sourceFunc ? e.sourceFunc + ':' + e.sourceLine : e.sourceFile + ':' + e.sourceLine;
-                srcSpan = '<span class="src-link" data-src-file="' + esc(e.sourceFile) + '" data-src-line="' + e.sourceLine + '" title="Open ' + esc(e.sourceFile) + ' line ' + e.sourceLine + '">' + esc(srcLabel) + '</span>';
+                srcSpan = srcLinkHtml(e.sourceFile, e.sourceLine, srcLabel, hasSnapshot);
             }
             h += '<div class="log-entry" data-line="' + e.lineNumber + '">' +
                 '<span class="ln">' + e.lineNumber + '</span>' +
@@ -605,6 +724,11 @@ tr:hover td { background: var(--surface); }
             summary = msg.summary || {};
             testConfig = msg.testConfig || {};
             eaName = msg.eaName || '';
+            if (msg.hasSnapshot !== undefined) hasSnapshot = msg.hasSnapshot;
+            renderAll();
+        }
+        if (msg.type === 'snapshotStatus') {
+            hasSnapshot = msg.hasSnapshot;
             renderAll();
         }
     });

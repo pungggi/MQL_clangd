@@ -189,6 +189,11 @@
                         }
                     }
                 },
+                "mql_tools.TradeReport.SnapshotSources": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "When opening a Trade Report, copy all referenced MQL source files into a `snapshot/` folder next to the log file. This preserves the exact source code that produced the log, so **click-to-source** navigation remains accurate even after the EA is modified.\n\n**Warning:** Enabling this increases disk usage since a full copy of the source files is stored per run."
+                },
                 "mql_tools.Clangd.PreserveSuppressions": {
                     "type": "string",
                     "enum": [

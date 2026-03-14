@@ -249,6 +249,25 @@ The Trade Report will show:
 
 > **Note:** Source navigation requires LiveLog. Without it, trades and log entries still appear but without clickable source links.
 
+#### Source Snapshots
+
+Because `{File:Function:Line}` tags reference specific line numbers, modifying your EA source code after a test run can make those links point to the wrong lines. **Source Snapshots** solve this by copying all referenced MQL source files into a `snapshot/` folder next to the log file the first time you open a report.
+
+**Enable it:**
+
+```jsonc
+// settings.json
+"mql_tools.TradeReport.SnapshotSources": true
+```
+
+When a snapshot exists the Trade Report shows **two clickable badges** per source location:
+- **Green badge** — opens the **snapshot** (frozen copy from test time, line numbers always match)
+- **Yellow badge** — opens the **current** (live) file in your workspace
+
+The dashboard also marks runs that have a snapshot with a small **snapshot** label.
+
+> **Warning:** Enabling this setting increases disk usage because a full copy of every referenced source file is stored per run. If you run many tests the extra space can add up — disable the setting or delete `snapshot/` folders you no longer need.
+
 ---
 
 ### Troubleshooting clangd diagnostics (MQL-specific)

@@ -412,7 +412,7 @@ function discoverEAs(expertsDir) {
 
         // Recurse into subdirectories (but skip runs/ itself)
         for (const ent of entries) {
-            if (ent.isDirectory() && ent.name !== 'runs' && ent.name !== 'baselines' && ent.name !== 'docs') {
+            if (ent.isDirectory() && ent.name !== 'runs' && ent.name !== 'baselines' && ent.name !== 'docs' && ent.name !== 'snapshot') {
                 walk(path.join(dir, ent.name), depth + 1);
             }
         }

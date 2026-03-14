@@ -1,6 +1,7 @@
 'use strict';
 const vscode = require('vscode');
 const path = require('path');
+const fs = require('fs');
 const { discoverEAs, parseLogSummary, parseLogFile } = require('./logParser');
 const { TradeReportPanel } = require('./tradeReportPanel');
 
@@ -71,12 +72,18 @@ class TradeReportDashboard {
         // Quick-parse summary for each EA's runs (latest 10 per EA for speed)
         return eas.map(ea => {
             const runs = ea.runs.slice(0, 10).map(run => {
+                let data;
                 try {
                     const s = parseLogSummary(run.path);
-                    return { ...run, ...s };
+                    data = { ...run, ...s };
                 } catch {
-                    return { ...run, tradeCount: 0, netPnl: 0, winRate: 0, symbol: '?', from: '?', to: '?' };
+                    data = { ...run, tradeCount: 0, netPnl: 0, winRate: 0, symbol: '?', from: '?', to: '?' };
                 }
+                // Check if a source snapshot exists for this run
+                const logBase = path.basename(run.path, path.extname(run.path));
+                const snapDir = path.join(path.dirname(run.path), 'snapshot', logBase);
+                data.hasSnapshot = fs.existsSync(snapDir);
+                return data;
             });
             return { name: ea.name, dir: ea.dir, runsDir: ea.runsDir, runs };
         });
@@ -248,6 +255,7 @@ body {
     font-weight: 600;
 }
 .badge-trades { background: rgba(137,180,250,0.15); color: var(--blue); }
+.badge-snapshot { background: rgba(166,227,161,0.15); color: var(--green); font-size: 9px; }
 </style>
 </head>
 <body>
@@ -318,7 +326,8 @@ body {
             ea.runs.forEach(function(run, i) {
                 var pc = pnlClass(run.netPnl);
                 h += '<tr class="run-row" data-path="' + esc(run.path) + '">';
-                h += '<td>' + esc(run.fileName) + '</td>';
+                var snapBadge = run.hasSnapshot ? ' <span class="badge badge-snapshot" title="Source snapshot available">snapshot</span>' : '';
+                h += '<td>' + esc(run.fileName) + snapBadge + '</td>';
                 h += '<td>' + esc(run.symbol) + '</td>';
                 h += '<td class="dim" style="font-size:11px">' + esc(run.from) + ' &mdash; ' + esc(run.to) + '</td>';
                 h += '<td><span class="badge badge-trades">' + run.tradeCount + '</span></td>';
