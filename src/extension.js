@@ -2577,18 +2577,21 @@ function activate(context) {
                             const d = pathModule.join(mqRoot, termId, mqlDir, 'Experts');
                             if (fs.existsSync(d)) candidates.push(d);
                         } catch (err) {
-                            console.error(`Error checking path for termId ${termId} in ${mqRoot} (${mqlDir}):`, err.message);
+                            outputChannel.appendLine(`Error checking path for termId ${termId} in ${mqRoot} (${mqlDir}): ${err.message}`);
+                            outputChannel.show(true);
                         }
                     }
                 } catch (err) {
-                    console.error(`Error reading MetaQuotes root directory ${mqRoot}:`, err.message);
+                    outputChannel.appendLine(`Error reading MetaQuotes root directory ${mqRoot}: ${err.message}`);
+                    outputChannel.show(true);
                 }
                 // Pick the one with the most recently modified Experts subfolder
                 if (candidates.length === 1) return candidates[0];
                 if (candidates.length > 1) {
                     candidates.sort((a, b) => {
                         try { return fs.statSync(b).mtime - fs.statSync(a).mtime; } catch (err) {
-                            console.error(`Error comparing modification times for candidates ${a} and ${b}:`, err.message);
+                            outputChannel.appendLine(`Error comparing modification times for candidates ${a} and ${b}: ${err.message}`);
+                            outputChannel.show(true);
                             return 0;
                         }
                     });

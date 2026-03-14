@@ -51,8 +51,9 @@ class TradeReportPanel {
         this._buildSourceMapPromise = this._buildSourceMap();
         this._buildSourceMapPromise.then(() => {
             this._ensureSnapshot(parsedData);
+        }).catch(err => {
+            console.error('Failed to initialize source map or snapshot', err);
         });
-
         this._panel.webview.html = this._getHtml(parsedData);
 
         this._panel.webview.onDidReceiveMessage(async msg => {
@@ -126,7 +127,10 @@ class TradeReportPanel {
                 if (!this._fileCache.has(basename)) {
                     this._fileCache.set(basename, []);
                 }
-                this._fileCache.get(basename).push(uri);
+                const cache = this._fileCache.get(basename);
+                if (!cache.some(u => u.fsPath === uri.fsPath)) {
+                    cache.push(uri);
+                }
             }
         } catch (e) {
             console.error('Failed to build MQL source map', e);
@@ -155,12 +159,19 @@ class TradeReportPanel {
 
         // Try to match using EA name or EA file path as a hint
         if (this._eaName) {
-            const match = candidates.find(u => u.fsPath.includes(this._eaName));
+            const eaNameLower = this._eaName.toLowerCase();
+            const match = candidates.find(u => {
+                const name = path.parse(u.fsPath).name.toLowerCase();
+                return name === eaNameLower || name.startsWith(eaNameLower);
+            });
             if (match) return match;
         }
         if (this._eaFile) {
-            const eaBasename = path.basename(this._eaFile, path.extname(this._eaFile));
-            const match = candidates.find(u => u.fsPath.includes(eaBasename));
+            const eaBasenameLower = path.basename(this._eaFile, path.extname(this._eaFile)).toLowerCase();
+            const match = candidates.find(u => {
+                const name = path.parse(u.fsPath).name.toLowerCase();
+                return name === eaBasenameLower;
+            });
             if (match) return match;
         }
 
@@ -216,8 +227,13 @@ class TradeReportPanel {
                 const uri = this._resolveUri(filename);
                 if (uri && fs.existsSync(uri.fsPath)) {
                     // Sanitize to retain folder structure without path traversal
-                    const safeRelativePath = filename.replace(/^[\/\\]+/, '').replace(/\.\.(?:[\/\\]|$)/g, '');
-                    const destPath = path.join(snapDir, safeRelativePath);
+                    const sanitized = this._sanitizeRelativePath(filename);
+                    const destPath = path.join(snapDir, sanitized);
+
+                    // Final validation: ensure the path did not escape snapDir
+                    const relative = path.relative(snapDir, destPath);
+                    if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
+
                     fs.mkdirSync(path.dirname(destPath), { recursive: true });
                     fs.copyFileSync(uri.fsPath, destPath);
                     copied++;
@@ -244,9 +260,12 @@ class TradeReportPanel {
 
         // Snapshot target
         if (target === 'snapshot' && this._snapshotDir) {
-            const safeRelativePath = filename.replace(/^[\/\\]+/, '').replace(/\.\.(?:[\/\\]|$)/g, '');
-            const snapFile = path.join(this._snapshotDir, safeRelativePath);
-            if (fs.existsSync(snapFile)) {
+            const sanitized = this._sanitizeRelativePath(filename);
+            const snapFile = path.join(this._snapshotDir, sanitized);
+
+            // Final validation: ensure the path did not escape snapshotDir
+            const relative = path.relative(this._snapshotDir, snapFile);
+            if (!relative.startsWith('..') && !path.isAbsolute(relative) && fs.existsSync(snapFile)) {
                 const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(snapFile));
                 await vscode.window.showTextDocument(doc, {
                     viewColumn: vscode.ViewColumn.One,
@@ -267,7 +286,10 @@ class TradeReportPanel {
                 uri = uris[0];
                 const b = path.basename(uri.fsPath);
                 if (!this._fileCache.has(b)) this._fileCache.set(b, []);
-                this._fileCache.get(b).push(uri);
+                const cache = this._fileCache.get(b);
+                if (!cache.some(u => u.fsPath === uri.fsPath)) {
+                    cache.push(uri);
+                }
             }
         }
 
@@ -286,22 +308,48 @@ class TradeReportPanel {
         }
     }
 
-_escapeGlob(pattern) {
-    return pattern.replace(/[*?[\]{}]/g, '[$&]');
-}
+    /**
+     * Sanitize a filename to be used as a relative path within a snapshot.
+     * Iteratively removes path traversal segments.
+     */
+    _sanitizeRelativePath(filename) {
+        if (!filename) return '';
+        // Strip leading slashes/backslashes to treat it as relative
+        let sanitized = filename.replace(/^[\/\\]+/, '');
 
-dispose() {
-    TradeReportPanel.currentPanel = null;
-    this._panel.dispose();
-    while (this._disposables.length) {
-        const d = this._disposables.pop();
-        if (d) d.dispose();
+        // Iteratively remove ".." segments to prevent bypasses like "....//"
+        let previous;
+        do {
+            previous = sanitized;
+            sanitized = sanitized.replace(/\.\.(?:[\/\\]|$)/g, '');
+        } while (sanitized !== previous);
+
+        // Normalize to resolve any remaining path quirks
+        sanitized = path.normalize(sanitized);
+
+        // Strip any leading traversal or absolute roots that normalization might have preserved
+        while (sanitized.startsWith('..') || sanitized.startsWith('/') || sanitized.startsWith('\\')) {
+            sanitized = sanitized.replace(/^(\.\.(?:[\/\\]|$)|[\/\\])/, '');
+        }
+        return sanitized;
     }
-}
 
-_getHtml(data) {
-    const safeJson = (obj) => JSON.stringify(obj).replace(/<\//g, '<\\/');
-    return /*html*/`<!DOCTYPE html>
+    _escapeGlob(pattern) {
+        return pattern.replace(/[*?[\]{}]/g, '[$&]');
+    }
+
+    dispose() {
+        TradeReportPanel.currentPanel = null;
+        this._panel.dispose();
+        while (this._disposables.length) {
+            const d = this._disposables.pop();
+            if (d) d.dispose();
+        }
+    }
+
+    _getHtml(data) {
+        const safeJson = (obj) => JSON.stringify(obj).replace(/<\//g, '<\\/');
+        return /*html*/`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -796,7 +844,7 @@ tr:hover td { background: var(--surface); }
 </script>
 </body>
 </html>`;
-}
+    }
 }
 
 module.exports = { TradeReportPanel };
