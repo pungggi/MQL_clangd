@@ -151,10 +151,6 @@
                     "maximum": 300000,
                     "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
-                "mql_tools.context": {
-                    "type": "boolean",
-                    "default": false
-                },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
                     "enum": [
@@ -192,6 +188,11 @@
                             "type": "string"
                         }
                     }
+                },
+                "mql_tools.TradeReport.SnapshotSources": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "When opening a Trade Report, copy all referenced MQL source files into a `snapshot/` folder next to the log file. This preserves the exact source code that produced the log, so **click-to-source** navigation remains accurate even after the EA is modified.\n\n**Warning:** Enabling this increases disk usage since a full copy of the source files is stored per run."
                 },
                 "mql_tools.Clangd.PreserveSuppressions": {
                     "type": "string",
@@ -386,6 +387,11 @@
                 "command": "mql_tools.switchLogMode",
                 "title": "Switch Log Tail Mode (Live/Standard)",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.openTradeReport",
+                "title": "Open Trade Report Dashboard",
+                "category": "MQL"
             }
         ],
         "menus": {
@@ -420,7 +426,6 @@
             ],
             "explorer/context": [
                 {
-                    "when": "config.mql_tools.context == true",
                     "command": "mql_tools.Showfiles",
                     "group": "z_commands"
                 },

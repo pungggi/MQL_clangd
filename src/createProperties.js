@@ -472,7 +472,6 @@ async function CreateProperties(force = false) {
     }
 
     const associations = { '*.mqh': 'cpp', '*.mq4': 'cpp', '*.mq5': 'cpp' };
-    await safeConfigUpdate('mql_tools.context', true, vscode.ConfigurationTarget.Workspace);
     await safeConfigUpdate('files.associations', associations, vscode.ConfigurationTarget.Workspace);
 
     // --- Generate .clangd file for direct diagnostic suppression ---

@@ -238,16 +238,29 @@ void LLF(string fmt, double a1, int a2, string a3 = "", string a4 = "") {
   LiveLogWrite(msg);
   #ifndef LIVELOG_REDIRECT
   Print(msg);
-  #endif
+#endif
 }
 
 //+------------------------------------------------------------------+
 //| Level-prefixed logging                                           |
+//|                                                                  |
+//| These macros embed {File:Function:Line} source location tags     |
+//| so the VS Code Trade Report can link each log entry back to      |
+//| the exact MQL source line. Click the yellow source badges in     |
+//| the Trade Report to jump straight to the code.                   |
 //+------------------------------------------------------------------+
-void LogDebug(string msg) { LL("[DEBUG] " + msg); }
-void LogInfo(string msg) { LL("[INFO] " + msg); }
-void LogWarn(string msg) { LL("[WARN] " + msg); }
-void LogError(string msg) { LL("[ERROR] " + msg); }
+#define LogDebug(msg)                                                          \
+  LL("[DEBUG] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                       \
+     IntegerToString(__LINE__) + "}: " + (msg))
+#define LogInfo(msg)                                                           \
+  LL("[INFO] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                        \
+     IntegerToString(__LINE__) + "}: " + (msg))
+#define LogWarn(msg)                                                           \
+  LL("[WARN] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                        \
+     IntegerToString(__LINE__) + "}: " + (msg))
+#define LogError(msg)                                                          \
+  LL("[ERROR] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                       \
+     IntegerToString(__LINE__) + "}: " + (msg))
 
 //+------------------------------------------------------------------+
 //| PrintLive - Similar to Print() but with immediate file flush     |
@@ -335,13 +348,20 @@ void PrintFormatLive(string fmt, double a1, int a2, string a3 = "",
 }
 
 //+------------------------------------------------------------------+
-//| Level-prefixed Live versions                                     |
+//| Level-prefixed Live versions (same macros, kept for compat)      |
 //+------------------------------------------------------------------+
-void LogDebugLive(string msg) { LogDebug(msg); }
-void LogInfoLive(string msg) { LogInfo(msg); }
-void LogWarnLive(string msg) { LogWarn(msg); }
-void LogErrorLive(string msg) { LogError(msg); }
+#define LogDebugLive(msg) LogDebug(msg)
+#define LogInfoLive(msg)  LogInfo(msg)
+#define LogWarnLive(msg)  LogWarn(msg)
+#define LogErrorLive(msg) LogError(msg)
 
+//+------------------------------------------------------------------+
+//| TRADE level - used by the Trade Report parser for source nav     |
+//+------------------------------------------------------------------+
+#define LogTrade(msg)                                                          \
+  LL("[TRADE] {" + __FILE__ + ":" + __FUNCTION__ + ":" +                       \
+     IntegerToString(__LINE__) + "}: " + (msg))
+#define LogTradeLive(msg) LogTrade(msg)
 //+------------------------------------------------------------------+
 //| AUTOMATIC REDIRECTION (opt-in)                                    |
 //| Define LIVELOG_REDIRECT before including this file to             |

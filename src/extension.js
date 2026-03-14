@@ -3,6 +3,7 @@ const url = require('url');
 const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const pathModule = require('path');
 
 const sleep = require('util').promisify(setTimeout);
@@ -56,6 +57,7 @@ const {
     cleanupBatchFile
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
+const { TradeReportDashboard } = require('./tradeReportDashboard');
 
 
 // =============================================================================
@@ -2537,6 +2539,89 @@ function activate(context) {
     }));
 
     logTailer.initStatusBar();
+
+    // Trade Report Dashboard — discover EAs and their test runs
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', () => {
+
+        // Resolve the Experts/ folder via multiple strategies
+        function findExpertsDir() {
+            // Strategy 1: logTailer already resolved basePath (Live Log was used)
+            if (logTailer.basePath) {
+                const d = pathModule.join(logTailer.basePath, 'Experts');
+                if (fs.existsSync(d)) return d;
+            }
+
+            // Strategy 2: User-configured Include dir setting
+            const config = vscode.workspace.getConfiguration('mql_tools');
+            const version = (logTailer.detectMqlVersion ? logTailer.detectMqlVersion() : null) || 'mql5';
+            const settingKey = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
+            let rawIncDir = config.get(`Metaeditor.${settingKey}`);
+            if (rawIncDir) {
+                const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+                rawIncDir = rawIncDir.replace(/\$\{workspaceFolder\}/g, wsFolder);
+                let base = rawIncDir;
+                if (pathModule.basename(base).toLowerCase() === 'include') base = pathModule.dirname(base);
+                const d = pathModule.join(base, 'Experts');
+                if (fs.existsSync(d)) return d;
+            }
+
+            // Strategy 3: Scan MetaQuotes AppData — find all terminal data folders
+            const appData = process.env.APPDATA || pathModule.join(os.homedir(), 'AppData', 'Roaming');
+            const mqRoot = pathModule.join(appData, 'MetaQuotes', 'Terminal');
+            if (fs.existsSync(mqRoot)) {
+                const mqlDir = version === 'mql4' ? 'MQL4' : 'MQL5';
+                let candidates = [];
+                try {
+                    for (const termId of fs.readdirSync(mqRoot)) {
+                        try {
+                            const d = pathModule.join(mqRoot, termId, mqlDir, 'Experts');
+                            if (fs.existsSync(d)) candidates.push(d);
+                        } catch (err) {
+                            outputChannel.appendLine(`Error checking path for termId ${termId} in ${mqRoot} (${mqlDir}): ${err.message}`);
+                            outputChannel.show(true);
+                        }
+                    }
+                } catch (err) {
+                    outputChannel.appendLine(`Error reading MetaQuotes root directory ${mqRoot}: ${err.message}`);
+                    outputChannel.show(true);
+                }
+                // Pick the one with the most recently modified Experts subfolder
+                if (candidates.length === 1) return candidates[0];
+                if (candidates.length > 1) {
+                    candidates.sort((a, b) => {
+                        try { return fs.statSync(b).mtime - fs.statSync(a).mtime; } catch (err) {
+                            outputChannel.appendLine(`Error comparing modification times for candidates ${a} and ${b}: ${err.message}`);
+                            outputChannel.show(true);
+                            return 0;
+                        }
+                    });
+                    return candidates[0];
+                }
+            }
+
+            return null;
+        }
+
+        const expertsDir = findExpertsDir();
+        if (!expertsDir) {
+            vscode.window.showErrorMessage(
+                'Cannot find MQL Experts folder. Please configure your MQL Include directory setting.',
+                'Configure'
+            ).then(sel => {
+                if (sel === 'Configure') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Metaeditor');
+                }
+            });
+            return;
+        }
+
+        try {
+            TradeReportDashboard.createOrShow(context, expertsDir);
+        } catch (error) {
+            console.error('Failed to create or show Trade Report Dashboard:', error);
+            vscode.window.showErrorMessage(`Failed to open Trade Report Dashboard: ${error.message}`);
+        }
+    }));
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider('mql-output', DefinitionProvider()));
