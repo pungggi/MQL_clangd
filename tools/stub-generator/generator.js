@@ -8,7 +8,7 @@
 /**
  * Built-in MQL5 base classes that are always forward-declared as classes
  */
-const BUILTIN_BASE_CLASSES = ['CObject', 'CArray', 'CList', 'CTreeNode'];
+const BUILTIN_BASE_CLASSES = Object.freeze(['CObject', 'CArray', 'CList', 'CTreeNode']);
 
 class StubGenerator {
     constructor(options = {}) {

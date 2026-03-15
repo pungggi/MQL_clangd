@@ -111,7 +111,8 @@ On non-Windows platforms you can run MetaEditor through Wine while keeping the s
 
    ```json
    {
-       "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../drive_c/Program Files/MetaTrader 5/MetaEditor64.exe"   }
+       "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../drive_c/Program Files/MetaTrader 5/MetaEditor64.exe"
+   }
    ```
 
 3. Enable the Wine wrapper and (optionally) configure the Wine binary:

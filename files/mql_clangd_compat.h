@@ -842,13 +842,6 @@ int OrderMagicNumber();
 string OrderSymbol();
 string OrderComment();
 
-// MQL4 Order pool constants
-#ifndef MODE_TRADES
-#define MODE_TRADES 0
-#endif
-#ifndef MODE_HISTORY
-#define MODE_HISTORY 1
-#endif
 #define SELECT_BY_POS 0
 #define SELECT_BY_TICKET 1
 

@@ -1,7 +1,5 @@
 const assert = require('assert');
-const { parseLine, RE_EA_LINE, RE_LIVELOG_LINE, RE_TIMESTAMP_PREFIX } = require('../src/logParser');
-
-const RE_DETECT_EA = new RegExp(`(?:\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s)`);
+const { parseLine, RE_EA_LINE, RE_LIVELOG_LINE, RE_DETECT_EA } = require('../src/logParser');
 
 suite('Log Parser Reproduction Tests', () => {
     test('Comment 9: parseLine should handle 4-column lines correctly', () => {
@@ -30,6 +28,10 @@ suite('Log Parser Reproduction Tests', () => {
         const matchLive = liveLogWithMs.match(RE_LIVELOG_LINE);
         assert.ok(matchLive, 'Should match LiveLog payload with milliseconds');
         assert.strictEqual(matchLive[1], 'INFO');
+        assert.strictEqual(matchLive[2], 'File');
+        assert.strictEqual(matchLive[3], 'Func');
+        assert.strictEqual(matchLive[4], '123');
+        assert.strictEqual(matchLive[5], 'msg');
     });
 
     test('Comment 7: EA detection with tabs (via parseLine and RE_DETECT_EA)', () => {
@@ -40,5 +42,36 @@ suite('Log Parser Reproduction Tests', () => {
         const m = payload.match(RE_DETECT_EA);
         assert.ok(m, 'Should detect EA from payload');
         assert.strictEqual(m[1], 'MyEA');
+    });
+
+    test('Incomplete trade detection in parseLogFile', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const { parseLogFile } = require('../src/logParser');
+        const logPath = path.join(__dirname, 'incomplete_trade.log');
+        
+        // Log with two consecutive orders without fill/exit/pnl for the first one
+        const content = 
+            'HASH\t0\t2026.03.15 10:00:00\tTester\tEURUSD,M1: testing of MyEA from 2026.01.01 to 2026.02.01 started\n' +
+            'HASH\t0\t2026.03.15 10:00:01\tMyEA (EURUSD,M1)\t2026.03.15 10:00:01   [MyEA] INFO {File:Func:1}: SIMULATED BUY MARKET\n' +
+            'HASH\t0\t2026.03.15 10:00:02\tMyEA (EURUSD,M1)\t2026.03.15 10:00:02   [MyEA] INFO {File:Func:2}: SIMULATED SELL MARKET\n';
+            
+        fs.writeFileSync(logPath, content, 'utf8');
+        
+        try {
+            const warnings = [];
+            const logger = {
+                warn: (msg) => warnings.push(msg)
+            };
+            
+            const result = parseLogFile(logPath, { logger });
+            
+            assert.strictEqual(result.incompleteTrades.length, 1, 'Should have one incomplete trade');
+            assert.strictEqual(result.incompleteTrades[0].type, 'buy', 'The incomplete trade should be the first one (buy)');
+            assert.strictEqual(warnings.length, 1, 'Should have emitted one warning');
+            assert.ok(warnings[0].includes('Incomplete trade lost at line 2'), 'Warning message should mention line 2');
+        } finally {
+            if (fs.existsSync(logPath)) fs.unlinkSync(logPath);
+        }
     });
 });

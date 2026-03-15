@@ -49,6 +49,10 @@ const RE_EA_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(IN
 // Format B (LiveLog):    [LEVEL] {File:Func:Line}: message
 const RE_LIVELOG_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[(INFO|DEBUG|TRADE|ERROR|WARN)\\]\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
 
+const RE_EXTRACT_TIMESTAMP = new RegExp(`(${RE_TIMESTAMP_PATTERN})`);
+const RE_EA_NAME_DETECT = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`);
+const RE_DETECT_EA = new RegExp('(?:\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s)');
+
 function parseLine(text) {
     // Split on tabs — MT5 tester logs are tab-delimited
     const parts = text.split('\t');
@@ -68,9 +72,11 @@ function parseLine(text) {
 /**
  * Parse an MT5 tester log file.
  * @param {string} logPath - Absolute path to the .log file
+ * @param {object} options - Optional: { logger }
  * @returns {object} Parsed data
  */
-function parseLogFile(logPath) {
+function parseLogFile(logPath, options = {}) {
+    const logger = options.logger || console;
     const content = readFileWithEncoding(logPath);
     const rawLines = content.split(/\r?\n/);
 
@@ -78,7 +84,6 @@ function parseLogFile(logPath) {
     // Format A: [EAName] LEVEL ... → EA name is in the first bracket
     // Format B: [LEVEL] {File:...} → no EA name in brackets, try Tester source col
     let eaName = null;
-    const RE_DETECT_EA = new RegExp(`(?:\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s)`);
     for (let i = 0; i < Math.min(rawLines.length, 200); i++) {
         const { payload } = parseLine(rawLines[i]);
         if (!payload) continue;
@@ -99,6 +104,7 @@ function parseLogFile(logPath) {
     // ---- Parse all lines into structured entries ----------------------------
     const allEntries = [];  // { lineNumber, timestamp, level, message, sourceFile, sourceFunc, sourceLine, raw }
     const trades = [];
+    const incompleteTrades = [];
     let currentTrade = null;
 
     // Test config extraction
@@ -120,7 +126,7 @@ function parseLogFile(logPath) {
         const raw = rawLines[i];
         if (!raw.trim()) continue;
 
-        const { wallclock, source, payload } = parseLine(raw);
+    const { wallclock: _wallclock, source, payload } = parseLine(raw);
 
         // ---- Extract test config from system (Tester) lines -----------------
         if (source === 'Tester' || source.startsWith('Tester')) {
@@ -160,7 +166,7 @@ function parseLogFile(logPath) {
         }
 
         // Extract the simulated timestamp from the payload (e.g. "2026.02.13 15:20:00")
-        const tsMatch = payload.match(new RegExp(`(${RE_TIMESTAMP_PATTERN})`));
+        const tsMatch = payload.match(RE_EXTRACT_TIMESTAMP);
         const timestamp = tsMatch ? tsMatch[1] : '';
 
         const entry = {
@@ -179,7 +185,11 @@ function parseLogFile(logPath) {
         // Order placement
         const orderMatch = message.match(/SIMULATED (SELL|BUY) (LIMIT ORDER|STOP ORDER|MARKET|LIMIT|STOP)/i);
         if (orderMatch) {
-            // If we had an incomplete trade, discard it
+            // If we had an incomplete trade, save it to incompleteTrades
+            if (currentTrade) {
+                incompleteTrades.push(currentTrade);
+                logger.warn(`[logParser] Incomplete trade lost at line ${currentTrade.orderLine}. Symbol: ${currentTrade.symbol}, TS: ${currentTrade.timestamp}`);
+            }
             currentTrade = {
                 type: orderMatch[1].toLowerCase(),
                 orderLine: lineNumber,
@@ -314,6 +324,7 @@ function parseLogFile(logPath) {
             finalBalance: finalBalance || '?'
         },
         trades,
+        incompleteTrades,
         allEntries,
         summary: {
             tradeCount: trades.length,
@@ -462,7 +473,7 @@ function parseLogSummary(logPath) {
 
         // EA name (skip level-only brackets from LiveLog format)
         if (!eaName) {
-            const m = payload.match(new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`));
+            const m = payload.match(RE_EA_NAME_DETECT);
             if (m && !['INFO', 'DEBUG', 'TRADE', 'ERROR', 'WARN'].includes(m[1])) eaName = m[1];
         }
         if (!eaName && (source === 'Tester' || source.startsWith('Tester'))) {
@@ -505,4 +516,4 @@ function parseLogSummary(logPath) {
     };
 }
 
-module.exports = { parseLogFile, findLatestLog, discoverEAs, parseLogSummary, parseLine, RE_TIMESTAMP_PATTERN, RE_TIMESTAMP_PREFIX, RE_EA_LINE, RE_LIVELOG_LINE };
+module.exports = { parseLogFile, findLatestLog, discoverEAs, parseLogSummary, parseLine, RE_TIMESTAMP_PATTERN, RE_TIMESTAMP_PREFIX, RE_EA_LINE, RE_LIVELOG_LINE, RE_DETECT_EA };

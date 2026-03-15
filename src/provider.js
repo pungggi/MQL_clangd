@@ -319,8 +319,8 @@ function DefinitionProvider() {
             if (baseMatch) {
                 const fragmentMatch = link.match(/(?<=#)(\d+),(\d+)$/m);
                 if (fragmentMatch) {
-                    fragment1 = fragmentMatch[1];
-                    fragment2 = fragmentMatch[2];
+                    fragment1 = parseInt(fragmentMatch[1], 10);
+                    fragment2 = parseInt(fragmentMatch[2], 10);
                 }
             }
 
@@ -735,7 +735,7 @@ function ColorProvider() {
                             document.positionAt(match.index),
                             document.positionAt(match.index + match[0].length)
                         ),
-                        new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
+                            new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
                     }
                 });
 
@@ -748,7 +748,7 @@ function ColorProvider() {
                         document.positionAt(item.index),
                         document.positionAt(item.index + item[0].length)
                     ),
-                    new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
+                        new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
                 }
             }
 

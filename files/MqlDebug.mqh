@@ -86,8 +86,9 @@ bool MqlDebugInit() {
 #ifdef __MQL5__
     // Capture a baseline pairing of wall-clock second and monotonic counter
     // so MqlDebugTime() can derive an aligned millisecond offset.
-    ulong bMicro; datetime bTime;
-    do { bMicro = GetMicrosecondCount(); bTime = TimeLocal(); } while (bTime != TimeLocal());
+    datetime bTime;
+    do { bTime = TimeLocal(); } while (bTime != TimeLocal());
+    ulong bMicro = GetMicrosecondCount();
     __dbgState.SetBaseline(bTime, bMicro);
 #endif
     __dbgState.SetDebugInitialized(true);
@@ -135,6 +136,11 @@ void MqlDebugRotate() {
                                         FILE_WRITE | FILE_TXT | FILE_ANSI |
                                             FILE_SHARE_READ | FILE_SHARE_WRITE));
       if (__dbgState.GetDebugHandle() != INVALID_HANDLE) {
+#ifdef __MQL5__
+        datetime bTime;
+        do { bTime = TimeLocal(); } while (bTime != TimeLocal());
+        __dbgState.SetBaseline(bTime, GetMicrosecondCount());
+#endif
         FileWriteString(__dbgState.GetDebugHandle(),
                         "=== MqlDebug Log Rotated ===\n");
         FileFlush(__dbgState.GetDebugHandle());
@@ -154,12 +160,15 @@ void MqlDebugRotate() {
 string MqlDebugTime() {
   MqlDateTime dt;
 #ifdef __MQL5__
-  ulong nowMicro = GetMicrosecondCount();
   datetime t = TimeLocal();
-  ulong elapsedMicro = nowMicro - __dbgState.GetBaselineMicro();
-  // ms = sub-second part of the elapsed offset, anchored to the baseline second
-  int ms = (int)((elapsedMicro / 1000) % 1000);
   TimeToStruct(t, dt);
+  int ms = 0;
+  if (__dbgState.GetBaselineMicro() != 0) {
+    ulong nowMicro = GetMicrosecondCount();
+    ulong elapsedMicro = nowMicro - __dbgState.GetBaselineMicro();
+    // ms = sub-second part of the elapsed offset, anchored to the baseline second
+    ms = (int)((elapsedMicro / 1000) % 1000);
+  }
   return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
                       dt.day, dt.hour, dt.min, dt.sec, ms);
 #else

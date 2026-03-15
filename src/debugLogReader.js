@@ -30,8 +30,9 @@ class MqlDebugLogReader {
         this.filePath    = path.join(basePath, 'Files', MQLDEBUG_FILENAME);
         this.lastSize    = 0;
         this.isRunning   = false;
-        this.watcher     = null;
-        this.timer       = null;
+        this.watcher      = null;
+        this.timer        = null;
+        this.renameTimer  = null;
 
         /** Preferred: called with all events in a file chunk at once. @type {((events: DebugEvent[]) => void) | null} */
         this.onBatch     = null;
@@ -73,6 +74,10 @@ class MqlDebugLogReader {
             clearTimeout(this.timer);
             this.timer = null;
         }
+        if (this.renameTimer) {
+            clearTimeout(this.renameTimer);
+            this.renameTimer = null;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -93,7 +98,8 @@ class MqlDebugLogReader {
                     this._checkForNewContent();
                 } else if (eventType === 'rename') {
                     // File might have been rotated or re-created
-                    setTimeout(() => {
+                    this.renameTimer = setTimeout(() => {
+                        this.renameTimer = null;
                         if (this.isRunning) {
                             this._setupWatcher();
                             this._checkForNewContent();
@@ -106,7 +112,7 @@ class MqlDebugLogReader {
                 this.watcher = null;
             });
         } catch (err) {
-            console.error('MqlDebugLogReader: failed to create watcher:', err);
+            this._emitError(err);
         }
     }
 
