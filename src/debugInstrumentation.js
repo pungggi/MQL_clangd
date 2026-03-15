@@ -123,7 +123,7 @@ function findInjectionPoint(lines, targetLine) {
         if (kind === 'comment' || kind === 'blank' || kind === 'preprocessor') continue;
 
         const trimmed = line.trimEnd();
-        if (trimmed.endsWith(';') || trimmed.endsWith('{') || trimmed.endsWith('}')) {
+        if (trimmed.endsWith(';') || trimmed.endsWith('}')) {
             return i; // Inject AFTER this line (i is 0-based)
         }
     }
@@ -183,11 +183,10 @@ function buildInjectionLines(label, watchVars, condition) {
         `MQL_DBG_WATCH("${v}", ${v});`
     );
 
-    const body = [breakLine, ...watchLines].join('\n  ');
-
     if (condition && condition.trim()) {
         if (isConditionSafe(condition)) {
-            return [`if (${condition}) { ${body} }`];
+            const bodyLines = [breakLine, ...watchLines];
+            return [`if (${condition}) {`, ...bodyLines.map(l => `  ${l}`), `}`];
         } else {
             // Fallback for malformed conditions: inject unconditional break plus a comment
             return [

@@ -1,11 +1,6 @@
 const assert = require('assert');
-const { parseLine } = require('../src/logParser');
+const { parseLine, RE_EA_LINE, RE_LIVELOG_LINE, RE_TIMESTAMP_PREFIX } = require('../src/logParser');
 
-// We'll re-define the regexes here to test them, as they are not exported from logParser.js
-const RE_TIMESTAMP_PATTERN = /\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?/.source;
-const RE_TIMESTAMP_PREFIX = `(?:${RE_TIMESTAMP_PATTERN}\\s*)?`;
-const RE_EA_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(INFO|DEBUG|TRADE|ERROR|WARN)\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
-const RE_LIVELOG_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[(INFO|DEBUG|TRADE|ERROR|WARN)\\]\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
 const RE_DETECT_EA = new RegExp(`(?:\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s)`);
 
 suite('Log Parser Reproduction Tests', () => {

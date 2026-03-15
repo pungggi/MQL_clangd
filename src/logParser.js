@@ -40,7 +40,7 @@ function readFileWithEncoding(filePath) {
  * We care about the message part after the EA column.
  */
 
-const RE_TIMESTAMP_PATTERN = /\\d{4}\\.\\d{2}\\.\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?/.source;
+const RE_TIMESTAMP_PATTERN = /\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?/.source;
 const RE_TIMESTAMP_PREFIX = `(?:${RE_TIMESTAMP_PATTERN}\\s*)?`;
 
 // Format A (MT5 Tester): [EAName] LEVEL {File:Func:Line}: message
@@ -458,9 +458,7 @@ function parseLogSummary(logPath) {
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i];
         if (!raw.trim()) continue;
-        const parts = raw.split('\t');
-        const source = parts.length >= 4 ? parts[3].trim() : '';
-        const payload = parts.length >= 5 ? parts.slice(4).join('\t').trim() : '';
+        const { source, payload } = parseLine(raw);
 
         // EA name (skip level-only brackets from LiveLog format)
         if (!eaName) {
@@ -507,4 +505,4 @@ function parseLogSummary(logPath) {
     };
 }
 
-module.exports = { parseLogFile, findLatestLog, discoverEAs, parseLogSummary, parseLine };
+module.exports = { parseLogFile, findLatestLog, discoverEAs, parseLogSummary, parseLine, RE_TIMESTAMP_PATTERN, RE_TIMESTAMP_PREFIX, RE_EA_LINE, RE_LIVELOG_LINE };
