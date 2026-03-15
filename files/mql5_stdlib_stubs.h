@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "mql_clangd_compat.h"
 #ifdef __clang__
 
 // Forward declarations
@@ -39,14 +40,6 @@ class CDXBox;
 class CDXVertexBuffer;
 class CDXIndexBuffer;
 class CDXDispatcher;
-struct DXColor;
-struct DXPlane;
-struct DXVector2;
-struct DXVector3;
-struct DXVector4;
-struct DXMatrix;
-struct DXQuaternion;
-struct DViewport;
 class CDXMesh;
 class CDXSurface;
 struct OBJFaceType;
@@ -112,9 +105,46 @@ class CPanel;
 class CPicture;
 class CRadioButton;
 class CRadioGroup;
-struct CPoint;
-struct CSize;
-struct CRect;
+struct CPoint {
+  int x;
+  int y;
+};
+struct CSize {
+  int cx;
+  int cy;
+};
+struct CRect {
+  int left;
+  int top;
+  int right;
+  int bottom;
+  CPoint LeftTop(void) const;
+  void LeftTop(const int x, const int y);
+  void LeftTop(const CPoint &point);
+  CPoint RightBottom(void) const;
+  void RightBottom(const int x, const int y);
+  void RightBottom(const CPoint &point);
+  CPoint CenterPoint(void) const;
+  int Width(void) const;
+  void Width(const int w);
+  int Height(void) const;
+  void Height(const int h);
+  CSize Size(void) const;
+  void Size(const int cx, const int cy);
+  void Size(const CSize &size);
+  void SetBound(const int l, const int t, const int r, const int b);
+  void SetBound(const CRect &rect);
+  void SetBound(const CPoint &point, const CSize &size);
+  void SetBound(const CPoint &left_top, const CPoint &right_bottom);
+  void Move(const int x, const int y);
+  void Move(const CPoint &point);
+  void Shift(const int dx, const int dy);
+  void Shift(const CPoint &point);
+  void Shift(const CSize &size);
+  bool Contains(const int x, const int y) const;
+  bool Contains(const CPoint &point) const;
+  void Normalize(void);
+};
 class CScroll;
 class CScrollV;
 class CScrollH;
@@ -165,10 +195,7 @@ struct BITMAPINFOHEADER;
 class CFileBMP;
 class CFilePipe;
 class CFileTxt;
-struct Slot;
-struct Introsort;
 class CPrimeGenerator;
-class CLinkedListNode;
 class CAxis;
 class CColorGenerator;
 struct CPoint2D;
@@ -943,11 +970,159 @@ struct MENUITEMINFO;
 struct INPUT;
 // Base classes from other headers
 class CObject;
-class CDXHandleShared;
-class CDXObjectBase;
-class CDXObject;
 
+// DX math structs — moved here so CDXMesh/CDXSurface can use them as value members
+struct DXVector2 {
+public:
+    float x;
+    float y;
+    DXVector2(void);
+    DXVector2(float v);
+    DXVector2(float vx, float vy);
+    DXVector2(const struct DXVector3 & v);
+    DXVector2(const struct DXVector4 & v);
+};
 
+struct DXVector3 {
+public:
+    float x;
+    float y;
+    float z;
+    DXVector3(void);
+    DXVector3(float v);
+    DXVector3(float vx, float vy, float vz);
+    DXVector3(const DXVector2 & v);
+    DXVector3(const struct DXVector4 & v);
+};
+
+struct DXVector4 {
+public:
+    float x;
+    float y;
+    float z;
+    float w;
+    DXVector4(void);
+    DXVector4(float v);
+    DXVector4(float vx, float vy, float vz, float vw);
+    DXVector4(const DXVector2 & v);
+    DXVector4(const DXVector3 & v);
+    DXVector4(const DXVector4 & v);
+};
+
+struct DXColor {
+public:
+    float r;
+    float g;
+    float b;
+    float a;
+    DXColor(void);
+    DXColor(float red, float green, float blue, float alpha);
+    DXColor(const DXVector4 & v);
+    DXColor(const DXVector3 & v);
+    DXColor(const DXColor & c);
+};
+
+struct DXPlane {
+public:
+    float a;
+    float b;
+    float c;
+    float d;
+};
+
+struct DXMatrix {
+};
+
+struct DXQuaternion {
+public:
+    float x;
+    float y;
+    float z;
+    float w;
+};
+
+struct DViewport {
+public:
+    ulong x;
+    ulong y;
+    ulong width;
+    ulong height;
+    float minz;
+    float maxz;
+};
+
+// DX stub base classes (not fully parsed from MQL5 headers)
+class CDXHandleShared {
+public:
+  virtual ~CDXHandleShared() {}
+};
+class CDXObjectBase {
+public:
+  virtual ~CDXObjectBase() {}
+};
+class CDXObject : public CDXObjectBase {
+public:
+  virtual ~CDXObject() {}
+};
+
+// Missing DX types used in method signatures
+struct DXVertex {
+  float x, y, z, nx, ny, nz, tu, tv;
+};
+class CDXInput {
+public:
+  virtual ~CDXInput() {}
+};
+class CDXTexture {
+public:
+  virtual ~CDXTexture() {}
+};
+
+enum ENUM_DX_PRIMITIVE_TOPOLOGY {
+  DX_PRIMITIVE_TOPOLOGY_UNDEFINED = 0,
+  DX_PRIMITIVE_TOPOLOGY_POINTLIST = 1,
+  DX_PRIMITIVE_TOPOLOGY_LINELIST = 2,
+  DX_PRIMITIVE_TOPOLOGY_LINESTRIP = 3,
+  DX_PRIMITIVE_TOPOLOGY_TRIANGLELIST = 4,
+  DX_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP = 5
+};
+
+enum ENUM_DX_FORMAT {
+  DX_FORMAT_UNKNOWN = 0,
+  DX_FORMAT_R8G8B8A8_UNORM = 28,
+  DX_FORMAT_B8G8R8A8_UNORM = 87
+};
+
+// Controls constant (defined as macro in MQL5 headers)
+const long CONTROLS_INVALID_ID = -1;
+// OpenCL constant
+const int CL_USE_ANY = -1;
+// Chart object constant
+const int OBJ_ALL_PERIODS = -1;
+
+// Windows types used in Win32 API stubs
+typedef void* PVOID;
+typedef void* HANDLE;
+// Win32 union stubs (anonymous unions in real headers)
+struct DISPLAYCONFIG_MODE { uint modeInfoIdx; };
+struct RAWFORMAT { uchar data[16]; };
+// Win32 structs needed before their forward-declared uses
+struct FILETIME { uint dwLowDateTime; uint dwHighDateTime; };
+struct LUID { uint LowPart; int HighPart; };
+struct FILE_ID_128 { uchar Identifier[16]; };
+
+// Function pointer typedefs used by CAxis/CCurve
+typedef double (*DoubleToStringFunction)(double value, void* cbdata);
+typedef double (*CurveFunction)(double x, void* cbdata);
+typedef void (*PlotFucntion)(void* cbdata);
+
+// OpenCL execution status enum
+enum ENUM_OPENCL_EXECUTION_STATUS {
+    OPENCL_EXECUTION_STATUS_SUBMITTED = 0,
+    OPENCL_EXECUTION_STATUS_RUNNING = 1,
+    OPENCL_EXECUTION_STATUS_COMPLETE = 2,
+    OPENCL_EXECUTION_STATUS_ERROR = -1
+};
 
 // Enums
 enum ENUM_LINE_END {
@@ -3351,12 +3526,12 @@ public:
     void TextureDelete();
     virtual void Shutdown(void);
 protected:
-    DXMatrix m_transform_matrix;
-    DXColor m_diffuse_color;
-    DXColor m_emission_color;
-    DXColor m_specular_color;
-    float m_specular_power;
-    ENUM_DX_PRIMITIVE_TOPOLOGY m_topology;
+  DXMatrix m_transform_matrix;
+  DXColor m_diffuse_color;
+  DXColor m_emission_color;
+  DXColor m_specular_color;
+  float m_specular_power;
+  ENUM_DX_PRIMITIVE_TOPOLOGY m_topology;
 };
 
 class CDXBox : public CDXMesh {
@@ -3397,93 +3572,20 @@ protected:
     CDXObjectBase m_dx_resources;
 };
 
-struct DXColor {
-public:
-    float r;
-    float g;
-    float b;
-    float a;
-    DXColor(void);
-    DXColor(float red, float green, float blue, float alpha);
-    DXColor(const DXVector4 & v);
-    DXColor(const DXVector3 & v);
-    DXColor(const DXColor   & c);
-};
-
-struct DXPlane {
-public:
-    float a;
-    float b;
-    float c;
-    float d;
-};
-
-struct DXVector2 {
-public:
-    float x;
-    float y;
-    DXVector2(void);
-    DXVector2(float v);
-    DXVector2(float vx, float vy);
-    DXVector2(const DXVector3 & v);
-    DXVector2(const DXVector4 & v);
-};
-
-struct DXVector3 {
-public:
-    float x;
-    float y;
-    float z;
-    DXVector3(void);
-    DXVector3(float v);
-    DXVector3(float vx, float vy, float vz);
-    DXVector3(const DXVector2 & v);
-    DXVector3(const DXVector4 & v);
-};
-
-struct DXVector4 {
-public:
-    float x;
-    float y;
-    float z;
-    float w;
-    DXVector4(void);
-    DXVector4(float v);
-    DXVector4(float vx, float vy, float vz, float vw);
-    DXVector4(const DXVector2 & v);
-    DXVector4(const DXVector3 & v);
-    DXVector4(const DXVector4 & v);
-};
-
-struct DXMatrix {
-};
-
-struct DXQuaternion {
-public:
-    float x;
-    float y;
-    float z;
-    float w;
-};
-
-struct DViewport {
-public:
-    ulong x;
-    ulong y;
-    ulong width;
-    ulong height;
-    float minz;
-    float maxz;
-};
-
 class CDXSurface : public CDXMesh {
 public:
-    enum EN_SURFACE_FLAGS;
-    enum EN_COLOR_SCHEME;
-    CDXSurface();
-    ~CDXSurface();
-    bool Create(CDXDispatcher & dispatcher, CDXInput* buffer_scene, double & data, uint m_data_widht, uint m_data_height, float data_range, const DXVector3 & from, const DXVector3 & to, DXVector2 & texture_size, uint flags = SF_NONE, EN_COLOR_SCHEME color_scheme = CS_NONE);
-    bool Update(double & data, uint m_data_widht, uint m_data_height, float data_range, const DXVector3 & from, const DXVector3 & to, DXVector2 & texture_size, uint flags = 0, EN_COLOR_SCHEME color_scheme = CS_NONE);
+  CDXSurface();
+  ~CDXSurface();
+  bool Create(CDXDispatcher &dispatcher, CDXInput *buffer_scene, double &data,
+              uint m_data_widht, uint m_data_height, float data_range,
+              const DXVector3 &from, const DXVector3 &to,
+              DXVector2 &texture_size, uint flags = SF_NONE,
+              EN_COLOR_SCHEME color_scheme = CS_NONE);
+  bool Update(double &data, uint m_data_widht, uint m_data_height,
+              float data_range, const DXVector3 &from, const DXVector3 &to,
+              DXVector2 &texture_size, uint flags = 0,
+              EN_COLOR_SCHEME color_scheme = CS_NONE);
+
 protected:
     uint m_data_width;
     uint m_data_height;
@@ -4517,6 +4619,101 @@ protected:
     virtual bool OnClickLabel(void);
 };
 
+// CPanel/CScroll/CScrollV/CScrollH moved here (before CWndClient which uses
+// them as value members)
+class CPanel : public CWndObj {
+public:
+  CPanel(void);
+  ~CPanel();
+  virtual bool Create(const long chart, const string name, const int subwin,
+                      const int x1, const int y1, const int x2, const int y2);
+  ENUM_BORDER_TYPE BorderType(void) const;
+  bool BorderType(const ENUM_BORDER_TYPE type);
+
+protected:
+  virtual bool OnSetText(void);
+  virtual bool OnSetColorBackground(void);
+  virtual bool OnSetColorBorder(void);
+  virtual bool OnCreate(void);
+  virtual bool OnShow(void);
+  virtual bool OnHide(void);
+  virtual bool OnMove(void);
+  virtual bool OnResize(void);
+  virtual bool OnChange(void);
+};
+
+class CScroll : public CWndContainer {
+public:
+  CScroll(void);
+  ~CScroll();
+  virtual bool Create(const long chart, const string name, const int subwin,
+                      const int x1, const int y1, const int x2, const int y2);
+  virtual bool OnEvent(const int id, const long &lparam, const double &dparam,
+                       const string &sparam);
+  int MinPos(void) const;
+  void MinPos(const int value);
+  int MaxPos(void) const;
+  void MaxPos(const int value);
+  int CurrPos(void) const;
+  bool CurrPos(int value);
+
+protected:
+  CPanel m_back;
+  CBmpButton m_inc;
+  CBmpButton m_dec;
+  CBmpButton m_thumb;
+  int m_min_pos;
+  int m_max_pos;
+  int m_curr_pos;
+  virtual bool CreateBack(void);
+  virtual bool CreateInc(void);
+  virtual bool CreateDec(void);
+  virtual bool CreateThumb(void);
+  virtual bool OnClickInc(void);
+  virtual bool OnClickDec(void);
+  virtual bool OnShow(void);
+  virtual bool OnHide(void);
+  virtual bool OnChangePos(void);
+  virtual bool OnThumbDragStart(void);
+  virtual bool OnThumbDragProcess(void);
+  virtual bool OnThumbDragEnd(void);
+  virtual int CalcPos(const int coord);
+};
+
+class CScrollV : public CScroll {
+public:
+  CScrollV(void);
+  ~CScrollV();
+
+protected:
+  virtual bool CreateInc(void);
+  virtual bool CreateDec(void);
+  virtual bool CreateThumb(void);
+  virtual bool OnResize(void);
+  virtual bool OnChangePos(void);
+  virtual bool OnThumbDragStart(void);
+  virtual bool OnThumbDragProcess(void);
+  virtual bool OnThumbDragEnd(void);
+  virtual int CalcPos(const int coord);
+};
+
+class CScrollH : public CScroll {
+public:
+  CScrollH(void);
+  ~CScrollH();
+
+protected:
+  virtual bool CreateInc(void);
+  virtual bool CreateDec(void);
+  virtual bool CreateThumb(void);
+  virtual bool OnResize(void);
+  virtual bool OnChangePos(void);
+  virtual bool OnThumbDragStart(void);
+  virtual bool OnThumbDragProcess(void);
+  virtual bool OnThumbDragEnd(void);
+  virtual int CalcPos(const int coord);
+};
+
 class CWndClient : public CWndContainer {
 public:
     CWndClient(void);
@@ -4804,25 +5001,6 @@ protected:
     bool CheckView(void);
 };
 
-class CPanel : public CWndObj {
-public:
-    CPanel(void);
-    ~CPanel();
-    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
-    ENUM_BORDER_TYPE BorderType(void) const;
-    bool BorderType(const ENUM_BORDER_TYPE type);
-protected:
-    virtual bool OnSetText(void);
-    virtual bool OnSetColorBackground(void);
-    virtual bool OnSetColorBorder(void);
-    virtual bool OnCreate(void);
-    virtual bool OnShow(void);
-    virtual bool OnHide(void);
-    virtual bool OnMove(void);
-    virtual bool OnResize(void);
-    virtual bool OnChange(void);
-};
-
 class CPicture : public CWndObj {
 public:
     CPicture(void);
@@ -4885,119 +5063,6 @@ protected:
     void Select(const int index);
 };
 
-struct CPoint {
-public:
-    int x;
-    int y;
-};
-
-struct CSize {
-public:
-    int cx;
-    int cy;
-};
-
-struct CRect {
-public:
-    int left;
-    int top;
-    int right;
-    int bottom;
-    CPoint LeftTop(void) const;
-    void LeftTop(const int x, const int y);
-    void LeftTop(const CPoint& point);
-    CPoint RightBottom(void) const;
-    void RightBottom(const int x, const int y);
-    void RightBottom(const CPoint& point);
-    CPoint CenterPoint(void) const;
-    int Width(void) const;
-    void Width(const int w);
-    int Height(void) const;
-    void Height(const int h);
-    CSize Size(void) const;
-    void Size(const int cx, const int cy);
-    void Size(const CSize& size);
-    void SetBound(const int l, const int t, const int r, const int b);
-    void SetBound(const CRect& rect);
-    void SetBound(const CPoint& point, const CSize& size);
-    void SetBound(const CPoint& left_top, const CPoint& right_bottom);
-    void Move(const int x, const int y);
-    void Move(const CPoint& point);
-    void Shift(const int dx, const int dy);
-    void Shift(const CPoint& point);
-    void Shift(const CSize& size);
-    bool Contains(const int x, const int y) const;
-    bool Contains(const CPoint& point) const;
-    void Normalize(void);
-};
-
-class CScroll : public CWndContainer {
-public:
-    CScroll(void);
-    ~CScroll();
-    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
-    virtual bool OnEvent(const int id, const long & lparam, const double & dparam, const string & sparam);
-    int MinPos(void) const;
-    void MinPos(const int value);
-    int MaxPos(void) const;
-    void MaxPos(const int value);
-    int CurrPos(void) const;
-    bool CurrPos(int value);
-protected:
-    CPanel m_back;
-    CBmpButton m_inc;
-    CBmpButton m_dec;
-    CBmpButton m_thumb;
-    int m_min_pos;
-    int m_max_pos;
-    int m_curr_pos;
-    virtual bool CreateBack(void);
-    virtual bool CreateInc(void);
-    virtual bool CreateDec(void);
-    virtual bool CreateThumb(void);
-    virtual bool OnClickInc(void);
-    virtual bool OnClickDec(void);
-    virtual bool OnShow(void);
-    virtual bool OnHide(void);
-    virtual bool OnChangePos(void);
-    virtual bool OnThumbDragStart(void);
-    virtual bool OnThumbDragProcess(void);
-    virtual bool OnThumbDragEnd(void);
-    virtual int CalcPos(const int coord);
-};
-
-class CScrollV : public CScroll {
-public:
-    CScrollV(void);
-    ~CScrollV();
-protected:
-    virtual bool CreateInc(void);
-    virtual bool CreateDec(void);
-    virtual bool CreateThumb(void);
-    virtual bool OnResize(void);
-    virtual bool OnChangePos(void);
-    virtual bool OnThumbDragStart(void);
-    virtual bool OnThumbDragProcess(void);
-    virtual bool OnThumbDragEnd(void);
-    virtual int CalcPos(const int coord);
-};
-
-class CScrollH : public CScroll {
-public:
-    CScrollH(void);
-    ~CScrollH();
-protected:
-    virtual bool CreateInc(void);
-    virtual bool CreateDec(void);
-    virtual bool CreateThumb(void);
-    virtual bool OnResize(void);
-    virtual bool OnChangePos(void);
-    virtual bool OnThumbDragStart(void);
-    virtual bool OnThumbDragProcess(void);
-    virtual bool OnThumbDragEnd(void);
-    virtual int CalcPos(const int coord);
-};
-
 class CSpinEdit : public CWndContainer {
 public:
     CSpinEdit(void);
@@ -5032,6 +5097,43 @@ protected:
     int m_limit_right;
     int m_limit_bottom;
     virtual bool OnDragProcess(const int x, const int y);
+};
+
+class CAccountInfo : public CObject {
+public:
+    CAccountInfo(void);
+    ~CAccountInfo();
+    long Login(void) const;
+    ENUM_ACCOUNT_TRADE_MODE TradeMode(void) const;
+    string TradeModeDescription(void) const;
+    long Leverage(void) const;
+    ENUM_ACCOUNT_STOPOUT_MODE StopoutMode(void) const;
+    string StopoutModeDescription(void) const;
+    ENUM_ACCOUNT_MARGIN_MODE MarginMode(void) const;
+    string MarginModeDescription(void) const;
+    bool TradeAllowed(void) const;
+    bool TradeExpert(void) const;
+    int LimitOrders(void) const;
+    double Balance(void) const;
+    double Credit(void) const;
+    double Profit(void) const;
+    double Equity(void) const;
+    double Margin(void) const;
+    double FreeMargin(void) const;
+    double MarginLevel(void) const;
+    double MarginCall(void) const;
+    double MarginStopOut(void) const;
+    string Name(void) const;
+    string Server(void) const;
+    string Currency(void) const;
+    string Company(void) const;
+    long InfoInteger(const ENUM_ACCOUNT_INFO_INTEGER prop_id) const;
+    double InfoDouble(const ENUM_ACCOUNT_INFO_DOUBLE prop_id) const;
+    string InfoString(const ENUM_ACCOUNT_INFO_STRING prop_id) const;
+    double OrderProfitCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price_open, const double price_close) const;
+    double MarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
+    double FreeMarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
+    double MaxLotCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double price, const double percent = 100) const;
 };
 
 class CExpertBase : public CObject {
@@ -5328,1000 +5430,6 @@ public:
 protected:
     double m_decrease_factor;
     double Optimize(double lots);
-};
-
-class CSignalAC : public CExpertSignal {
-public:
-    CSignalAC(void);
-    ~CSignalAC();
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiAC m_ac;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    bool InitAC(CIndicators * indicators);
-    double AC(int ind);
-    double DiffAC(int ind);
-};
-
-class CSignalAMA : public CExpertSignal {
-public:
-    CSignalAMA(void);
-    ~CSignalAMA();
-    void PeriodMA(int value);
-    void PeriodFast(int value);
-    void PeriodSlow(int value);
-    void Shift(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiAMA m_ma;
-    int m_ma_period;
-    int m_period_fast;
-    int m_period_slow;
-    int m_ma_shift;
-    ENUM_APPLIED_PRICE m_ma_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    bool InitMA(CIndicators * indicators);
-    double MA(int ind);
-    double DiffMA(int ind);
-    double DiffOpenMA(int ind);
-    double DiffHighMA(int ind);
-    double DiffLowMA(int ind);
-    double DiffCloseMA(int ind);
-};
-
-class CSignalAO : public CExpertSignal {
-public:
-    CSignalAO(void);
-    ~CSignalAO();
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiAO m_ao;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitAO(CIndicators * indicators);
-    double AO(int ind);
-    double DiffAO(int ind);
-    int StateAO(int ind);
-    bool ExtStateAO(int ind);
-};
-
-class CSignalBearsPower : public CExpertSignal {
-public:
-    CSignalBearsPower(void);
-    ~CSignalBearsPower();
-    void PeriodBears(int value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-protected:
-    CiBearsPower m_bears;
-    int m_period_bears;
-    int m_pattern_0;
-    int m_pattern_1;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitBears(CIndicators * indicators);
-    double Bears(int ind);
-    double DiffBears(int ind);
-    int StateBears(int ind);
-    bool ExtStateBears(int ind);
-};
-
-class CSignalBullsPower : public CExpertSignal {
-public:
-    CSignalBullsPower(void);
-    ~CSignalBullsPower();
-    void PeriodBulls(int value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int ShortCondition(void);
-protected:
-    CiBullsPower m_bulls;
-    int m_period_bulls;
-    int m_pattern_0;
-    int m_pattern_1;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitBears(CIndicators * indicators);
-    double Bulls(int ind);
-    double DiffBulls(int ind);
-    int StateBulls(int ind);
-    bool ExtStateBulls(int ind);
-};
-
-class CSignalCCI : public CExpertSignal {
-public:
-    CSignalCCI(void);
-    ~CSignalCCI();
-    void PeriodCCI(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiCCI m_cci;
-    int m_periodCCI;
-    ENUM_APPLIED_PRICE m_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitStoch(CIndicators * indicators);
-    double CCI(int ind);
-    double Diff(int ind);
-    int State(int ind);
-    bool ExtState(int ind);
-    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
-};
-
-class CSignalDEMA : public CExpertSignal {
-public:
-    CSignalDEMA(void);
-    ~CSignalDEMA();
-    void PeriodMA(int value);
-    void Shift(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiDEMA m_ma;
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_APPLIED_PRICE m_ma_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    bool InitMA(CIndicators * indicators);
-    double MA(int ind);
-    double DiffMA(int ind);
-    double DiffOpenMA(int ind);
-    double DiffHighMA(int ind);
-    double DiffLowMA(int ind);
-    double DiffCloseMA(int ind);
-};
-
-class CSignalDeM : public CExpertSignal {
-public:
-    CSignalDeM(void);
-    ~CSignalDeM();
-    void PeriodDeM(int value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiDeMarker m_dem;
-    int m_periodDeM;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitStoch(CIndicators * indicators);
-    double DeM(int ind);
-    double DiffDeM(int ind);
-    int StateDeM(int ind);
-    bool ExtStateDeM(int ind);
-    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
-};
-
-class CSignalEnvelopes : public CExpertSignal {
-public:
-    CSignalEnvelopes(void);
-    ~CSignalEnvelopes();
-    void PeriodMA(int value);
-    void Shift(int value);
-    void Method(ENUM_MA_METHOD value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Deviation(double value);
-    void LimitIn(double value);
-    void LimitOut(double value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiEnvelopes m_env;
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_MA_METHOD m_ma_method;
-    ENUM_APPLIED_PRICE m_ma_applied;
-    double m_deviation;
-    double m_limit_in;
-    double m_limit_out;
-    int m_pattern_0;
-    int m_pattern_1;
-    bool InitMA(CIndicators * indicators);
-    double Upper(int ind);
-    double Lower(int ind);
-};
-
-class CSignalFrAMA : public CExpertSignal {
-public:
-    CSignalFrAMA(void);
-    ~CSignalFrAMA();
-    void PeriodMA(int value);
-    void Shift(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiFrAMA m_ma;
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_APPLIED_PRICE m_ma_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    bool InitMA(CIndicators * indicators);
-    double MA(int ind);
-    double DiffMA(int ind);
-    double DiffOpenMA(int ind);
-    double DiffHighMA(int ind);
-    double DiffLowMA(int ind);
-    double DiffCloseMA(int ind);
-};
-
-class CSignalITF : public CExpertSignal {
-public:
-    CSignalITF(void);
-    ~CSignalITF();
-    void GoodMinuteOfHour(int value);
-    void BadMinutesOfHour(long value);
-    void GoodHourOfDay(int value);
-    void BadHoursOfDay(int value);
-    void GoodDayOfWeek(int value);
-    void BadDaysOfWeek(int value);
-    virtual double Direction(void);
-protected:
-    int m_good_minute_of_hour;
-    long m_bad_minutes_of_hour;
-    int m_good_hour_of_day;
-    int m_bad_hours_of_day;
-    int m_good_day_of_week;
-    int m_bad_days_of_week;
-};
-
-class CSignalMA : public CExpertSignal {
-public:
-    CSignalMA(void);
-    ~CSignalMA();
-    void PeriodMA(int value);
-    void Shift(int value);
-    void Method(ENUM_MA_METHOD value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiMA m_ma;
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_MA_METHOD m_ma_method;
-    ENUM_APPLIED_PRICE m_ma_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    bool InitMA(CIndicators * indicators);
-    double MA(int ind);
-    double DiffMA(int ind);
-    double DiffOpenMA(int ind);
-    double DiffHighMA(int ind);
-    double DiffLowMA(int ind);
-    double DiffCloseMA(int ind);
-};
-
-class CSignalMACD : public CExpertSignal {
-public:
-    CSignalMACD(void);
-    ~CSignalMACD();
-    void PeriodFast(int value);
-    void PeriodSlow(int value);
-    void PeriodSignal(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    void Pattern_4(int value);
-    void Pattern_5(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiMACD m_MACD;
-    int m_period_fast;
-    int m_period_slow;
-    int m_period_signal;
-    ENUM_APPLIED_PRICE m_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    int m_pattern_4;
-    int m_pattern_5;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitMACD(CIndicators * indicators);
-    double Main(int ind);
-    double Signal(int ind);
-    double DiffMain(int ind);
-    int StateMain(int ind);
-    double State(int ind);
-    bool ExtState(int ind);
-    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
-};
-
-class CSignalRSI : public CExpertSignal {
-public:
-    CSignalRSI(void);
-    ~CSignalRSI();
-    void PeriodRSI(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    void Pattern_4(int value);
-    void Pattern_5(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiRSI m_rsi;
-    int m_periodRSI;
-    ENUM_APPLIED_PRICE m_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    int m_pattern_4;
-    int m_pattern_5;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitRSI(CIndicators * indicators);
-    double RSI(int ind);
-    double DiffRSI(int ind);
-    int StateRSI(int ind);
-    bool ExtStateRSI(int ind);
-    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
-};
-
-class CSignalRVI : public CExpertSignal {
-public:
-    CSignalRVI(void);
-    ~CSignalRVI();
-    void PeriodRVI(int value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiRVI m_rvi;
-    int m_periodRVI;
-    int m_pattern_0;
-    int m_pattern_1;
-    bool InitRVI(CIndicators * indicators);
-    double Main(int ind);
-    double DiffMain(int ind);
-    double Signal(int ind);
-    double DiffSignal(int ind);
-    double DiffMainSignal(int ind);
-};
-
-class CSignalSAR : public CExpertSignal {
-public:
-    CSignalSAR(void);
-    ~CSignalSAR();
-    void Step(double value);
-    void Maximum(double value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiSAR m_sar;
-    double m_step;
-    double m_maximum;
-    int m_pattern_0;
-    int m_pattern_1;
-    bool InitSAR(CIndicators * indicators);
-    double SAR(int ind);
-    double Close(int ind);
-    double DiffClose(int ind);
-};
-
-class CSignalStoch : public CExpertSignal {
-public:
-    CSignalStoch(void);
-    ~CSignalStoch();
-    void PeriodK(int value);
-    void PeriodD(int value);
-    void PeriodSlow(int value);
-    void Applied(ENUM_STO_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    void Pattern_4(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiStochastic m_stoch;
-    int m_periodK;
-    int m_periodD;
-    int m_period_slow;
-    ENUM_STO_PRICE m_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    int m_pattern_4;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitStoch(CIndicators * indicators);
-    double Main(int ind);
-    double DiffMain(int ind);
-    double Signal(int ind);
-    double DiffSignal(int ind);
-    double DiffMainSignal(int ind);
-    int StateStoch(int ind);
-    bool ExtStateStoch(int ind);
-    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
-    void DiverDebugPrint();
-};
-
-class CSignalTEMA : public CExpertSignal {
-public:
-    CSignalTEMA(void);
-    ~CSignalTEMA();
-    void PeriodMA(int value);
-    void Shift(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiTEMA m_ma;
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_APPLIED_PRICE m_ma_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    bool InitMA(CIndicators * indicators);
-    double MA(int ind);
-    double DiffMA(int ind);
-    double DiffOpenMA(int ind);
-    double DiffHighMA(int ind);
-    double DiffLowMA(int ind);
-    double DiffCloseMA(int ind);
-};
-
-class CSignalTriX : public CExpertSignal {
-public:
-    CSignalTriX(void);
-    ~CSignalTriX();
-    void PeriodTriX(int value);
-    void Applied(ENUM_APPLIED_PRICE value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    void Pattern_3(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiTriX m_trix;
-    int m_period_trix;
-    ENUM_APPLIED_PRICE m_applied;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    int m_pattern_3;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitTriX(CIndicators * indicators);
-    double TriX(int ind);
-    double DiffTriX(int ind);
-    int State(int ind);
-    bool ExtState(int ind);
-    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
-};
-
-class CSignalWPR : public CExpertSignal {
-public:
-    CSignalWPR(void);
-    ~CSignalWPR();
-    void PeriodWPR(int value);
-    void Pattern_0(int value);
-    void Pattern_1(int value);
-    void Pattern_2(int value);
-    virtual bool ValidationSettings(void);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual int LongCondition(void);
-    virtual int ShortCondition(void);
-protected:
-    CiWPR m_wpr;
-    int m_period_wpr;
-    int m_pattern_0;
-    int m_pattern_1;
-    int m_pattern_2;
-    double m_extr_osc;
-    double m_extr_pr;
-    int m_extr_pos;
-    uint m_extr_map;
-    bool InitWPR(CIndicators * indicators);
-    double WPR(int ind);
-    double Diff(int ind);
-    int State(int ind);
-    bool ExtState(int ind);
-    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
-};
-
-class CTrailingFixedPips : public CExpertTrailing {
-public:
-    CTrailingFixedPips(void);
-    ~CTrailingFixedPips();
-    void StopLevel(int stop_level);
-    void ProfitLevel(int profit_level);
-    virtual bool ValidationSettings(void);
-    virtual bool CheckTrailingStopLong(CPositionInfo * position, double & sl, double & tp);
-    virtual bool CheckTrailingStopShort(CPositionInfo * position, double & sl, double & tp);
-protected:
-    int m_stop_level;
-    int m_profit_level;
-};
-
-class CTrailingMA : public CExpertTrailing {
-public:
-    CTrailingMA(void);
-    ~CTrailingMA();
-    void Period(int period);
-    void Shift(int shift);
-    void Method(ENUM_MA_METHOD method);
-    void Applied(ENUM_APPLIED_PRICE applied);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual bool ValidationSettings(void);
-    virtual bool CheckTrailingStopLong(CPositionInfo * position, double & sl, double & tp);
-    virtual bool CheckTrailingStopShort(CPositionInfo * position, double & sl, double & tp);
-protected:
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_MA_METHOD m_ma_method;
-    ENUM_APPLIED_PRICE m_ma_applied;
-};
-
-class CTrailingNone : public CExpertTrailing {
-public:
-    CTrailingNone(void);
-    ~CTrailingNone();
-};
-
-class CTrailingPSAR : public CExpertTrailing {
-public:
-    CTrailingPSAR(void);
-    ~CTrailingPSAR();
-    void Step(double step);
-    void Maximum(double maximum);
-    virtual bool InitIndicators(CIndicators * indicators);
-    virtual bool CheckTrailingStopLong(CPositionInfo * position, double & sl, double & tp);
-    virtual bool CheckTrailingStopShort(CPositionInfo * position, double & sl, double & tp);
-protected:
-    CiSAR m_sar;
-    double m_step;
-    double m_maximum;
-};
-
-class CFile : public CObject {
-public:
-    CFile(void);
-    ~CFile();
-    int Handle(void) const;
-    string FileName(void) const;
-    int Flags(void) const;
-    void SetUnicode(const bool unicode);
-    void SetCommon(const bool common);
-    int Open(const string file_name, int open_flags, const short delimiter = '\t');
-    void Close(void);
-    void Delete(void);
-    ulong Size(void);
-    ulong Tell(void);
-    void Seek(const long offset, const ENUM_FILE_POSITION origin);
-    void Flush(void);
-    bool IsEnding(void);
-    bool IsLineEnding(void);
-    void Delete(const string file_name, const int common_flag = 0);
-    bool IsExist(const string file_name, const int common_flag = 0);
-    bool Copy(const string src_name, const int common_flag, const string dst_name, const int mode_flags);
-    bool Move(const string src_name, const int common_flag, const string dst_name, const int mode_flags);
-    bool FolderCreate(const string folder_name);
-    bool FolderDelete(const string folder_name);
-    bool FolderClean(const string folder_name);
-    long FileFindFirst(const string file_filter, string & returned_filename);
-    bool FileFindNext(const long search_handle, string & returned_filename);
-    void FileFindClose(const long search_handle);
-protected:
-    int m_handle;
-    string m_name;
-    int m_flags;
-};
-
-class CFileBin : public CFile {
-public:
-    CFileBin(void);
-    ~CFileBin();
-    int Open(const string file_name, const int open_flags);
-    uint WriteChar(const char value);
-    uint WriteShort(const short value);
-    uint WriteInteger(const int value);
-    uint WriteLong(const long value);
-    uint WriteFloat(const float value);
-    uint WriteDouble(const double value);
-    uint WriteString(const string value);
-    uint WriteString(const string value, const int size);
-    uint WriteCharArray(const char & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint WriteShortArray(const short& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint WriteIntegerArray(const int& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint WriteLongArray(const long & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint WriteFloatArray(const float & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint WriteDoubleArray(const double & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    bool WriteObject(CObject * object);
-    bool ReadChar(char & value);
-    bool ReadShort(short & value);
-    bool ReadInteger(int & value);
-    bool ReadLong(long & value);
-    bool ReadFloat(float & value);
-    bool ReadDouble(double & value);
-    bool ReadString(string & value);
-    bool ReadString(string & value, const int size);
-    uint ReadCharArray(char & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint ReadShortArray(short& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint ReadIntegerArray(int& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint ReadLongArray(long & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint ReadFloatArray(float & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    uint ReadDoubleArray(double & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    bool ReadObject(CObject * object);
-    template<typename T> uint WriteStruct(T &data);
-    template<typename T> uint WriteArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    template<typename T> uint WriteEnum(const T value);
-    template<typename T> uint ReadArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
-    template<typename T> bool ReadStruct(T &data);
-    template<typename T> bool ReadEnum(T &value);
-};
-
-struct BITMAPFILEHEADER {
-public:
-    ushort bfType;
-    uint bfSize;
-    ushort bfReserved1;
-    ushort bfReserved2;
-    uint bfOffBits;
-};
-
-struct BITMAPINFOHEADER {
-public:
-    uint biSize;
-    int biWidth;
-    int biHeight;
-    ushort biPlanes;
-    ushort biBitCount;
-    uint biCompression;
-    uint biSizeImage;
-    int biXPelsPerMeter;
-    int biYPelsPerMeter;
-    uint biClrUsed;
-    uint biClrImportant;
-};
-
-class CFileBMP : public CObject {
-public:
-    CFileBMP(void);
-    ~CFileBMP();
-    int OpenWrite(const string file_name, bool common_flag = false);
-    int OpenRead(const string file_name, bool common_flag = false);
-    int Write32BitsArray(uint& uint_array, const int width, const int height);
-    int Read32BitsArray(uint& uint_array, int& width, int& height);
-    void Close(void);
-protected:
-    int m_handle;
-    BITMAPFILEHEADER m_file_header;
-    BITMAPINFOHEADER m_info_header;
-};
-
-class CFilePipe : public CFile {
-public:
-    CFilePipe(void);
-    ~CFilePipe();
-    int Open(const string file_name, const int open_flags);
-    bool WaitForRead(const ulong size);
-    uint WriteLong(const long value);
-    uint WriteFloat(const float value);
-    uint WriteDouble(const double value);
-    uint WriteString(const string value);
-    uint WriteString(const string value, const int size);
-    bool WriteObject(CObject * object);
-    bool ReadLong(long & value);
-    bool ReadFloat(float & value);
-    bool ReadDouble(double & value);
-    bool ReadString(string & value);
-    bool ReadString(string & value, const int size);
-    bool ReadObject(CObject * object);
-};
-
-class CFileTxt : public CFile {
-public:
-    CFileTxt(void);
-    ~CFileTxt();
-    int Open(const string file_name, const int open_flags);
-    uint WriteString(const string value);
-    string ReadString(void);
-};
-
-template<typename T>
-struct Slot {
-public:
-    int hash_code;
-    T value;
-    int next;
-    Slot(void);
-};
-
-struct Introsort {
-public:
-    TKey keys;
-    TItem items;
-    Introsort(void);
-    ~Introsort();
-    void Sort(const int index, const int length);
-};
-
-class CPrimeGenerator {
-public:
-    static bool IsPrime(const int candidate);
-    static int GetPrime(const int min);
-    static int ExpandPrime(const int old_size);
-};
-
-template<typename T>
-class CLinkedListNode {
-public:
-    CLinkedListNode(T value);
-    CLinkedListNode(CLinkedList<T>* list, T value);
-    ~CLinkedListNode();
-    void List(CLinkedList<T>* value);
-    void Next(CLinkedListNode<T>* value);
-    void Previous(CLinkedListNode<T>* value);
-    T Value(void);
-    void Value(T value);
-protected:
-    T m_item;
-};
-
-class CAxis {
-public:
-    CAxis(void);
-    ~CAxis();
-    double Step(void) const;
-    double Min(void) const;
-    void Min(const double min);
-    double Max(void) const;
-    void Max(const double max);
-    string Name(void) const;
-    void Name(const string name);
-    ENUM_AXIS_TYPE Type(void) const;
-    void Type(ENUM_AXIS_TYPE type);
-    uint Color(void) const;
-    void Color(const uint clr);
-    bool AutoScale(void) const;
-    void AutoScale(const bool auto);
-    int ValuesSize(void) const;
-    void ValuesSize(const int size);
-    int ValuesWidth(void) const;
-    void ValuesWidth(const int width);
-    string ValuesFormat(void) const;
-    void ValuesFormat(const string format);
-    int ValuesDateTimeMode(void) const;
-    void ValuesDateTimeMode(const int mode);
-    DoubleToStringFunction ValuesFunctionFormat(void) const;
-    void ValuesFunctionFormat(DoubleToStringFunction func);
-    void ValuesFunctionFormatCBData(void * cbdata);
-    string ValuesFontName(void) const;
-    void ValuesFontName(const string fontname);
-    uint ValuesFontAngle(void) const;
-    void ValuesFontAngle(const uint fontangle);
-    uint ValuesFontFlags(void) const;
-    void ValuesFontFlags(const uint fontflags);
-    int NameSize(void) const;
-    void NameSize(const int size);
-    double ZeroLever(void) const;
-    void ZeroLever(const double value);
-    double DefaultStep(void) const;
-    void DefaultStep(const double value);
-    double MaxLabels(void) const;
-    void MaxLabels(const double value);
-    double MinGrace(void) const;
-    void MinGrace(const double value);
-    double MaxGrace(void) const;
-    void MaxGrace(const double value);
-    void SelectAxisScale(void);
-};
-
-class CColorGenerator {
-public:
-    CColorGenerator(void);
-    ~CColorGenerator();
-    uint Next(void);
-    void Reset(void);
-};
-
-struct CPoint2D {
-public:
-    double x;
-    double y;
-};
-
-class CCurve : public CObject {
-public:
-    CCurve(const double & y, const uint clr, ENUM_CURVE_TYPE type, const string name);
-    CCurve(const double & x, const double & y, const uint clr, ENUM_CURVE_TYPE type, const string name);
-    CCurve(const CPoint2D & points, const uint clr, ENUM_CURVE_TYPE type, const string name);
-    CCurve(CurveFunction function, const double from, const double to, const double step, const uint clr, ENUM_CURVE_TYPE type, const string name);
-    ~CCurve();
-    void GetX(double & x) const;
-    void GetY(double & y) const;
-    double XMax(void) const;
-    double XMin(void) const;
-    double YMax(void) const;
-    double YMin(void) const;
-    int Size(void) const;
-    void Update(const double & y);
-    void Update(const double & x, const double & y);
-    void Update(const CPoint2D & points);
-    void Update(CurveFunction function, const double from, const double to, const double step);
-    uint Color(void) const;
-    int Type(void) const;
-    string Name(void) const;
-    bool Visible(void) const;
-    void Color(const uint clr);
-    void Type(const int type);
-    void Name(const string name);
-    void Visible(const bool visible);
-    ENUM_LINE_STYLE LinesStyle(void) const;
-    ENUM_LINE_END LinesEndStyle(void) const;
-    int LinesWidth(void) const;
-    bool LinesSmooth(void) const;
-    double LinesSmoothTension(void) const;
-    double LinesSmoothStep(void) const;
-    void LinesStyle(ENUM_LINE_STYLE style);
-    void LinesEndStyle(ENUM_LINE_END end_style);
-    void LinesWidth(const int width);
-    void LinesSmooth(const bool smooth);
-    void LinesSmoothTension(const double tension);
-    void LinesSmoothStep(const double step);
-    int PointsSize(void) const;
-    ENUM_POINT_TYPE PointsType(void) const;
-    bool PointsFill(void) const;
-    uint PointsColor(void) const;
-    void PointsSize(const int size);
-    void PointsType(ENUM_POINT_TYPE type);
-    void PointsFill(const bool fill);
-    void PointsColor(const uint clr);
-    int StepsDimension(void) const;
-    void StepsDimension(const int dimension);
-    int HistogramWidth(void) const;
-    void HistogramWidth(const int width);
-    PlotFucntion CustomPlotFunction(void) const;
-    void CustomPlotFunction(PlotFucntion func);
-    void CustomPlotCBData(void * cbdata);
-    bool TrendLineVisible(void) const;
-    uint TrendLineColor(void) const;
-    void TrendLineVisible(const bool visible);
-    void TrendLineColor(const uint clr);
-    void TrendLineCoefficients(double & coefficients);
-protected:
-    bool m_trend_calc;
-    double m_trend_coeff;
-    virtual void CalculateCoefficients(void);
 };
 
 class CSeries : public CArrayObj {
@@ -7322,6 +6430,1003 @@ protected:
     bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
 };
 
+class CSignalAC : public CExpertSignal {
+public:
+    CSignalAC(void);
+    ~CSignalAC();
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiAC m_ac;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    bool InitAC(CIndicators * indicators);
+    double AC(int ind);
+    double DiffAC(int ind);
+};
+
+class CSignalAMA : public CExpertSignal {
+public:
+    CSignalAMA(void);
+    ~CSignalAMA();
+    void PeriodMA(int value);
+    void PeriodFast(int value);
+    void PeriodSlow(int value);
+    void Shift(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiAMA m_ma;
+    int m_ma_period;
+    int m_period_fast;
+    int m_period_slow;
+    int m_ma_shift;
+    ENUM_APPLIED_PRICE m_ma_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    bool InitMA(CIndicators * indicators);
+    double MA(int ind);
+    double DiffMA(int ind);
+    double DiffOpenMA(int ind);
+    double DiffHighMA(int ind);
+    double DiffLowMA(int ind);
+    double DiffCloseMA(int ind);
+};
+
+class CSignalAO : public CExpertSignal {
+public:
+    CSignalAO(void);
+    ~CSignalAO();
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiAO m_ao;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitAO(CIndicators * indicators);
+    double AO(int ind);
+    double DiffAO(int ind);
+    int StateAO(int ind);
+    bool ExtStateAO(int ind);
+};
+
+class CSignalBearsPower : public CExpertSignal {
+public:
+    CSignalBearsPower(void);
+    ~CSignalBearsPower();
+    void PeriodBears(int value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+protected:
+    CiBearsPower m_bears;
+    int m_period_bears;
+    int m_pattern_0;
+    int m_pattern_1;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitBears(CIndicators * indicators);
+    double Bears(int ind);
+    double DiffBears(int ind);
+    int StateBears(int ind);
+    bool ExtStateBears(int ind);
+};
+
+class CSignalBullsPower : public CExpertSignal {
+public:
+    CSignalBullsPower(void);
+    ~CSignalBullsPower();
+    void PeriodBulls(int value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int ShortCondition(void);
+protected:
+    CiBullsPower m_bulls;
+    int m_period_bulls;
+    int m_pattern_0;
+    int m_pattern_1;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitBears(CIndicators * indicators);
+    double Bulls(int ind);
+    double DiffBulls(int ind);
+    int StateBulls(int ind);
+    bool ExtStateBulls(int ind);
+};
+
+class CSignalCCI : public CExpertSignal {
+public:
+    CSignalCCI(void);
+    ~CSignalCCI();
+    void PeriodCCI(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiCCI m_cci;
+    int m_periodCCI;
+    ENUM_APPLIED_PRICE m_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitStoch(CIndicators * indicators);
+    double CCI(int ind);
+    double Diff(int ind);
+    int State(int ind);
+    bool ExtState(int ind);
+    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
+};
+
+class CSignalDEMA : public CExpertSignal {
+public:
+    CSignalDEMA(void);
+    ~CSignalDEMA();
+    void PeriodMA(int value);
+    void Shift(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiDEMA m_ma;
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_APPLIED_PRICE m_ma_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    bool InitMA(CIndicators * indicators);
+    double MA(int ind);
+    double DiffMA(int ind);
+    double DiffOpenMA(int ind);
+    double DiffHighMA(int ind);
+    double DiffLowMA(int ind);
+    double DiffCloseMA(int ind);
+};
+
+class CSignalDeM : public CExpertSignal {
+public:
+    CSignalDeM(void);
+    ~CSignalDeM();
+    void PeriodDeM(int value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiDeMarker m_dem;
+    int m_periodDeM;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitStoch(CIndicators * indicators);
+    double DeM(int ind);
+    double DiffDeM(int ind);
+    int StateDeM(int ind);
+    bool ExtStateDeM(int ind);
+    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
+};
+
+class CSignalEnvelopes : public CExpertSignal {
+public:
+    CSignalEnvelopes(void);
+    ~CSignalEnvelopes();
+    void PeriodMA(int value);
+    void Shift(int value);
+    void Method(ENUM_MA_METHOD value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Deviation(double value);
+    void LimitIn(double value);
+    void LimitOut(double value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiEnvelopes m_env;
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_MA_METHOD m_ma_method;
+    ENUM_APPLIED_PRICE m_ma_applied;
+    double m_deviation;
+    double m_limit_in;
+    double m_limit_out;
+    int m_pattern_0;
+    int m_pattern_1;
+    bool InitMA(CIndicators * indicators);
+    double Upper(int ind);
+    double Lower(int ind);
+};
+
+class CSignalFrAMA : public CExpertSignal {
+public:
+    CSignalFrAMA(void);
+    ~CSignalFrAMA();
+    void PeriodMA(int value);
+    void Shift(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiFrAMA m_ma;
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_APPLIED_PRICE m_ma_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    bool InitMA(CIndicators * indicators);
+    double MA(int ind);
+    double DiffMA(int ind);
+    double DiffOpenMA(int ind);
+    double DiffHighMA(int ind);
+    double DiffLowMA(int ind);
+    double DiffCloseMA(int ind);
+};
+
+class CSignalITF : public CExpertSignal {
+public:
+    CSignalITF(void);
+    ~CSignalITF();
+    void GoodMinuteOfHour(int value);
+    void BadMinutesOfHour(long value);
+    void GoodHourOfDay(int value);
+    void BadHoursOfDay(int value);
+    void GoodDayOfWeek(int value);
+    void BadDaysOfWeek(int value);
+    virtual double Direction(void);
+protected:
+    int m_good_minute_of_hour;
+    long m_bad_minutes_of_hour;
+    int m_good_hour_of_day;
+    int m_bad_hours_of_day;
+    int m_good_day_of_week;
+    int m_bad_days_of_week;
+};
+
+class CSignalMA : public CExpertSignal {
+public:
+    CSignalMA(void);
+    ~CSignalMA();
+    void PeriodMA(int value);
+    void Shift(int value);
+    void Method(ENUM_MA_METHOD value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiMA m_ma;
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_MA_METHOD m_ma_method;
+    ENUM_APPLIED_PRICE m_ma_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    bool InitMA(CIndicators * indicators);
+    double MA(int ind);
+    double DiffMA(int ind);
+    double DiffOpenMA(int ind);
+    double DiffHighMA(int ind);
+    double DiffLowMA(int ind);
+    double DiffCloseMA(int ind);
+};
+
+class CSignalMACD : public CExpertSignal {
+public:
+    CSignalMACD(void);
+    ~CSignalMACD();
+    void PeriodFast(int value);
+    void PeriodSlow(int value);
+    void PeriodSignal(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    void Pattern_4(int value);
+    void Pattern_5(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiMACD m_MACD;
+    int m_period_fast;
+    int m_period_slow;
+    int m_period_signal;
+    ENUM_APPLIED_PRICE m_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    int m_pattern_4;
+    int m_pattern_5;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitMACD(CIndicators * indicators);
+    double Main(int ind);
+    double Signal(int ind);
+    double DiffMain(int ind);
+    int StateMain(int ind);
+    double State(int ind);
+    bool ExtState(int ind);
+    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
+};
+
+class CSignalRSI : public CExpertSignal {
+public:
+    CSignalRSI(void);
+    ~CSignalRSI();
+    void PeriodRSI(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    void Pattern_4(int value);
+    void Pattern_5(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiRSI m_rsi;
+    int m_periodRSI;
+    ENUM_APPLIED_PRICE m_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    int m_pattern_4;
+    int m_pattern_5;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitRSI(CIndicators * indicators);
+    double RSI(int ind);
+    double DiffRSI(int ind);
+    int StateRSI(int ind);
+    bool ExtStateRSI(int ind);
+    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
+};
+
+class CSignalRVI : public CExpertSignal {
+public:
+    CSignalRVI(void);
+    ~CSignalRVI();
+    void PeriodRVI(int value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiRVI m_rvi;
+    int m_periodRVI;
+    int m_pattern_0;
+    int m_pattern_1;
+    bool InitRVI(CIndicators * indicators);
+    double Main(int ind);
+    double DiffMain(int ind);
+    double Signal(int ind);
+    double DiffSignal(int ind);
+    double DiffMainSignal(int ind);
+};
+
+class CSignalSAR : public CExpertSignal {
+public:
+    CSignalSAR(void);
+    ~CSignalSAR();
+    void Step(double value);
+    void Maximum(double value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiSAR m_sar;
+    double m_step;
+    double m_maximum;
+    int m_pattern_0;
+    int m_pattern_1;
+    bool InitSAR(CIndicators * indicators);
+    double SAR(int ind);
+    double Close(int ind);
+    double DiffClose(int ind);
+};
+
+class CSignalStoch : public CExpertSignal {
+public:
+    CSignalStoch(void);
+    ~CSignalStoch();
+    void PeriodK(int value);
+    void PeriodD(int value);
+    void PeriodSlow(int value);
+    void Applied(ENUM_STO_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    void Pattern_4(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiStochastic m_stoch;
+    int m_periodK;
+    int m_periodD;
+    int m_period_slow;
+    ENUM_STO_PRICE m_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    int m_pattern_4;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitStoch(CIndicators * indicators);
+    double Main(int ind);
+    double DiffMain(int ind);
+    double Signal(int ind);
+    double DiffSignal(int ind);
+    double DiffMainSignal(int ind);
+    int StateStoch(int ind);
+    bool ExtStateStoch(int ind);
+    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
+    void DiverDebugPrint();
+};
+
+class CSignalTEMA : public CExpertSignal {
+public:
+    CSignalTEMA(void);
+    ~CSignalTEMA();
+    void PeriodMA(int value);
+    void Shift(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiTEMA m_ma;
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_APPLIED_PRICE m_ma_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    bool InitMA(CIndicators * indicators);
+    double MA(int ind);
+    double DiffMA(int ind);
+    double DiffOpenMA(int ind);
+    double DiffHighMA(int ind);
+    double DiffLowMA(int ind);
+    double DiffCloseMA(int ind);
+};
+
+class CSignalTriX : public CExpertSignal {
+public:
+    CSignalTriX(void);
+    ~CSignalTriX();
+    void PeriodTriX(int value);
+    void Applied(ENUM_APPLIED_PRICE value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    void Pattern_3(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiTriX m_trix;
+    int m_period_trix;
+    ENUM_APPLIED_PRICE m_applied;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    int m_pattern_3;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitTriX(CIndicators * indicators);
+    double TriX(int ind);
+    double DiffTriX(int ind);
+    int State(int ind);
+    bool ExtState(int ind);
+    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
+};
+
+class CSignalWPR : public CExpertSignal {
+public:
+    CSignalWPR(void);
+    ~CSignalWPR();
+    void PeriodWPR(int value);
+    void Pattern_0(int value);
+    void Pattern_1(int value);
+    void Pattern_2(int value);
+    virtual bool ValidationSettings(void);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual int LongCondition(void);
+    virtual int ShortCondition(void);
+protected:
+    CiWPR m_wpr;
+    int m_period_wpr;
+    int m_pattern_0;
+    int m_pattern_1;
+    int m_pattern_2;
+    double m_extr_osc;
+    double m_extr_pr;
+    int m_extr_pos;
+    uint m_extr_map;
+    bool InitWPR(CIndicators * indicators);
+    double WPR(int ind);
+    double Diff(int ind);
+    int State(int ind);
+    bool ExtState(int ind);
+    bool CompareMaps(int map, int count, bool minimax = false, int start = 0);
+};
+
+class CTrailingFixedPips : public CExpertTrailing {
+public:
+    CTrailingFixedPips(void);
+    ~CTrailingFixedPips();
+    void StopLevel(int stop_level);
+    void ProfitLevel(int profit_level);
+    virtual bool ValidationSettings(void);
+    virtual bool CheckTrailingStopLong(CPositionInfo * position, double & sl, double & tp);
+    virtual bool CheckTrailingStopShort(CPositionInfo * position, double & sl, double & tp);
+protected:
+    int m_stop_level;
+    int m_profit_level;
+};
+
+class CTrailingMA : public CExpertTrailing {
+public:
+    CTrailingMA(void);
+    ~CTrailingMA();
+    void Period(int period);
+    void Shift(int shift);
+    void Method(ENUM_MA_METHOD method);
+    void Applied(ENUM_APPLIED_PRICE applied);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual bool ValidationSettings(void);
+    virtual bool CheckTrailingStopLong(CPositionInfo * position, double & sl, double & tp);
+    virtual bool CheckTrailingStopShort(CPositionInfo * position, double & sl, double & tp);
+protected:
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_MA_METHOD m_ma_method;
+    ENUM_APPLIED_PRICE m_ma_applied;
+};
+
+class CTrailingNone : public CExpertTrailing {
+public:
+    CTrailingNone(void);
+    ~CTrailingNone();
+};
+
+class CTrailingPSAR : public CExpertTrailing {
+public:
+    CTrailingPSAR(void);
+    ~CTrailingPSAR();
+    void Step(double step);
+    void Maximum(double maximum);
+    virtual bool InitIndicators(CIndicators * indicators);
+    virtual bool CheckTrailingStopLong(CPositionInfo * position, double & sl, double & tp);
+    virtual bool CheckTrailingStopShort(CPositionInfo * position, double & sl, double & tp);
+protected:
+    CiSAR m_sar;
+    double m_step;
+    double m_maximum;
+};
+
+class CFile : public CObject {
+public:
+    CFile(void);
+    ~CFile();
+    int Handle(void) const;
+    string FileName(void) const;
+    int Flags(void) const;
+    void SetUnicode(const bool unicode);
+    void SetCommon(const bool common);
+    int Open(const string file_name, int open_flags, const short delimiter = '\t');
+    void Close(void);
+    void Delete(void);
+    ulong Size(void);
+    ulong Tell(void);
+    void Seek(const long offset, const ENUM_FILE_POSITION origin);
+    void Flush(void);
+    bool IsEnding(void);
+    bool IsLineEnding(void);
+    void Delete(const string file_name, const int common_flag = 0);
+    bool IsExist(const string file_name, const int common_flag = 0);
+    bool Copy(const string src_name, const int common_flag, const string dst_name, const int mode_flags);
+    bool Move(const string src_name, const int common_flag, const string dst_name, const int mode_flags);
+    bool FolderCreate(const string folder_name);
+    bool FolderDelete(const string folder_name);
+    bool FolderClean(const string folder_name);
+    long FileFindFirst(const string file_filter, string & returned_filename);
+    bool FileFindNext(const long search_handle, string & returned_filename);
+    void FileFindClose(const long search_handle);
+protected:
+    int m_handle;
+    string m_name;
+    int m_flags;
+};
+
+class CFileBin : public CFile {
+public:
+    CFileBin(void);
+    ~CFileBin();
+    int Open(const string file_name, const int open_flags);
+    uint WriteChar(const char value);
+    uint WriteShort(const short value);
+    uint WriteInteger(const int value);
+    uint WriteLong(const long value);
+    uint WriteFloat(const float value);
+    uint WriteDouble(const double value);
+    uint WriteString(const string value);
+    uint WriteString(const string value, const int size);
+    uint WriteCharArray(const char & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint WriteShortArray(const short& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint WriteIntegerArray(const int& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint WriteLongArray(const long & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint WriteFloatArray(const float & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint WriteDoubleArray(const double & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    bool WriteObject(CObject * object);
+    bool ReadChar(char & value);
+    bool ReadShort(short & value);
+    bool ReadInteger(int & value);
+    bool ReadLong(long & value);
+    bool ReadFloat(float & value);
+    bool ReadDouble(double & value);
+    bool ReadString(string & value);
+    bool ReadString(string & value, const int size);
+    uint ReadCharArray(char & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint ReadShortArray(short& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint ReadIntegerArray(int& array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint ReadLongArray(long & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint ReadFloatArray(float & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    uint ReadDoubleArray(double & array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    bool ReadObject(CObject * object);
+    template<typename T> uint WriteStruct(T &data);
+    template<typename T> uint WriteArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    template<typename T> uint WriteEnum(const T value);
+    template<typename T> uint ReadArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);
+    template<typename T> bool ReadStruct(T &data);
+    template<typename T> bool ReadEnum(T &value);
+};
+
+struct BITMAPFILEHEADER {
+public:
+    ushort bfType;
+    uint bfSize;
+    ushort bfReserved1;
+    ushort bfReserved2;
+    uint bfOffBits;
+};
+
+struct BITMAPINFOHEADER {
+public:
+    uint biSize;
+    int biWidth;
+    int biHeight;
+    ushort biPlanes;
+    ushort biBitCount;
+    uint biCompression;
+    uint biSizeImage;
+    int biXPelsPerMeter;
+    int biYPelsPerMeter;
+    uint biClrUsed;
+    uint biClrImportant;
+};
+
+class CFileBMP : public CObject {
+public:
+    CFileBMP(void);
+    ~CFileBMP();
+    int OpenWrite(const string file_name, bool common_flag = false);
+    int OpenRead(const string file_name, bool common_flag = false);
+    int Write32BitsArray(uint& uint_array, const int width, const int height);
+    int Read32BitsArray(uint& uint_array, int& width, int& height);
+    void Close(void);
+protected:
+    int m_handle;
+    BITMAPFILEHEADER m_file_header;
+    BITMAPINFOHEADER m_info_header;
+};
+
+class CFilePipe : public CFile {
+public:
+    CFilePipe(void);
+    ~CFilePipe();
+    int Open(const string file_name, const int open_flags);
+    bool WaitForRead(const ulong size);
+    uint WriteLong(const long value);
+    uint WriteFloat(const float value);
+    uint WriteDouble(const double value);
+    uint WriteString(const string value);
+    uint WriteString(const string value, const int size);
+    bool WriteObject(CObject * object);
+    bool ReadLong(long & value);
+    bool ReadFloat(float & value);
+    bool ReadDouble(double & value);
+    bool ReadString(string & value);
+    bool ReadString(string & value, const int size);
+    bool ReadObject(CObject * object);
+};
+
+class CFileTxt : public CFile {
+public:
+    CFileTxt(void);
+    ~CFileTxt();
+    int Open(const string file_name, const int open_flags);
+    uint WriteString(const string value);
+    string ReadString(void);
+};
+
+template<typename T>
+struct Slot {
+public:
+    int hash_code;
+    T value;
+    int next;
+    Slot(void);
+};
+
+template<typename TKey, typename TItem>
+struct Introsort {
+public:
+    TKey keys;
+    TItem items;
+    Introsort(void);
+    ~Introsort();
+    void Sort(const int index, const int length);
+};
+
+class CPrimeGenerator {
+public:
+    static bool IsPrime(const int candidate);
+    static int GetPrime(const int min);
+    static int ExpandPrime(const int old_size);
+};
+
+template<typename T> class CLinkedList;
+
+template<typename T>
+class CLinkedListNode {
+public:
+    CLinkedListNode(T value);
+    CLinkedListNode(CLinkedList<T>* list, T value);
+    ~CLinkedListNode();
+    void List(CLinkedList<T>* value);
+    void Next(CLinkedListNode<T>* value);
+    void Previous(CLinkedListNode<T>* value);
+    T Value(void);
+    void Value(T value);
+protected:
+    T m_item;
+};
+
+class CAxis {
+public:
+    CAxis(void);
+    ~CAxis();
+    double Step(void) const;
+    double Min(void) const;
+    void Min(const double min);
+    double Max(void) const;
+    void Max(const double max);
+    string Name(void) const;
+    void Name(const string name);
+    ENUM_AXIS_TYPE Type(void) const;
+    void Type(ENUM_AXIS_TYPE type);
+    uint Color(void) const;
+    void Color(const uint clr);
+    bool AutoScale(void) const;
+    void AutoScale(const bool autoscale);
+    int ValuesSize(void) const;
+    void ValuesSize(const int size);
+    int ValuesWidth(void) const;
+    void ValuesWidth(const int width);
+    string ValuesFormat(void) const;
+    void ValuesFormat(const string format);
+    int ValuesDateTimeMode(void) const;
+    void ValuesDateTimeMode(const int mode);
+    DoubleToStringFunction ValuesFunctionFormat(void) const;
+    void ValuesFunctionFormat(DoubleToStringFunction func);
+    void ValuesFunctionFormatCBData(void * cbdata);
+    string ValuesFontName(void) const;
+    void ValuesFontName(const string fontname);
+    uint ValuesFontAngle(void) const;
+    void ValuesFontAngle(const uint fontangle);
+    uint ValuesFontFlags(void) const;
+    void ValuesFontFlags(const uint fontflags);
+    int NameSize(void) const;
+    void NameSize(const int size);
+    double ZeroLever(void) const;
+    void ZeroLever(const double value);
+    double DefaultStep(void) const;
+    void DefaultStep(const double value);
+    double MaxLabels(void) const;
+    void MaxLabels(const double value);
+    double MinGrace(void) const;
+    void MinGrace(const double value);
+    double MaxGrace(void) const;
+    void MaxGrace(const double value);
+    void SelectAxisScale(void);
+};
+
+class CColorGenerator {
+public:
+    CColorGenerator(void);
+    ~CColorGenerator();
+    uint Next(void);
+    void Reset(void);
+};
+
+struct CPoint2D {
+public:
+    double x;
+    double y;
+};
+
+class CCurve : public CObject {
+public:
+    CCurve(const double & y, const uint clr, ENUM_CURVE_TYPE type, const string name);
+    CCurve(const double & x, const double & y, const uint clr, ENUM_CURVE_TYPE type, const string name);
+    CCurve(const CPoint2D & points, const uint clr, ENUM_CURVE_TYPE type, const string name);
+    CCurve(CurveFunction function, const double from, const double to, const double step, const uint clr, ENUM_CURVE_TYPE type, const string name);
+    ~CCurve();
+    void GetX(double & x) const;
+    void GetY(double & y) const;
+    double XMax(void) const;
+    double XMin(void) const;
+    double YMax(void) const;
+    double YMin(void) const;
+    int Size(void) const;
+    void Update(const double & y);
+    void Update(const double & x, const double & y);
+    void Update(const CPoint2D & points);
+    void Update(CurveFunction function, const double from, const double to, const double step);
+    uint Color(void) const;
+    int Type(void) const;
+    string Name(void) const;
+    bool Visible(void) const;
+    void Color(const uint clr);
+    void Type(const int type);
+    void Name(const string name);
+    void Visible(const bool visible);
+    ENUM_LINE_STYLE LinesStyle(void) const;
+    ENUM_LINE_END LinesEndStyle(void) const;
+    int LinesWidth(void) const;
+    bool LinesSmooth(void) const;
+    double LinesSmoothTension(void) const;
+    double LinesSmoothStep(void) const;
+    void LinesStyle(ENUM_LINE_STYLE style);
+    void LinesEndStyle(ENUM_LINE_END end_style);
+    void LinesWidth(const int width);
+    void LinesSmooth(const bool smooth);
+    void LinesSmoothTension(const double tension);
+    void LinesSmoothStep(const double step);
+    int PointsSize(void) const;
+    ENUM_POINT_TYPE PointsType(void) const;
+    bool PointsFill(void) const;
+    uint PointsColor(void) const;
+    void PointsSize(const int size);
+    void PointsType(ENUM_POINT_TYPE type);
+    void PointsFill(const bool fill);
+    void PointsColor(const uint clr);
+    int StepsDimension(void) const;
+    void StepsDimension(const int dimension);
+    int HistogramWidth(void) const;
+    void HistogramWidth(const int width);
+    PlotFucntion CustomPlotFunction(void) const;
+    void CustomPlotFunction(PlotFucntion func);
+    void CustomPlotCBData(void * cbdata);
+    bool TrendLineVisible(void) const;
+    uint TrendLineColor(void) const;
+    void TrendLineVisible(const bool visible);
+    void TrendLineColor(const uint clr);
+    void TrendLineCoefficients(double & coefficients);
+protected:
+    bool m_trend_calc;
+    double m_trend_coeff;
+    virtual void CalculateCoefficients(void);
+};
+
 class CDictionary_Obj_Obj : public CObject {
 public:
     CDictionary_Obj_Obj(void);
@@ -7363,19 +7468,19 @@ class CSingleCondition : public ICondition {
 public:
     CSingleCondition(void);
     CSingleCondition(INamedVariable * var, INamedValue * term);
-    CSingleCondition(INamedVariable * var, INamedValue * term, bool not);
+    CSingleCondition(INamedVariable * var, INamedValue * term, bool not_flag);
     ~CSingleCondition();
     void Var(INamedVariable * value);
     bool Not(void);
-    void Not(bool not);
+    void Not(bool not_flag);
     void Term(INamedValue * value);
     virtual bool IsTypeOf(EnCondition type);
 };
 
 class CFuzzyCondition : public CSingleCondition {
 public:
-    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not);
-    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not, HedgeType hedge);
+    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not_flag);
+    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not_flag, HedgeType hedge);
     CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term);
     ~CFuzzyCondition();
     HedgeType Hedge(void);
@@ -7857,43 +7962,6 @@ public:
 protected:
     string m_string;
     virtual int Compare(const CObject * node, const int mode = 0) const;
-};
-
-class CAccountInfo : public CObject {
-public:
-    CAccountInfo(void);
-    ~CAccountInfo();
-    long Login(void) const;
-    ENUM_ACCOUNT_TRADE_MODE TradeMode(void) const;
-    string TradeModeDescription(void) const;
-    long Leverage(void) const;
-    ENUM_ACCOUNT_STOPOUT_MODE StopoutMode(void) const;
-    string StopoutModeDescription(void) const;
-    ENUM_ACCOUNT_MARGIN_MODE MarginMode(void) const;
-    string MarginModeDescription(void) const;
-    bool TradeAllowed(void) const;
-    bool TradeExpert(void) const;
-    int LimitOrders(void) const;
-    double Balance(void) const;
-    double Credit(void) const;
-    double Profit(void) const;
-    double Equity(void) const;
-    double Margin(void) const;
-    double FreeMargin(void) const;
-    double MarginLevel(void) const;
-    double MarginCall(void) const;
-    double MarginStopOut(void) const;
-    string Name(void) const;
-    string Server(void) const;
-    string Currency(void) const;
-    string Company(void) const;
-    long InfoInteger(const ENUM_ACCOUNT_INFO_INTEGER prop_id) const;
-    double InfoDouble(const ENUM_ACCOUNT_INFO_DOUBLE prop_id) const;
-    string InfoString(const ENUM_ACCOUNT_INFO_STRING prop_id) const;
-    double OrderProfitCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price_open, const double price_close) const;
-    double MarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
-    double FreeMarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
-    double MaxLotCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double price, const double percent = 100) const;
 };
 
 class CDealInfo : public CObject {
@@ -8825,12 +8893,6 @@ public:
     ushort Data2;
     ushort Data3;
     uchar Data4;
-};
-
-struct FILETIME {
-public:
-    uint dwLowDateTime;
-    uint dwHighDateTime;
 };
 
 struct POINT {
@@ -10526,11 +10588,6 @@ public:
     ulong QuadPart;
 };
 
-struct LUID {
-public:
-    uint LowPart;
-    int HighPart;
-};
 
 struct LIST_ENTRY {
 public:
@@ -11841,11 +11898,6 @@ struct ENCLAVE_INIT_INFO_VBS {
 public:
     uint Length;
     uint ThreadCount;
-};
-
-struct FILE_ID_128 {
-public:
-    uchar Identifier;
 };
 
 struct FILE_NOTIFY_INFORMATION {
@@ -14373,7 +14425,8 @@ public:
 struct INPUT {
 public:
     uint type;
-    INPUT_TYPE in;
+    int in;
 };
+
 
 #endif // __clang__

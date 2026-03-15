@@ -71,7 +71,11 @@ class DebugStateStore {
      * @param {import('./debugLogReader').DebugEvent[]} events
      */
     applyBatch(events) {
-        for (const evt of events) this._applyOne(evt);
+        if (Array.isArray(events)) {
+            for (const evt of events) {
+                this._applyOne(evt);
+            }
+        }
         this._notify();
     }
 
@@ -124,9 +128,13 @@ class DebugStateStore {
                     this.callStack.pop();
                 } else {
                     this.callStack.push({ func: event.func, file: event.file, line: event.line, state: 'exited' });
+                    if (this.callStack.length > MAX_CALL_FRAMES) this.callStack.shift();
                 }
                 break;
             }
+            default:
+                console.warn(`[DebugStateStore] Unrecognized event type: ${event.type}`, event);
+                break;
         }
     }
 
@@ -159,8 +167,13 @@ class DebugStateStore {
     }
 
     _notify() {
-        for (const l of this._listeners) {
-            try { l(this); } catch (err) { console.warn('MqlDebugStore listener error:', err); }
+        const listeners = this._listeners.slice();
+        for (const l of listeners) {
+            try {
+                l(this);
+            } catch (err) {
+                console.warn('MqlDebugStore listener error:', err);
+            }
         }
     }
 }

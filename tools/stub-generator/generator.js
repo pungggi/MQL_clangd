@@ -261,7 +261,7 @@ class StubGenerator {
     }
 
     /**
-     * Sort classes by dependency (base classes first)
+     * Sort classes by dependency (base classes and value member types first)
      */
     sortByDependency(classes) {
         const classMap = new Map(classes.map(c => [c.name, c]));
@@ -275,6 +275,15 @@ class StubGenerator {
             // Visit base class first
             if (classObj.baseClass && classMap.has(classObj.baseClass)) {
                 visit(classMap.get(classObj.baseClass));
+            }
+
+            // Visit value member types (non-pointer, non-reference) first
+            for (const member of classObj.members) {
+                const typeName = member.type.replace(/[\s*&]+/g, ' ').trim().split(/\s+/)[0];
+                // Only visit if it's a value type (no * or &) to avoid circular deps from pointers
+                if (!member.type.includes('*') && !member.type.includes('&') && classMap.has(typeName)) {
+                    visit(classMap.get(typeName));
+                }
             }
 
             sorted.push(classObj);
@@ -328,6 +337,19 @@ class StubGenerator {
             const keyword = cls.isStruct ? 'struct' : 'class';
             lines.push(`${keyword} ${cls.name};`);
             baseClasses.delete(cls.name); // Remove if we already declared it
+        }
+
+        // Collect value member types that aren't in allClasses (need forward decls too)
+        const allClassNames = new Set(allClasses.map(c => c.name));
+        for (const cls of allClasses) {
+            for (const member of cls.members) {
+                if (!member.type.includes('*') && !member.type.includes('&')) {
+                    const typeName = member.type.replace(/[\s*&]+/g, ' ').trim().split(/\s+/)[0];
+                    if (typeName && /^[A-Z]/.test(typeName) && !allClassNames.has(typeName)) {
+                        baseClasses.add(typeName);
+                    }
+                }
+            }
         }
 
         // Then, forward declare base classes that weren't in our definitions

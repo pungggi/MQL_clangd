@@ -4,6 +4,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { COMPILE_MODE_CHECK } = require('./debugBridge');
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -11,6 +12,32 @@ let serverProcess = null;
 const DEFAULT_PORT = 3002;
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000; // 10 minutes
+
+// ---------------------------------------------------------------------------
+// Date helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a YYYY.MM.DD string into a Date, or null if invalid.
+ * @param {string} v
+ * @returns {Date|null}
+ */
+function parseMqlDate(v) {
+    if (!/^\d{4}\.\d{2}\.\d{2}$/.test(v)) return null;
+    const [year, month, day] = v.split('.').map(Number);
+    const d = new Date(year, month - 1, day);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+    return d;
+}
+
+/**
+ * Returns true only for a syntactically and calendrically valid YYYY.MM.DD date.
+ * @param {string} v
+ * @returns {boolean}
+ */
+function isValidDate(v) {
+    return parseMqlDate(v) !== null;
+}
 
 // ---------------------------------------------------------------------------
 // HTTP helper — lightweight, no dependencies
@@ -82,12 +109,40 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
         return false;
     }
 
-    serverProcess = spawn(process.execPath, ['src/index.js', 'serve'], {
+    const pidPath = path.join(serverDir, 'server.pid');
+
+    // Check for existing PID file
+    if (fs.existsSync(pidPath)) {
+        try {
+            const pid = parseInt(fs.readFileSync(pidPath, 'utf8'), 10);
+            if (!isNaN(pid)) {
+                // Check if process is still running
+                try {
+                    process.kill(pid, 0); // throws if not running
+                    // If running, see if it responds on our port
+                    if (await pingServer(port)) {
+                        return true;
+                    }
+                    // If not responding, kill it and restart
+                    process.kill(pid, process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL');
+                } catch { /* process not running — proceed */ }
+            }
+            fs.unlinkSync(pidPath);
+        } catch { /* ignore read errors — proceed */ }
+    }
+
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    const nodeBin = config.get('Backtest.NodePath', 'node');
+    serverProcess = spawn(nodeBin, ['src/index.js', 'serve'], {
         cwd: serverDir,
         detached: true,
         stdio: 'ignore',
         env: { ...process.env, PORT: String(port) },
     });
+
+    if (serverProcess.pid) {
+        fs.writeFileSync(pidPath, String(serverProcess.pid));
+    }
     serverProcess.unref();
 
     // Wait for the server to become responsive
@@ -98,10 +153,41 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
     return false;
 }
 
-function stopServer() {
+async function stopServer(port = DEFAULT_PORT, serverDir = null) {
     if (serverProcess) {
-        try { serverProcess.kill(); } catch { /* already gone */ }
+        if (process.platform === 'win32') {
+            // On Windows, kill() may not terminate detached child processes.
+            // Try the graceful shutdown endpoint first, then fall back to taskkill.
+            let terminated = false;
+            try {
+                await httpRequest('POST', '/api/shutdown', null, port);
+                terminated = true;
+            } catch { /* endpoint unavailable — fall through to taskkill */ }
+
+            if (!terminated && serverProcess.pid) {
+                try {
+                    spawn('taskkill', ['/PID', String(serverProcess.pid), '/T', '/F'], {
+                        detached: false,
+                        stdio: 'ignore',
+                    });
+                    terminated = true;
+                } catch { /* taskkill failed */ }
+            }
+
+            if (!terminated) {
+                try { serverProcess.kill(); } catch { /* already gone */ }
+            }
+        } else {
+            try { serverProcess.kill(); } catch { /* already gone */ }
+        }
         serverProcess = null;
+    }
+
+    if (serverDir) {
+        const pidPath = path.join(serverDir, 'server.pid');
+        if (fs.existsSync(pidPath)) {
+            try { fs.unlinkSync(pidPath); } catch { /* ignore */ }
+        }
     }
 }
 
@@ -145,7 +231,12 @@ async function resolveEAName(context, port, resolveCompileTargets) {
         } else if (ext === '.mqh' && resolveCompileTargets) {
             // Reuse compile-target resolution to find the parent EA file
             try {
-                const targets = await resolveCompileTargets(filePath, context, { silent: true });
+                const targets = await resolveCompileTargets({
+                    document: editor.document,
+                    workspaceFolder: vscode.workspace.getWorkspaceFolder(editor.document.uri),
+                    context,
+                    rt: COMPILE_MODE_CHECK
+                });
                 if (targets && targets.length > 0) {
                     const t = targets[0];
                     candidateName = path.basename(t, path.extname(t));
@@ -230,16 +321,21 @@ async function getTestParameters(eaName, port) {
     const fromDate = await vscode.window.showInputBox({
         prompt: 'From date (YYYY.MM.DD)',
         value: defaults.fromDate,
-        validateInput: v => /^\d{4}\.\d{2}\.\d{2}$/.test(v) ? null : 'Format: YYYY.MM.DD',
+        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
     });
     if (fromDate === undefined) return null;
 
     const toDate = await vscode.window.showInputBox({
         prompt: 'To date (YYYY.MM.DD)',
         value: defaults.toDate,
-        validateInput: v => /^\d{4}\.\d{2}\.\d{2}$/.test(v) ? null : 'Format: YYYY.MM.DD',
+        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
     });
     if (toDate === undefined) return null;
+
+    if (parseMqlDate(fromDate) > parseMqlDate(toDate)) {
+        vscode.window.showErrorMessage(`"From" date (${fromDate}) must not be after "To" date (${toDate}).`);
+        return null;
+    }
 
     return {
         symbol,
@@ -291,6 +387,10 @@ async function executeBacktest(eaName, params, port) {
         },
         async (progress, token) => {
             const startTime = Date.now();
+            let consecutiveFailures = 0;
+            const FAILURE_THRESHOLD = 3;
+            const ABORT_THRESHOLD = 10;
+
             progress.report({ message: 'Starting...' });
 
             while (!token.isCancellationRequested) {
@@ -302,6 +402,8 @@ async function executeBacktest(eaName, params, port) {
 
                 await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
+                if (token.isCancellationRequested) break;
+
                 try {
                     const { statusCode, data } = await httpRequest(
                         'GET',
@@ -312,10 +414,37 @@ async function executeBacktest(eaName, params, port) {
                     if (statusCode === 200 && data && !data.running) {
                         return true; // done
                     }
-                } catch { /* server hiccup — keep polling */ }
+                    consecutiveFailures = 0; // Reset on success
+                } catch (err) {
+                    consecutiveFailures++;
+                    if (consecutiveFailures === FAILURE_THRESHOLD) {
+                        vscode.window.showWarningMessage(`Backtest: Persistent connection issues with TradeReportServer (${err.message}). Still trying...`);
+                    } else if (consecutiveFailures >= ABORT_THRESHOLD) {
+                        vscode.window.showErrorMessage(`Backtest: Lost connection to TradeReportServer after ${ABORT_THRESHOLD} attempts. Aborting monitor.`);
+                        return false;
+                    }
+                    /* server hiccup — keep polling until threshold */
+                }
 
                 const secs = Math.round((Date.now() - startTime) / 1000);
                 progress.report({ message: `Running... (${secs}s)` });
+            }
+
+            // User cancelled — attempt to stop the remote backtest
+            try {
+                const { statusCode } = await httpRequest(
+                    'POST',
+                    `/api/${encodeURIComponent(eaName)}/cancel-test`,
+                    null,
+                    port,
+                );
+                if (statusCode === 200) {
+                    vscode.window.showInformationMessage(`Backtest for ${eaName} was cancelled successfully.`);
+                } else {
+                    vscode.window.showInformationMessage(`Cancel request sent but the test may still be running in MT5 (server returned ${statusCode}).`);
+                }
+            } catch {
+                vscode.window.showInformationMessage(`Could not reach the server to cancel the backtest for ${eaName}. The test may still be running in MT5.`);
             }
             return false; // cancelled
         },
@@ -384,6 +513,13 @@ async function runBacktest(context, opts) {
                 port,
             );
             if (statusCode === 200 && data) {
+                const missing = ['symbol', 'fromDate', 'toDate'].filter(k => !data[k]);
+                if (missing.length > 0) {
+                    vscode.window.showErrorMessage(
+                        `tester.ini for ${eaName} is missing required fields: ${missing.join(', ')}. Enable parameter prompts.`,
+                    );
+                    return;
+                }
                 params = {
                     symbol: data.symbol,
                     fromDate: data.fromDate,

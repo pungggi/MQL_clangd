@@ -14,86 +14,108 @@ const VIEW_TYPE = 'mqlDebugPanel';
  * Receives state from DebugStateStore via the onChange listener.
  */
 class MqlDebugPanel {
-    /**
-     * @param {import('./debugStateStore').DebugStateStore} store
-     * @param {vscode.ExtensionContext} context
-     */
-    constructor(store, context) {
-        this._store   = store;
-        this._context = context;
-        this._panel   = null;
-        this._listener = null;
+  static currentPanel = null;
+
+  /**
+   * @param {import('./debugStateStore').DebugStateStore} store
+   * @param {vscode.ExtensionContext} context
+   */
+  static show(store, context) {
+    const column = vscode.window.activeTextEditor
+      ? vscode.ViewColumn.Beside
+      : vscode.ViewColumn.One;
+
+    if (MqlDebugPanel.currentPanel) {
+      MqlDebugPanel.currentPanel._panel.reveal(column);
+      MqlDebugPanel.currentPanel._sendState();
+      return MqlDebugPanel.currentPanel;
     }
 
-    /** Open or reveal the panel and start listening for state changes. */
-    show() {
-        const column = vscode.window.activeTextEditor
-            ? vscode.ViewColumn.Beside
-            : vscode.ViewColumn.One;
+    const panel = vscode.window.createWebviewPanel(
+      VIEW_TYPE,
+      'MQL Debug',
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      }
+    );
 
-        if (this._panel) {
-            this._panel.reveal(column);
-            this._sendState();
-            return;
+    MqlDebugPanel.currentPanel = new MqlDebugPanel(panel, store, context);
+    return MqlDebugPanel.currentPanel;
+  }
+
+  constructor(panel, store, context) {
+    this._panel = panel;
+    this._store = store;
+    this._context = context;
+    this._disposables = [];
+    this._isDisposed = false;
+
+    this._panel.webview.html = this._buildHtml();
+
+    // Handle messages from webview (e.g. "Stop session" button)
+    this._panel.webview.onDidReceiveMessage(
+      msg => {
+        if (msg.type === 'stopSession') {
+          vscode.commands.executeCommand('mql_tools.stopDebugging');
         }
+      },
+      undefined,
+      this._disposables
+    );
 
-        this._panel = vscode.window.createWebviewPanel(
-            VIEW_TYPE,
-            'MQL Debug',
-            column,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-            }
-        );
+    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-        this._panel.webview.html = this._buildHtml();
+    // Subscribe to state changes
+    this._listener = () => this._sendState();
+    this._store.onChange(this._listener);
 
-        // Handle messages from webview (e.g. "Stop session" button)
-        this._panel.webview.onDidReceiveMessage(
-            msg => {
-                if (msg.type === 'stopSession') {
-                    vscode.commands.executeCommand('mql_tools.stopDebugging');
-                }
-            },
-            undefined,
-            this._context.subscriptions
-        );
+    // Initial render
+    this._sendState();
+  }
 
-        this._panel.onDidDispose(() => {
-            this._panel = null;
-            if (this._listener) {
-                this._store.removeListener(this._listener);
-                this._listener = null;
-            }
-        }, undefined, this._context.subscriptions);
+  /** Push current store state to the webview. */
+  _sendState() {
+    if (this._isDisposed || !this._panel) return;
+    this._panel.webview.postMessage({
+      type: 'update',
+      sessionActive: this._store.sessionActive,
+      hits: this._store.hits.slice(-50),   // last 50 hits
+      callStack: this._store.callStack,
+      latestWatches: this._store.latestWatchList,
+    });
+  }
 
-        // Subscribe to state changes
-        this._listener = () => this._sendState();
-        this._store.onChange(this._listener);
+  dispose() {
+    if (this._isDisposed) return;
+    this._isDisposed = true;
 
-        // Initial render
-        this._sendState();
+    MqlDebugPanel.currentPanel = null;
+
+    if (this._listener) {
+      this._store.removeListener(this._listener);
+      this._listener = null;
     }
 
-    /** Push current store state to the webview. */
-    _sendState() {
-        if (!this._panel) return;
-        this._panel.webview.postMessage({
-            type:        'update',
-            sessionActive: this._store.sessionActive,
-            hits:        this._store.hits.slice(-50),   // last 50 hits
-            callStack:   this._store.callStack,
-            latestWatches: this._store.latestWatchList,
-        });
-    }
+    // Clean up our resources
+    this._panel.dispose();
 
-    _buildHtml() {
-        return /* html */`<!DOCTYPE html>
+    while (this._disposables.length) {
+      const x = this._disposables.pop();
+      if (x) {
+        x.dispose();
+      }
+    }
+  }
+
+  _buildHtml() {
+    const nonce = getNonce();
+    return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' ${this._panel.webview.cspSource};">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MQL Debug</title>
 <style>
@@ -156,7 +178,7 @@ class MqlDebugPanel {
 <div id="header">
   <h2>MQL Debugger Bridge</h2>
   <span id="statusBadge" class="badge badge-stopped">STOPPED</span>
-  <button onclick="stopSession()">Stop Session</button>
+  <button id="stopSessionBtn">Stop Session</button>
 </div>
 
 <div class="section">
@@ -174,12 +196,22 @@ class MqlDebugPanel {
   <div id="callStack"><p class="empty">No call stack data yet.</p></div>
 </div>
 
-<script>
+<script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 let _selectedHitIdx = -1;
 let _hits = [];
 
 function stopSession() { vscode.postMessage({ type: 'stopSession' }); }
+document.getElementById('stopSessionBtn').addEventListener('click', stopSession);
+
+document.getElementById('hits').addEventListener('click', (evt) => {
+  const row = evt.target.closest('.hit-row');
+  if (!row) return;
+
+  document.querySelectorAll('.hit-row').forEach(r => r.classList.remove('selected'));
+  row.classList.add('selected');
+  _selectedHitIdx = parseInt(row.dataset.idx, 10);
+});
 
 window.addEventListener('message', evt => {
   const msg = evt.data;
@@ -233,8 +265,8 @@ function renderHits(hits) {
 
   let html = '<table><thead><tr><th>Label</th><th>Function</th><th>Line</th><th>File</th><th>Time</th></tr></thead><tbody>';
   hits.forEach((h, i) => {
-    const selected = i === _selectedHitIdx || i === hits.length - 1 ? ' selected' : '';
-    html += '<tr class="hit-row' + selected + '" data-idx="' + i + '">'
+    const effectiveIdx = _selectedHitIdx >= 0 ? _selectedHitIdx : hits.length - 1;
+    const selected = i === effectiveIdx ? ' selected' : '';    html += '<tr class="hit-row' + selected + '" data-idx="' + i + '">'
       + '<td>' + esc(h.label) + '</td>'
       + '<td class="func">' + esc(h.func) + '</td>'
       + '<td>' + esc(h.line) + '</td>'
@@ -253,22 +285,14 @@ function renderHits(hits) {
   });
   html += '</tbody></table>';
   el.innerHTML = html;
-
-  // Row click handler
-  el.querySelectorAll('.hit-row').forEach(row => {
-    row.addEventListener('click', () => {
-      el.querySelectorAll('.hit-row').forEach(r => r.classList.remove('selected'));
-      row.classList.add('selected');
-      _selectedHitIdx = parseInt(row.dataset.idx, 10);
-    });
-  });
 }
 
 function renderCallStack(stack) {
   const el = document.getElementById('callStack');
   if (!stack.length) { el.innerHTML = '<p class="empty">No call stack data yet.</p>'; return; }
   let html = '<table><thead><tr><th>Function</th><th>File</th><th>Line</th><th>State</th></tr></thead><tbody>';
-  for (let i = stack.length - 1; i >= 0; i--) { const f = stack[i];
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const f = stack[i];
     html += '<tr>'
       + '<td class="func">' + esc(f.func) + '</td>'
       + '<td class="file">' + esc(f.file) + '</td>'
@@ -282,7 +306,16 @@ function renderCallStack(stack) {
 </script>
 </body>
 </html>`;
-    }
+  }
+}
+
+function getNonce() {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }
 
 module.exports = { MqlDebugPanel };

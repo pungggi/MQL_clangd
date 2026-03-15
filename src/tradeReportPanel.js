@@ -162,7 +162,7 @@ class TradeReportPanel {
             const eaNameLower = this._eaName.toLowerCase();
             const match = candidates.find(u => {
                 const name = path.parse(u.fsPath).name.toLowerCase();
-                return name === eaNameLower || name.startsWith(eaNameLower);
+                return name === eaNameLower || (name.startsWith(eaNameLower) && !/[a-z0-9]/.test(name[eaNameLower.length]));
             });
             if (match) return match;
         }
@@ -310,27 +310,23 @@ class TradeReportPanel {
 
     /**
      * Sanitize a filename to be used as a relative path within a snapshot.
-     * Iteratively removes path traversal segments.
+     * Resolves internal dot segments and strips leading traversal/roots.
      */
     _sanitizeRelativePath(filename) {
         if (!filename) return '';
-        // Strip leading slashes/backslashes to treat it as relative
-        let sanitized = filename.replace(/^[\/\\]+/, '');
+        // 1. Normalize early to let the OS resolver handle dot segments (e.g., "foo/../bar" -> "bar")
+        let sanitized = path.normalize(filename);
 
-        // Iteratively remove ".." segments to prevent bypasses like "....//"
+        // 2. Repeatedly strip leading traversal or absolute roots
         let previous;
         do {
             previous = sanitized;
-            sanitized = sanitized.replace(/\.\.(?:[\/\\]|$)/g, '');
-        } while (sanitized !== previous);
+            // Remove leading slashes/backslashes and Windows drive letters
+            sanitized = sanitized.replace(/^[\\\/]+/, '').replace(/^[a-zA-Z]:/, '');
+            // Remove leading ".." path segments only
+            sanitized = sanitized.replace(/^\.\.(?:[\\\/]|$)/, '');
+        } while (sanitized !== previous && sanitized !== '');
 
-        // Normalize to resolve any remaining path quirks
-        sanitized = path.normalize(sanitized);
-
-        // Strip any leading traversal or absolute roots that normalization might have preserved
-        while (sanitized.startsWith('..') || sanitized.startsWith('/') || sanitized.startsWith('\\')) {
-            sanitized = sanitized.replace(/^(\.\.(?:[\/\\]|$)|[\/\\])/, '');
-        }
         return sanitized;
     }
 

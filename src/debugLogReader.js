@@ -43,6 +43,7 @@ class MqlDebugLogReader {
 
     /** Start watching the debug log file. Clears the file first for a clean session. */
     start() {
+        if (this.isRunning) return;
         this.isRunning = true;
         this.lastSize  = 0;
 
@@ -90,7 +91,10 @@ class MqlDebugLogReader {
                 if (!this.isRunning) return;
                 if (eventType === 'change') this._checkForNewContent();
             });
-            this.watcher.on('error', () => { this.watcher = null; });
+            this.watcher.on('error', (err) => {
+                this._emitError(err);
+                this.watcher = null;
+            });
         } catch (err) {
             console.error('MqlDebugLogReader: failed to create watcher:', err);
         }
@@ -134,7 +138,7 @@ class MqlDebugLogReader {
             }
             this.lastSize = newSize;
 
-            // MqlDebug.mqh writes FILE_ANSI = UTF-8
+            // MqlDebug.mqh writes UTF-8 bytes despite using the FILE_ANSI flag (which normally implies ANSI/CP1252).
             const text   = buf.toString('utf8');
             const lines  = text.split(/\r?\n/);
             const events = [];

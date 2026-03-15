@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
+const { COMPILE_MODE_CHECK } = require('./debugBridge');
 
 /**
  * Compile Target Resolver
@@ -314,7 +315,7 @@ async function resolveCompileTargets({ document, workspaceFolder, context, rt })
         return null;
     }
 
-    const skipInteraction = (rt === 0);
+    const skipInteraction = (rt === COMPILE_MODE_CHECK);
     const headerUri = document.uri;
 
     const existingTargets = getCompileTargets(headerUri, workspaceFolder, context);

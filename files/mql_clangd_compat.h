@@ -33,6 +33,32 @@
 // Used to export functions from DLLs or make them accessible to other modules
 #define export /* MQL export stripped for clangd */
 
+typedef long long datetime;
+typedef unsigned int color;
+
+//+------------------------------------------------------------------+
+//| MQL5 Structures and Enums (Book & Calendar)                      |
+//+------------------------------------------------------------------+
+enum ENUM_BOOK_TYPE {
+  BOOK_TYPE_SELL = 1,
+  BOOK_TYPE_BUY = 2,
+  BOOK_TYPE_SELL_MARKET = 3,
+  BOOK_TYPE_BUY_MARKET = 4
+};
+
+enum ENUM_CALENDAR_EVENT_TYPE { CALENDAR_TYPE_EVENT=0, CALENDAR_TYPE_INDICATOR=1, CALENDAR_TYPE_HOLIDAY=2 };
+enum ENUM_CALENDAR_EVENT_SECTOR { CALENDAR_SECTOR_NONE=0, CALENDAR_SECTOR_MARKET=1, CALENDAR_SECTOR_GDP=2, CALENDAR_SECTOR_JOBS=3, CALENDAR_SECTOR_PRICES=4, CALENDAR_SECTOR_MONEY=5, CALENDAR_SECTOR_TRADE=6, CALENDAR_SECTOR_GOVERNMENT=7, CALENDAR_SECTOR_BUSINESS=8, CALENDAR_SECTOR_CONSUMER=9, CALENDAR_SECTOR_HOUSING=10, CALENDAR_SECTOR_TAXES=11, CALENDAR_SECTOR_HOLIDAYS=12 };
+enum ENUM_CALENDAR_EVENT_FREQUENCY { CALENDAR_FREQUENCY_NONE=0, CALENDAR_FREQUENCY_WEEK=1, CALENDAR_FREQUENCY_MONTH=2, CALENDAR_FREQUENCY_QUARTER=3, CALENDAR_FREQUENCY_YEAR=4, CALENDAR_FREQUENCY_DAY=5 };
+enum ENUM_CALENDAR_EVENT_TIMEMODE { CALENDAR_TIMEMODE_DATETIME=0, CALENDAR_TIMEMODE_DATE=1, CALENDAR_TIMEMODE_NOTIME=2, CALENDAR_TIMEMODE_TENTATIVE=3 };
+enum ENUM_CALENDAR_EVENT_UNIT { CALENDAR_UNIT_NONE=0, CALENDAR_UNIT_PERCENT=1, CALENDAR_UNIT_CURRENCY=2, CALENDAR_UNIT_HOUR=3, CALENDAR_UNIT_JOB=4, CALENDAR_UNIT_RIG=5, CALENDAR_UNIT_USD=6, CALENDAR_UNIT_PEOPLE=7, CALENDAR_UNIT_MORTGAGE=8, CALENDAR_UNIT_VOTE=9, CALENDAR_UNIT_BARREL=10, CALENDAR_UNIT_CUBICFEET=11, CALENDAR_UNIT_POSITION=12, CALENDAR_UNIT_BUILDING=13 };
+enum ENUM_CALENDAR_EVENT_IMPORTANCE { CALENDAR_IMPORTANCE_NONE=0, CALENDAR_IMPORTANCE_LOW=1, CALENDAR_IMPORTANCE_MODERATE=2, CALENDAR_IMPORTANCE_HIGH=3 };
+enum ENUM_CALENDAR_EVENT_MULTIPLIER { CALENDAR_MULTIPLIER_NONE=0, CALENDAR_MULTIPLIER_THOUSANDS=1, CALENDAR_MULTIPLIER_MILLIONS=2, CALENDAR_MULTIPLIER_BILLIONS=3, CALENDAR_MULTIPLIER_TRILLIONS=4 };
+
+typedef unsigned char uchar;
+typedef unsigned short ushort;
+typedef unsigned int uint;
+typedef unsigned long long ulong;
+
 // Use a class for string to handle literals, assignments, and operations without warnings
 class _mql_string {
 public:
@@ -68,17 +94,11 @@ public:
     operator int() const { return 0; }
     operator long() const { return 0; }
     operator double() const { return 0.0; }
+    operator const char*() const { return ""; }
 
     friend _mql_string operator+(const char* s, const _mql_string& ms) { return ms; }
 };
 typedef _mql_string string;
-
-typedef long long datetime;
-typedef unsigned int color;
-typedef unsigned char uchar;
-typedef unsigned short ushort;
-typedef unsigned int uint;
-typedef unsigned long long ulong;
 
 // Socket types - guarded to avoid conflicts with user socket libraries
 #ifndef SOCKET64
@@ -213,7 +233,59 @@ enum ENUM_TRADE_RETCODE { TRADE_RETCODE_REQUOTE=10004, TRADE_RETCODE_REJECT=1000
 
 // Symbol property enums
 enum ENUM_SYMBOL_INFO_INTEGER { SYMBOL_SELECT=0, SYMBOL_VISIBLE=1, SYMBOL_SESSION_DEALS=2, SYMBOL_SESSION_BUY_ORDERS=3, SYMBOL_SESSION_SELL_ORDERS=4, SYMBOL_VOLUME=5, SYMBOL_VOLUMEHIGH=6, SYMBOL_VOLUMELOW=7, SYMBOL_TIME=8, SYMBOL_TIME_MSC=9, SYMBOL_DIGITS=10, SYMBOL_SPREAD_FLOAT=11, SYMBOL_SPREAD=12, SYMBOL_TICKS_BOOKDEPTH=13, SYMBOL_TRADE_CALC_MODE=14, SYMBOL_TRADE_MODE=15, SYMBOL_START_TIME=16, SYMBOL_EXPIRATION_TIME=17, SYMBOL_TRADE_STOPS_LEVEL=18, SYMBOL_TRADE_FREEZE_LEVEL=19, SYMBOL_TRADE_EXEMODE=20, SYMBOL_SWAP_MODE=21, SYMBOL_SWAP_ROLLOVER3DAYS=22, SYMBOL_MARGIN_HEDGED_USE_LEG=23, SYMBOL_EXPIRATION_MODE=24, SYMBOL_FILLING_MODE=25, SYMBOL_ORDER_MODE=26, SYMBOL_ORDER_GTC_MODE=27, SYMBOL_OPTION_MODE=28, SYMBOL_OPTION_RIGHT=29, SYMBOL_BACKGROUND_COLOR=30, SYMBOL_CHART_MODE=31, SYMBOL_EXIST=32, SYMBOL_CUSTOM=33, SYMBOL_MARGIN_HEDGED=34, SYMBOL_BASIS=35, SYMBOL_CATEGORY=36, SYMBOL_CURRENCY_BASE=37, SYMBOL_CURRENCY_PROFIT=38, SYMBOL_CURRENCY_MARGIN=39, SYMBOL_BANK=40, SYMBOL_DESCRIPTION=41, SYMBOL_EXCHANGE=42, SYMBOL_FORMULA=43, SYMBOL_ISIN=44, SYMBOL_NAME=45, SYMBOL_PAGE=46, SYMBOL_PATH=47, SYMBOL_SECTOR=48, SYMBOL_INDUSTRY=49 };
-enum ENUM_SYMBOL_INFO_DOUBLE { SYMBOL_BID=0, SYMBOL_BIDHIGH=1, SYMBOL_BIDLOW=2, SYMBOL_ASK=3, SYMBOL_ASKHIGH=4, SYMBOL_ASKLOW=5, SYMBOL_LAST=6, SYMBOL_LASTHIGH=7, SYMBOL_LASTLOW=8, SYMBOL_VOLUME_REAL=9, SYMBOL_VOLUMEHIGH_REAL=10, SYMBOL_VOLUMELOW_REAL=11, SYMBOL_OPTION_STRIKE=12, SYMBOL_POINT=13, SYMBOL_TRADE_TICK_VALUE=14, SYMBOL_TRADE_TICK_VALUE_PROFIT=15, SYMBOL_TRADE_TICK_VALUE_LOSS=16, SYMBOL_TRADE_TICK_SIZE=17, SYMBOL_TRADE_CONTRACT_SIZE=18, SYMBOL_TRADE_ACCRUED_INTEREST=19, SYMBOL_TRADE_FACE_VALUE=20, SYMBOL_TRADE_LIQUIDITY_RATE=21, SYMBOL_VOLUME_MIN=22, SYMBOL_VOLUME_MAX=23, SYMBOL_VOLUME_STEP=24, SYMBOL_VOLUME_LIMIT=25, SYMBOL_SWAP_LONG=26, SYMBOL_SWAP_SHORT=27, SYMBOL_MARGIN_INITIAL=28, SYMBOL_MARGIN_MAINTENANCE=29, SYMBOL_SESSION_VOLUME=30, SYMBOL_SESSION_TURNOVER=31, SYMBOL_SESSION_INTEREST=32, SYMBOL_SESSION_BUY_ORDERS_VOLUME=33, SYMBOL_SESSION_SELL_ORDERS_VOLUME=34, SYMBOL_SESSION_OPEN=35, SYMBOL_SESSION_CLOSE=36, SYMBOL_SESSION_AW=37, SYMBOL_SESSION_PRICE_SETTLEMENT=38, SYMBOL_SESSION_PRICE_LIMIT_MIN=39, SYMBOL_SESSION_PRICE_LIMIT_MAX=40, SYMBOL_MARGIN_HEDGED=41, SYMBOL_PRICE_CHANGE=42, SYMBOL_PRICE_VOLATILITY=43, SYMBOL_PRICE_THEORETICAL=44, SYMBOL_PRICE_GREEKS_DELTA=45, SYMBOL_PRICE_GREEKS_THETA=46, SYMBOL_PRICE_GREEKS_GAMMA=47, SYMBOL_PRICE_GREEKS_VEGA=48, SYMBOL_PRICE_GREEKS_RHO=49, SYMBOL_PRICE_GREEKS_OMEGA=50, SYMBOL_PRICE_SENSITIVITY=51 };
+enum ENUM_SYMBOL_INFO_DOUBLE {
+  SYMBOL_BID = 0,
+  SYMBOL_BIDHIGH = 1,
+  SYMBOL_BIDLOW = 2,
+  SYMBOL_ASK = 3,
+  SYMBOL_ASKHIGH = 4,
+  SYMBOL_ASKLOW = 5,
+  SYMBOL_LAST = 6,
+  SYMBOL_LASTHIGH = 7,
+  SYMBOL_LASTLOW = 8,
+  SYMBOL_VOLUME_REAL = 9,
+  SYMBOL_VOLUMEHIGH_REAL = 10,
+  SYMBOL_VOLUMELOW_REAL = 11,
+  SYMBOL_OPTION_STRIKE = 12,
+  SYMBOL_POINT = 13,
+  SYMBOL_TRADE_TICK_VALUE = 14,
+  SYMBOL_TRADE_TICK_VALUE_PROFIT = 15,
+  SYMBOL_TRADE_TICK_VALUE_LOSS = 16,
+  SYMBOL_TRADE_TICK_SIZE = 17,
+  SYMBOL_TRADE_CONTRACT_SIZE = 18,
+  SYMBOL_TRADE_ACCRUED_INTEREST = 19,
+  SYMBOL_TRADE_FACE_VALUE = 20,
+  SYMBOL_TRADE_LIQUIDITY_RATE = 21,
+  SYMBOL_VOLUME_MIN = 22,
+  SYMBOL_VOLUME_MAX = 23,
+  SYMBOL_VOLUME_STEP = 24,
+  SYMBOL_VOLUME_LIMIT = 25,
+  SYMBOL_SWAP_LONG = 26,
+  SYMBOL_SWAP_SHORT = 27,
+  SYMBOL_MARGIN_INITIAL = 28,
+  SYMBOL_MARGIN_MAINTENANCE = 29,
+  SYMBOL_SESSION_VOLUME = 30,
+  SYMBOL_SESSION_TURNOVER = 31,
+  SYMBOL_SESSION_INTEREST = 32,
+  SYMBOL_SESSION_BUY_ORDERS_VOLUME = 33,
+  SYMBOL_SESSION_SELL_ORDERS_VOLUME = 34,
+  SYMBOL_SESSION_OPEN = 35,
+  SYMBOL_SESSION_CLOSE = 36,
+  SYMBOL_SESSION_AW = 37,
+  SYMBOL_SESSION_PRICE_SETTLEMENT = 38,
+  SYMBOL_SESSION_PRICE_LIMIT_MIN = 39,
+  SYMBOL_SESSION_PRICE_LIMIT_MAX = 40,
+  SYMBOL_PRICE_CHANGE = 42,
+  SYMBOL_PRICE_VOLATILITY = 43,
+  SYMBOL_PRICE_THEORETICAL = 44,
+  SYMBOL_PRICE_GREEKS_DELTA = 45,
+  SYMBOL_PRICE_GREEKS_THETA = 46,
+  SYMBOL_PRICE_GREEKS_GAMMA = 47,
+  SYMBOL_PRICE_GREEKS_VEGA = 48,
+  SYMBOL_PRICE_GREEKS_RHO = 49,
+  SYMBOL_PRICE_GREEKS_OMEGA = 50,
+  SYMBOL_PRICE_SENSITIVITY = 51
+};
 enum ENUM_SYMBOL_INFO_STRING { SYMBOL_CURRENCY_BASE_STR=0, SYMBOL_CURRENCY_PROFIT_STR=1, SYMBOL_CURRENCY_MARGIN_STR=2, SYMBOL_BANK_STR=3, SYMBOL_DESCRIPTION_STR=4, SYMBOL_EXCHANGE_STR=5, SYMBOL_FORMULA_STR=6, SYMBOL_ISIN_STR=7, SYMBOL_NAME_STR=8, SYMBOL_PAGE_STR=9, SYMBOL_PATH_STR=10, SYMBOL_BASIS_STR=11, SYMBOL_CATEGORY_STR=12, SYMBOL_SECTOR_STR=13, SYMBOL_INDUSTRY_STR=14 };
 enum ENUM_SYMBOL_TRADE_MODE { SYMBOL_TRADE_MODE_DISABLED=0, SYMBOL_TRADE_MODE_LONGONLY=1, SYMBOL_TRADE_MODE_SHORTONLY=2, SYMBOL_TRADE_MODE_CLOSEONLY=3, SYMBOL_TRADE_MODE_FULL=4 };
 enum ENUM_SYMBOL_CALC_MODE { SYMBOL_CALC_MODE_FOREX=0, SYMBOL_CALC_MODE_FOREX_NO_LEVERAGE=1, SYMBOL_CALC_MODE_FUTURES=2, SYMBOL_CALC_MODE_CFD=3, SYMBOL_CALC_MODE_CFDINDEX=4, SYMBOL_CALC_MODE_CFDLEVERAGE=5, SYMBOL_CALC_MODE_EXCH_STOCKS=6, SYMBOL_CALC_MODE_EXCH_FUTURES=7, SYMBOL_CALC_MODE_EXCH_FUTURES_FORTS=8, SYMBOL_CALC_MODE_EXCH_BONDS=9, SYMBOL_CALC_MODE_EXCH_STOCKS_MOEX=10, SYMBOL_CALC_MODE_EXCH_BONDS_MOEX=11, SYMBOL_CALC_MODE_SERV_COLLATERAL=12 };
@@ -248,6 +320,10 @@ enum ENUM_MQL_INFO_STRING { MQL_PROGRAM_NAME=0, MQL_PROGRAM_PATH=1 };
 #define CHARTEVENT_CHART_CHANGE 10
 #define CHARTEVENT_CUSTOM 1000
 #define CHARTEVENT_CUSTOM_LAST 65535
+
+#define MODE_TRADES 0
+#define MODE_HISTORY 1
+#define MODE_SELECT 2
 
 // Tester statistics enum
 enum ENUM_STATISTICS { STAT_INITIAL_DEPOSIT=0, STAT_WITHDRAWAL=1, STAT_PROFIT=2, STAT_GROSS_PROFIT=3, STAT_GROSS_LOSS=4, STAT_MAX_PROFITTRADE=5, STAT_MAX_LOSSTRADE=6, STAT_CONPROFITMAX=7, STAT_CONPROFITMAX_TRADES=8, STAT_MAX_CONWINS=9, STAT_MAX_CONPROFIT_TRADES=10, STAT_CONLOSSMAX=11, STAT_CONLOSSMAX_TRADES=12, STAT_MAX_CONLOSSES=13, STAT_MAX_CONLOSS_TRADES=14, STAT_BALANCEMIN=15, STAT_BALANCE_DD=16, STAT_BALANCEDD_PERCENT=17, STAT_BALANCE_DDREL_PERCENT=18, STAT_BALANCE_DD_RELATIVE=19, STAT_EQUITYMIN=20, STAT_EQUITY_DD=21, STAT_EQUITYDD_PERCENT=22, STAT_EQUITY_DDREL_PERCENT=23, STAT_EQUITY_DD_RELATIVE=24, STAT_EXPECTED_PAYOFF=25, STAT_PROFIT_FACTOR=26, STAT_RECOVERY_FACTOR=27, STAT_SHARPE_RATIO=28, STAT_MIN_MARGINLEVEL=29, STAT_CUSTOM_ONTESTER=30, STAT_DEALS=31, STAT_TRADES=32, STAT_PROFIT_TRADES=33, STAT_LOSS_TRADES=34, STAT_SHORT_TRADES=35, STAT_LONG_TRADES=36, STAT_PROFIT_SHORTTRADES=37, STAT_PROFIT_LONGTRADES=38, STAT_PROFITTRADES_AVGCON=39, STAT_LOSSTRADES_AVGCON=40 };
@@ -529,33 +605,26 @@ enum ENUM_DEINIT_REASON { REASON_PROGRAM=0, REASON_REMOVE=1, REASON_RECOMPILE=2,
 #define FLT_MIN 1.175494351e-38f
 #define FLT_EPSILON 1.192092896e-07f
 
-// Additional MQL5 structures
+
+//+------------------------------------------------------------------+
+//| MQL5 Structures and Enums for Economic Calendar                  |
+//+------------------------------------------------------------------+
+enum ENUM_CALENDAR_EVENT_IMPACT {
+  CALENDAR_IMPACT_NA = 0,
+  CALENDAR_IMPACT_POSITIVE = 1,
+  CALENDAR_IMPACT_NEGATIVE = 2
+};
+
 struct MqlTick { datetime time; double bid; double ask; double last; ulong volume; long time_msc; uint flags; double volume_real; };
 struct MqlRates { datetime time; double open; double high; double low; double close; long tick_volume; int spread; long real_volume; };
 struct MqlBookInfo { ENUM_BOOK_TYPE type; double price; long volume; double volume_real; };
 struct MqlTradeCheckResult { uint retcode; double balance; double equity; double profit; double margin; double margin_free; double margin_level; string comment; };
 struct MqlTradeTransaction { ulong deal; ulong order; string symbol; ENUM_TRADE_TRANSACTION_TYPE type; ENUM_ORDER_TYPE order_type; ENUM_ORDER_STATE order_state; ENUM_DEAL_TYPE deal_type; ENUM_ORDER_TYPE_TIME time_type; datetime time_expiration; double price; double price_trigger; double price_sl; double price_tp; double volume; ulong position; ulong position_by; };
 struct MqlParam { ENUM_DATATYPE type; long integer_value; double double_value; string string_value; };
+
 struct MqlCalendarValue { ulong id; ulong event_id; datetime time; datetime period; int revision; long actual_value; long prev_value; long revised_prev_value; long forecast_value; int impact_type; };
 struct MqlCalendarEvent { ulong id; ENUM_CALENDAR_EVENT_TYPE type; ENUM_CALENDAR_EVENT_SECTOR sector; ENUM_CALENDAR_EVENT_FREQUENCY frequency; ENUM_CALENDAR_EVENT_TIMEMODE time_mode; ulong country_id; ENUM_CALENDAR_EVENT_UNIT unit; ENUM_CALENDAR_EVENT_IMPORTANCE importance; ENUM_CALENDAR_EVENT_MULTIPLIER multiplier; uint digits; string source_url; string event_code; string name; };
 struct MqlCalendarCountry { ulong id; string name; string code; string currency; string currency_symbol; string url_name; };
-
-// Book type enum
-enum ENUM_BOOK_TYPE { BOOK_TYPE_SELL=1, BOOK_TYPE_BUY=2, BOOK_TYPE_SELL_MARKET=3, BOOK_TYPE_BUY_MARKET=4 };
-
-// Calendar enums
-enum ENUM_CALENDAR_EVENT_TYPE { CALENDAR_TYPE_EVENT=0, CALENDAR_TYPE_INDICATOR=1, CALENDAR_TYPE_HOLIDAY=2 };
-enum ENUM_CALENDAR_EVENT_SECTOR { CALENDAR_SECTOR_NONE=0, CALENDAR_SECTOR_MARKET=1, CALENDAR_SECTOR_GDP=2, CALENDAR_SECTOR_JOBS=3, CALENDAR_SECTOR_PRICES=4, CALENDAR_SECTOR_MONEY=5, CALENDAR_SECTOR_TRADE=6, CALENDAR_SECTOR_GOVERNMENT=7, CALENDAR_SECTOR_BUSINESS=8, CALENDAR_SECTOR_CONSUMER=9, CALENDAR_SECTOR_HOUSING=10, CALENDAR_SECTOR_TAXES=11, CALENDAR_SECTOR_HOLIDAYS=12 };
-enum ENUM_CALENDAR_EVENT_FREQUENCY { CALENDAR_FREQUENCY_NONE=0, CALENDAR_FREQUENCY_WEEK=1, CALENDAR_FREQUENCY_MONTH=2, CALENDAR_FREQUENCY_QUARTER=3, CALENDAR_FREQUENCY_YEAR=4, CALENDAR_FREQUENCY_DAY=5 };
-enum ENUM_CALENDAR_EVENT_TIMEMODE { CALENDAR_TIMEMODE_DATETIME=0, CALENDAR_TIMEMODE_DATE=1, CALENDAR_TIMEMODE_NOTIME=2, CALENDAR_TIMEMODE_TENTATIVE=3 };
-enum ENUM_CALENDAR_EVENT_UNIT { CALENDAR_UNIT_NONE=0, CALENDAR_UNIT_PERCENT=1, CALENDAR_UNIT_CURRENCY=2, CALENDAR_UNIT_HOUR=3, CALENDAR_UNIT_JOB=4, CALENDAR_UNIT_RIG=5, CALENDAR_UNIT_USD=6, CALENDAR_UNIT_PEOPLE=7, CALENDAR_UNIT_MORTGAGE=8, CALENDAR_UNIT_VOTE=9, CALENDAR_UNIT_BARREL=10, CALENDAR_UNIT_CUBICFEET=11, CALENDAR_UNIT_POSITION=12, CALENDAR_UNIT_BUILDING=13 };
-enum ENUM_CALENDAR_EVENT_IMPORTANCE { CALENDAR_IMPORTANCE_NONE=0, CALENDAR_IMPORTANCE_LOW=1, CALENDAR_IMPORTANCE_MODERATE=2, CALENDAR_IMPORTANCE_HIGH=3 };
-enum ENUM_CALENDAR_EVENT_MULTIPLIER { CALENDAR_MULTIPLIER_NONE=0, CALENDAR_MULTIPLIER_THOUSANDS=1, CALENDAR_MULTIPLIER_MILLIONS=2, CALENDAR_MULTIPLIER_BILLIONS=3, CALENDAR_MULTIPLIER_TRILLIONS=4 };
-enum ENUM_CALENDAR_EVENT_IMPACT {
-  CALENDAR_IMPACT_NA = 0,
-  CALENDAR_IMPACT_POSITIVE = 1,
-  CALENDAR_IMPACT_NEGATIVE = 2
-};
 
 // Tick flags
 #define TICK_FLAG_BID 0x02
@@ -582,6 +651,18 @@ enum ENUM_CALENDAR_EVENT_IMPACT {
 #define POINTER_INVALID 0
 #define POINTER_DYNAMIC 1
 #define POINTER_AUTOMATIC 2
+
+#define INVALID_HANDLE -1
+
+// File seek constants
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+
+// Time format constants
+#define TIME_DATE 1
+#define TIME_MINUTES 2
+#define TIME_SECONDS 4
 
 // ArrayCopy direction
 #define WHOLE_ARRAY -1
@@ -971,8 +1052,8 @@ uint FileWriteString(int file_handle, string value, int length = -1);
 uint FileWriteArray(int file_handle, const void* array, int start = 0, int count = WHOLE_ARRAY);
 uint FileWriteStruct(int file_handle, const void* struct_object, int size = -1);
 uint FileWrite(int file_handle, ...);
-bool FileSeek(int file_handle, long offset, ENUM_FILE_POSITION origin);
-void FileFlush(int file_handle);
+bool FileSeek(int file_handle, long offset, int origin);
+bool FileFlush(int file_handle);
 bool FileIsExist(string file_name, int common_flag = 0);
 bool FileDelete(string file_name, int common_flag = 0);
 bool FileCopy(string src_file_name, int common_flag, string dst_file_name, int mode_flags);
@@ -1092,13 +1173,18 @@ enum ENUM_DATABASE_FIELD_TYPE {
     DATABASE_FIELD_TYPE_NULL=5
 };
 
+enum ENUM_INDEXBUFFER_TYPE { INDICATOR_DATA=0, INDICATOR_COLOR_INDEX=1, INDICATOR_CALCULATIONS=2 };
+enum ENUM_COLOR_FORMAT { COLOR_FORMAT_XRGB_NOALPHA=0, COLOR_FORMAT_ARGB_RAW=1, COLOR_FORMAT_ARGB_NORMALIZE=2 };
+enum ENUM_OPENCL_PROPERTY_INTEGER { CL_PLATFORM_VENDOR=0, CL_DEVICE_TYPE=1, CL_DEVICE_VENDOR_ID=2, CL_DEVICE_MAX_COMPUTE_UNITS=3, CL_DEVICE_MAX_CLOCK_FREQUENCY=4, CL_DEVICE_GLOBAL_MEM_SIZE=5, CL_DEVICE_LOCAL_MEM_SIZE=6, CL_BUFFER_SIZE=7, CL_KERNEL_WORK_GROUP_SIZE=8, CL_KERNEL_LOCAL_MEM_SIZE=9, CL_KERNEL_PRIVATE_MEM_SIZE=10 };
+enum ENUM_CRYPT_METHOD { CRYPT_BASE64=0, CRYPT_AES128=1, CRYPT_AES256=2, CRYPT_DES=3, CRYPT_HASH_SHA1=4, CRYPT_HASH_SHA256=5, CRYPT_HASH_MD5=6, CRYPT_ARCH_ZIP=7 };
+
 int DatabaseOpen(string filename, uint flags);
 void DatabaseClose(int database);
 bool DatabaseExecute(int database, string sql);
 int DatabasePrepare(int database, string sql, ...);
 bool DatabaseReset(int request);
 bool DatabaseRead(int request);
-bool DatabaseReadBind(int request, void& struct_object);
+bool DatabaseReadBind(int request, void* struct_object);
 void DatabaseFinalize(int request);
 bool DatabaseTransactionBegin(int database);
 bool DatabaseTransactionCommit(int database);
@@ -1110,7 +1196,7 @@ int DatabaseColumnSize(int request, int column);
 string DatabaseColumnText(int request, int column);
 long DatabaseColumnInteger(int request, int column);
 double DatabaseColumnDouble(int request, int column);
-bool DatabaseColumnBlob(int request, int column, void& data[]);
+bool DatabaseColumnBlob(int request, int column, void* data[]);
 bool DatabaseTableExists(int database, string table);
 bool DatabaseExport(int database, string table_or_sql, string filename, uint flags, string separator);
 bool DatabaseImport(int database, string filename, string table, uint flags, string separator, ulong skip_rows, string skip_comments);
@@ -1173,9 +1259,6 @@ bool PlotIndexSetString(int plot_index, int prop_id, string prop_value);
 int PlotIndexGetInteger(int plot_index, int prop_id);
 bool SetIndexBuffer(int index, double buffer[], ENUM_INDEXBUFFER_TYPE data_type = INDICATOR_DATA);
 
-// Index buffer enum
-enum ENUM_INDEXBUFFER_TYPE { INDICATOR_DATA=0, INDICATOR_COLOR_INDEX=1, INDICATOR_CALCULATIONS=2 };
-
 // Event handling
 bool EventSetTimer(int seconds);
 bool EventSetMillisecondTimer(int milliseconds);
@@ -1203,8 +1286,6 @@ bool ResourceFree(string resource_name);
 bool ResourceReadImage(string resource_name, uint data[], uint& width, uint& height);
 bool ResourceSave(string resource_name, string file_name);
 
-enum ENUM_COLOR_FORMAT { COLOR_FORMAT_XRGB_NOALPHA=0, COLOR_FORMAT_ARGB_RAW=1, COLOR_FORMAT_ARGB_NORMALIZE=2 };
-
 // OpenCL functions
 int CLHandleType(int handle);
 int CLGetInfoInteger(int handle, ENUM_OPENCL_PROPERTY_INTEGER prop);
@@ -1215,13 +1296,9 @@ bool CLBufferFree(int buffer);
 bool CLBufferWrite(int buffer, const void* data, uint buffer_offset = 0, uint data_offset = 0, uint data_count = 0);
 bool CLBufferRead(int buffer, void* data, uint buffer_offset = 0, uint data_offset = 0, uint data_count = 0);
 
-enum ENUM_OPENCL_PROPERTY_INTEGER { CL_PLATFORM_VENDOR=0, CL_DEVICE_TYPE=1, CL_DEVICE_VENDOR_ID=2, CL_DEVICE_MAX_COMPUTE_UNITS=3, CL_DEVICE_MAX_CLOCK_FREQUENCY=4, CL_DEVICE_GLOBAL_MEM_SIZE=5, CL_DEVICE_LOCAL_MEM_SIZE=6, CL_BUFFER_SIZE=7, CL_KERNEL_WORK_GROUP_SIZE=8, CL_KERNEL_LOCAL_MEM_SIZE=9, CL_KERNEL_PRIVATE_MEM_SIZE=10 };
-
 // Cryptography functions
 int CryptEncode(ENUM_CRYPT_METHOD method, const uchar data[], const uchar key[], uchar result[]);
 int CryptDecode(ENUM_CRYPT_METHOD method, const uchar data[], const uchar key[], uchar result[]);
-
-enum ENUM_CRYPT_METHOD { CRYPT_BASE64=0, CRYPT_AES128=1, CRYPT_AES256=2, CRYPT_DES=3, CRYPT_HASH_SHA1=4, CRYPT_HASH_SHA256=5, CRYPT_HASH_MD5=6, CRYPT_ARCH_ZIP=7 };
 
 // Economic Calendar functions
 int CalendarCountries(MqlCalendarCountry countries[]);
@@ -1267,11 +1344,30 @@ int CheckPointer(void* pointer);
 
 // Type checking
 template<typename T> bool IsSigned(const T& value);
-template<typename T> string typename(const T& value);
+template<typename T> string _typename(const T& value);
+#define typename(v) _typename(v)
 
 // ZeroMemory
 template<typename T> void ZeroMemory(T& variable);
 template<typename T> void ArrayInitialize(T array[], T value);
+
+//+------------------------------------------------------------------+
+//| CObject - Base class for Standard Library                        |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+class CObject {
+public:
+  CObject() {}
+  virtual ~CObject() {}
+  virtual int Type() const { return 0; }
+  virtual int Compare(const CObject *node, int mode = 0) const { return 0; }
+  virtual bool Save(int handle) { return true; }
+  virtual bool Load(int handle) { return true; }
+  CObject *Prev() const { return (CObject *)0; }
+  void Prev(CObject *node) {}
+  CObject *Next() const { return (CObject *)0; }
+  void Next(CObject *node) {}
+};
 
 //+------------------------------------------------------------------+
 //| MQL5 Standard Library Stubs                                      |

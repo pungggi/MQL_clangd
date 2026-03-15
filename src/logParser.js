@@ -40,11 +40,14 @@ function readFileWithEncoding(filePath) {
  * We care about the message part after the EA column.
  */
 
+const RE_TIMESTAMP_PATTERN = /\\d{4}\\.\\d{2}\\.\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}/.source;
+const RE_TIMESTAMP_PREFIX = `(?:${RE_TIMESTAMP_PATTERN}\\s*)?`;
+
 // Format A (MT5 Tester): [EAName] LEVEL {File:Func:Line}: message
-const RE_EA_LINE = /^(?:\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\s*)?\[([^\]]+)\]\s+(INFO|DEBUG|TRADE|ERROR|WARN)\s+(?:\{([^:}]+):([^:}]+):(\d+)\}:\s*)?(.+)$/;
+const RE_EA_LINE = new RegExp(`^${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(INFO|DEBUG|TRADE|ERROR|WARN)\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
 
 // Format B (LiveLog):    [LEVEL] {File:Func:Line}: message
-const RE_LIVELOG_LINE = /^(?:\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\s*)?\[(INFO|DEBUG|TRADE|ERROR|WARN)\]\s+(?:\{([^:}]+):([^:}]+):(\d+)\}:\s*)?(.+)$/;
+const RE_LIVELOG_LINE = new RegExp(`^${RE_TIMESTAMP_PREFIX}\\[(INFO|DEBUG|TRADE|ERROR|WARN)\\]\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
 
 function parseLine(text) {
     // Split on tabs — MT5 tester logs are tab-delimited
@@ -76,7 +79,7 @@ function parseLogFile(logPath) {
     // Format B: [LEVEL] {File:...} → no EA name in brackets, try Tester source col
     let eaName = null;
     for (let i = 0; i < Math.min(rawLines.length, 200); i++) {
-        const m = rawLines[i].match(/(?:\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\s*)?\[([^\]]+)\]\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\s/);
+        const m = rawLines[i].match(new RegExp(`${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`));
         if (m && !['INFO', 'DEBUG', 'TRADE', 'ERROR', 'WARN'].includes(m[1])) {
             eaName = m[1];
             break;
@@ -154,7 +157,7 @@ function parseLogFile(logPath) {
         }
 
         // Extract the simulated timestamp from the payload (e.g. "2026.02.13 15:20:00")
-        const tsMatch = payload.match(/(\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2})/);
+        const tsMatch = payload.match(new RegExp(`(${RE_TIMESTAMP_PATTERN})`));
         const timestamp = tsMatch ? tsMatch[1] : '';
 
         const entry = {
@@ -458,7 +461,7 @@ function parseLogSummary(logPath) {
 
         // EA name (skip level-only brackets from LiveLog format)
         if (!eaName) {
-            const m = payload.match(/^(?:\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\s*)?\[([^\]]+)\]\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\s/);
+            const m = payload.match(new RegExp(`^${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`));
             if (m && !['INFO', 'DEBUG', 'TRADE', 'ERROR', 'WARN'].includes(m[1])) eaName = m[1];
         }
         if (!eaName && (source === 'Tester' || source.startsWith('Tester'))) {

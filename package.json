@@ -6,7 +6,7 @@
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
-        "node": ">22.0.0"
+        "node": ">=22.0.0"
     },
     "categories": [
         "Programming Languages",
@@ -466,7 +466,7 @@
                     "group": "navigation"
                 },
                 {
-                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Check == true|| resourceExtname == .mq5 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Check == true",
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Check == true",
                     "command": "mql_tools.checkFile",
                     "group": "navigation"
                 },

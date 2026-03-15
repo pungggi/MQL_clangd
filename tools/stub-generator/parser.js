@@ -359,6 +359,13 @@ class MqlParser {
                 continue;
             }
 
+            // Skip nested enum/class/struct declarations (forward decls or full definitions inside a class)
+            // These are already parsed at the top level and cause invalid C++ if re-emitted as forward decls
+            if (/^(enum|class|struct)\s+\w+/.test(line)) {
+                i++;
+                continue;
+            }
+
             // Collect multi-line declarations
             let fullDecl = line;
             while (!fullDecl.includes(';') && !fullDecl.includes('{') && i + 1 < lines.length) {

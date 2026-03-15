@@ -34,5 +34,5 @@
     "mql_tools.commands.openTradingTerminal.title": "Kereskedési terminál megnyitása",
     "mql_tools.commands.createCommentary.title": "Függvény megjegyzés létrehozása",
     "mql_tools.commands.reportNoisyDiagnostic.title": "Zajos clangd diagnosztika jelentése",
-    "mql_tools.commands.runBacktest.title": "Run Backtest"
+    "mql_tools.commands.runBacktest.title": "Visszateszt futtatása"
 }

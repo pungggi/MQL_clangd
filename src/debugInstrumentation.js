@@ -20,12 +20,16 @@ class MqlLineClassifier {
      * @returns {'preprocessor'|'comment'|'blank'|'open_brace'|'code'}
      */
     classify(line) {
-        const trimmed = line.trimStart();
+        let trimmed = line.trimStart();
 
         // Update block-comment state first
         if (this._inBlockComment) {
-            if (trimmed.includes('*/')) {
+            const endIdx = trimmed.indexOf('*/');
+            if (endIdx !== -1) {
                 this._inBlockComment = false;
+                const remaining = trimmed.substring(endIdx + 2).trimStart();
+                if (remaining === '') return 'comment';
+                return this.classify(remaining);
             }
             return 'comment';
         }
@@ -33,7 +37,13 @@ class MqlLineClassifier {
         if (trimmed === '') return 'blank';
         if (trimmed.startsWith('//')) return 'comment';
         if (trimmed.startsWith('/*')) {
-            if (!trimmed.includes('*/')) this._inBlockComment = true;
+            const endIdx = trimmed.indexOf('*/', 2);
+            if (endIdx !== -1) {
+                const remaining = trimmed.substring(endIdx + 2).trimStart();
+                if (remaining === '') return 'comment';
+                return this.classify(remaining);
+            }
+            this._inBlockComment = true;
             return 'comment';
         }
         if (trimmed.startsWith('#')) return 'preprocessor';
@@ -48,6 +58,38 @@ class MqlLineClassifier {
     }
 
     reset() { this._inBlockComment = false; }
+}
+
+/**
+ * Validate that a condition string has balanced delimiters and quotes.
+ * @param {string} condition
+ * @returns {boolean}
+ */
+function isConditionSafe(condition) {
+    if (!condition || !condition.trim()) return false;
+    const stack = [];
+    const pairs = { '(': ')', '[': ']', '{': '}' };
+    let inQuote = null;
+
+    for (let i = 0; i < condition.length; i++) {
+        const char = condition[i];
+        if (inQuote) {
+            if (char === inQuote && condition[i - 1] !== '\\') {
+                inQuote = null;
+            }
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            inQuote = char;
+            continue;
+        }
+        if (pairs[char]) {
+            stack.push(pairs[char]);
+        } else if (char === ')' || char === ']' || char === '}') {
+            if (stack.pop() !== char) return false;
+        }
+    }
+    return stack.length === 0 && !inQuote;
 }
 
 /**
@@ -121,7 +163,16 @@ function buildInjectionLines(label, watchVars, condition) {
     const body = [breakLine, ...watchLines].join('\n  ');
 
     if (condition && condition.trim()) {
-        return [`if (${condition}) { ${body} }`];
+        if (isConditionSafe(condition)) {
+            return [`if (${condition}) { ${body} }`];
+        } else {
+            // Fallback for malformed conditions: inject unconditional break plus a comment
+            return [
+                `// Invalid breakpoint condition: ${condition}`,
+                breakLine,
+                ...watchLines
+            ];
+        }
     }
     return [breakLine, ...watchLines];
 }
@@ -179,6 +230,7 @@ function instrumentSource(sourcePath, breakpoints) {
         content = raw.toString('utf8').replace(/^\uFEFF/, '');
     }
 
+    const eol = content.includes('\r\n') ? '\r\n' : '\n';
     const lines  = content.split(/\r?\n/);
     const skipped = [];
 
@@ -209,7 +261,7 @@ function instrumentSource(sourcePath, breakpoints) {
     ensureInclude(lines);
 
     // Write temp file as UTF-8 (MetaEditor accepts UTF-8 for .mq5)
-    fs.writeFileSync(tempPath, lines.join('\n'), 'utf8');
+    fs.writeFileSync(tempPath, lines.join(eol), 'utf8');
 
     const restore = () => {
         try { fs.unlinkSync(tempPath); } catch { /* already gone */ }

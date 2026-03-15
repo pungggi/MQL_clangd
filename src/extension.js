@@ -59,7 +59,12 @@ const {
 const logTailer = require('./logTailer');
 const { TradeReportDashboard } = require('./tradeReportDashboard');
 const { runBacktest, stopServer: stopBacktestServer } = require('./backtestRunner');
-const { bridge: debugBridge } = require('./debugBridge');
+const {
+    bridge: debugBridge,
+    COMPILE_MODE_CHECK,
+    COMPILE_MODE_COMPILE,
+    COMPILE_MODE_SCRIPT
+} = require('./debugBridge');
 const { MqlDebugPanel } = require('./debugPanel');
 const { store: debugStore } = require('./debugStateStore');
 
@@ -414,11 +419,11 @@ async function compilePath(rt, pathToCompile, _context) {
 
     // Set teq label based on operation type
     switch (rt) {
-        case 0: teq = lg['checking'];
+        case COMPILE_MODE_CHECK: teq = lg['checking'];
             break;
-        case 1: teq = lg['compiling'];
+        case COMPILE_MODE_COMPILE: teq = lg['compiling'];
             break;
-        case 2: teq = lg['comp_usi_script'];
+        case COMPILE_MODE_SCRIPT: teq = lg['comp_usi_script'];
             break;
     }
 
@@ -596,7 +601,7 @@ async function compilePath(rt, pathToCompile, _context) {
 
             // Pass the Wine prefix so replaceLog can convert Windows paths from
             // MetaEditor output to valid Linux paths when running under Wine.
-            log = replaceLog(data, rt === 0, useWine ? winePrefix : '');
+            log = replaceLog(data, rt === COMPILE_MODE_CHECK, useWine ? winePrefix : '');
 
             // Publish MetaEditor diagnostics to the Problems panel
             if (log.diagnostics.length > 0) {
@@ -626,7 +631,7 @@ async function compilePath(rt, pathToCompile, _context) {
 
             outputChannel.appendLine(`[${time}] ${teq} ${targetLabel} [${timeCompile}s]`);
 
-            if (rt === 2 && !log.error) {
+            if (rt === COMPILE_MODE_SCRIPT && !log.error) {
                 if (useWine) {
                     try {
                         const wineEnv = getWineEnv(config);
@@ -773,23 +778,24 @@ async function Compile(rt, context, options = {}) {
         }
 
         if (targets.length === 0) {
-            // No targets resolved by mapping/inference (or user cancelled)
-            // Fall back to magic comment for backward compatibility
-            const magicPath = FindParentFile();
-            if (magicPath && fs.existsSync(magicPath)) {
-                pathsToCompile = [magicPath];
-            } else {
-                // If rt === 0 (checking), we can't fall back to current file for headers effectively
-                // but we should check if we should allow checking the header itself or just warn.
-                // Existing behavior for rt !== 0 was to warn.
-                if (rt !== 0) {
-                    return vscode.window.showWarningMessage(lg['mqh']);
-                } else {
-                    // For rt === 0, if no target found, just check the header itself as a fallback
-                    pathsToCompile = [document.fileName];
-                }
-            }
+        // No targets resolved by mapping/inference (or user cancelled)
+        // Fall back to magic comment for backward compatibility
+        const magicPath = FindParentFile();
+        if (magicPath && fs.existsSync(magicPath)) {
+        pathsToCompile = [magicPath];
         } else {
+        // If rt === COMPILE_MODE_CHECK (checking), we can't fall back to current file for headers effectively
+        // but we should check if we should allow checking the header itself or just warn.
+        // Existing behavior for rt !== COMPILE_MODE_CHECK was to warn.
+        if (rt !== COMPILE_MODE_CHECK) {
+            return vscode.window.showWarningMessage(lg['mqh']);
+        } else {
+            // For rt === COMPILE_MODE_CHECK, if no target found, just check the header itself as a fallback
+            pathsToCompile = [document.fileName];
+        }
+        }
+        } else {
+
             pathsToCompile = targets;
         }
     } else {
@@ -807,7 +813,7 @@ async function Compile(rt, context, options = {}) {
 
     // const startT = new Date();
     // const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
-    const teq = rt === 0 ? lg['checking'] : (rt === 1 ? lg['compiling'] : lg['comp_usi_script']);
+    const teq = rt === COMPILE_MODE_CHECK ? lg['checking'] : (rt === COMPILE_MODE_COMPILE ? lg['compiling'] : lg['comp_usi_script']);
 
 
     let progressTitle = buildCompileProgressTitle(teq);
@@ -2372,6 +2378,13 @@ function findExpertsDir() {
 
 /**
  * Derive the MQL5 (or MQL4) root from the Experts dir.
+ * 
+ * ASSUMPTION: This assumes the 'Experts/' directory is a direct child of the 
+ * MQL root (e.g., MQL5/Experts). Since findExpertsDir() only searches standard 
+ * terminal/data paths, this function returns pathModule.dirname(expertsDir).
+ * This may be inaccurate for non-standard or deeply nested layouts; callers 
+ * should validate the returned path if strict accuracy is required.
+ * 
  * @returns {string|null}
  */
 function findMql5Root() {
@@ -2442,10 +2455,10 @@ function activate(context) {
         }
     });
 
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(0, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => Compile(1, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFileAndOpenTerminal', () => Compile(1, context, { onSuccess: OpenTradingTerminal })));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => Compile(2, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(COMPILE_MODE_CHECK, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => Compile(COMPILE_MODE_COMPILE, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFileAndOpenTerminal', () => Compile(COMPILE_MODE_COMPILE, context, { onSuccess: OpenTradingTerminal })));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => Compile(COMPILE_MODE_SCRIPT, context)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.help', (keyword, version) => Help(keyword, version)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.offlineHelp', () => OfflineHelp()));
 
@@ -2658,7 +2671,6 @@ function activate(context) {
     }));
 
     // MQL Debugger Bridge — Phase 1: instrument source + file-watch variable panel
-    let _debugPanel = null;
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.startDebugging', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -2678,12 +2690,8 @@ function activate(context) {
             return;
         }
 
-        if (!_debugPanel) {
-            _debugPanel = new MqlDebugPanel(debugStore, context);
-        }
-
         await debugBridge.start(sourcePath, mql5Root, compilePath, context, () => {
-            _debugPanel.show();
+            MqlDebugPanel.show(debugStore, context);
         });
     }));
 
@@ -2744,7 +2752,7 @@ function activate(context) {
             const checkingUri = activeDoc?.uri.toString();
 
             try {
-                await Compile(0, context, { background: true }); // Syntax check (no compilation)
+                await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check (no compilation)
             } finally {
                 // Record the final document version after our edits complete
                 // This prevents re-triggering from FixFormatting or save changes
@@ -2788,7 +2796,7 @@ function activate(context) {
 
         isAutoCheckRunning = true;
         try {
-            await Compile(0, context, { background: true }); // Syntax check
+            await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check
         } finally {
             isAutoCheckRunning = false;
         }
@@ -2804,7 +2812,7 @@ function activate(context) {
             if (['.mq4', '.mq5', '.mqh'].includes(ext)) {
                 isAutoCheckRunning = true;
                 try {
-                    await Compile(0, context, { background: true }); // Syntax check on startup
+                    await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check on startup
                 } finally {
                     isAutoCheckRunning = false;
                 }
@@ -2858,9 +2866,23 @@ function activate(context) {
 }
 
 function deactivate() {
-    logTailer.stop();
-    stopBacktestServer();
-    debugBridge.stop();
+    try {
+        logTailer.stop();
+    } catch (error) {
+        console.error('Error during logTailer.stop():', error);
+    }
+
+    try {
+        stopBacktestServer();
+    } catch (error) {
+        console.error('Error during stopBacktestServer():', error);
+    }
+
+    try {
+        debugBridge.stop();
+    } catch (error) {
+        console.error('Error during debugBridge.stop():', error);
+    }
 }
 
 

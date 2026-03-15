@@ -10,6 +10,13 @@ const { store }              = require('./debugStateStore');
 const MQLDEBUG_MQH = 'MqlDebug.mqh';
 
 /**
+ * Compile modes for compilePath()
+ */
+const COMPILE_MODE_CHECK   = 0;
+const COMPILE_MODE_COMPILE = 1;
+const COMPILE_MODE_SCRIPT  = 2;
+
+/**
  * MqlDebugBridge — Phase 1 orchestrator.
  *
  * Responsibilities:
@@ -69,7 +76,6 @@ class MqlDebugBridge {
         let tempPath, restore, skipped;
         try {
             ({ tempPath, restore, skipped } = instrumentSource(sourcePath, breakpoints));
-            this._restore = restore;
         } catch (err) {
             vscode.window.showErrorMessage(`MQL Debug: Failed to instrument source: ${err.message}`);
             return;
@@ -82,46 +88,52 @@ class MqlDebugBridge {
         }
 
         // 4. Compile the instrumented temp file
-        vscode.window.withProgress(
+        const success = await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'MQL Debug: Compiling instrumented source…', cancellable: false },
             async () => {
                 let compileError;
                 try {
-                    compileError = await compilePath(1, tempPath, context);
+                    compileError = await compilePath(COMPILE_MODE_COMPILE, tempPath, context);
                 } catch (err) {
                     compileError = err.message || String(err);
                 }
 
                 if (compileError) {
                     restore();
-                    this._restore = null;
                     vscode.window.showErrorMessage(`MQL Debug: Compilation failed — ${compileError}`);
-                    return;
+                    return false;
                 }
-
-                // Compilation succeeded — keep the temp file alive until session ends
-                // (MetaTrader needs the .ex5 which is next to the temp file)
-
-                // 5. Start debug session
-                this._active = true;
-                store.startSession();
-
-                this._reader = new MqlDebugLogReader(mql5Root);
-                this._reader.onBatch  = (evts) => store.applyBatch(evts);
-                this._reader.onError  = (err) => console.error('MqlDebugBridge reader error:', err);
-                this._reader.start();
-
-                // 6. Open the panel
-                openPanel(store);
-
-                vscode.window.showInformationMessage(
-                    'MQL Debug session started. Attach the compiled EA in MetaTrader to begin.',
-                    'Stop Session'
-                ).then(selection => {
-                    if (selection === 'Stop Session') this.stop();
-                });
+                return true;
             }
         );
+
+        if (!success) return;
+
+        // Compilation succeeded — keep the temp file alive until session ends
+        // (MetaTrader needs the .ex5 which is next to the temp file)
+
+        // 5. Start debug session
+        this._active  = true;
+        this._restore = restore;
+        store.startSession();
+
+        this._reader = new MqlDebugLogReader(mql5Root);
+        this._reader.onBatch  = (evts) => store.applyBatch(evts);
+        this._reader.onError  = (err) => {
+            vscode.window.showErrorMessage(`MQL Debug: Log reader error — ${err.message || String(err)}`);
+            this.stop();
+        };
+        this._reader.start();
+
+        // 6. Open the panel
+        openPanel(store);
+
+        vscode.window.showInformationMessage(
+            'MQL Debug session started. Attach the compiled EA in MetaTrader to begin.',
+            'Stop Session'
+        ).then(selection => {
+            if (selection === 'Stop Session') this.stop();
+        });
     }
 
     /** Stop the current debug session and clean up. */
@@ -156,19 +168,24 @@ class MqlDebugBridge {
         const includeDir = path.join(mql5Root, 'Include');
         const targetPath = path.join(includeDir, MQLDEBUG_MQH);
 
-        if (fs.existsSync(targetPath)) return true; // Already deployed
+        try {
+            await fs.promises.access(targetPath);
+            return true; // Already deployed
+        } catch { /* proceed */ }
 
         const extensionPath = context.extensionPath;
         const sourcePath    = path.join(extensionPath, 'files', MQLDEBUG_MQH);
 
-        if (!fs.existsSync(sourcePath)) {
+        try {
+            await fs.promises.access(sourcePath);
+        } catch {
             vscode.window.showErrorMessage(`MQL Debug: Cannot find ${MQLDEBUG_MQH} in extension bundle at: ${sourcePath}`);
             return false;
         }
 
         try {
-            if (!fs.existsSync(includeDir)) fs.mkdirSync(includeDir, { recursive: true });
-            fs.copyFileSync(sourcePath, targetPath);
+            await fs.promises.mkdir(includeDir, { recursive: true });
+            await fs.promises.copyFile(sourcePath, targetPath);
             return true;
         } catch (err) {
             vscode.window.showErrorMessage(`MQL Debug: Failed to deploy ${MQLDEBUG_MQH}: ${err.message}`);
@@ -198,4 +215,9 @@ class MqlDebugBridge {
 
 // Singleton
 const bridge = new MqlDebugBridge();
-module.exports = { bridge };
+module.exports = {
+    bridge,
+    COMPILE_MODE_CHECK,
+    COMPILE_MODE_COMPILE,
+    COMPILE_MODE_SCRIPT
+};
