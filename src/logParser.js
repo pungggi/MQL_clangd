@@ -44,10 +44,10 @@ const RE_TIMESTAMP_PATTERN = /\\d{4}\\.\\d{2}\\.\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}/.
 const RE_TIMESTAMP_PREFIX = `(?:${RE_TIMESTAMP_PATTERN}\\s*)?`;
 
 // Format A (MT5 Tester): [EAName] LEVEL {File:Func:Line}: message
-const RE_EA_LINE = new RegExp(`^${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(INFO|DEBUG|TRADE|ERROR|WARN)\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
+const RE_EA_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(INFO|DEBUG|TRADE|ERROR|WARN)\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
 
 // Format B (LiveLog):    [LEVEL] {File:Func:Line}: message
-const RE_LIVELOG_LINE = new RegExp(`^${RE_TIMESTAMP_PREFIX}\\[(INFO|DEBUG|TRADE|ERROR|WARN)\\]\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
+const RE_LIVELOG_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[(INFO|DEBUG|TRADE|ERROR|WARN)\\]\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
 
 function parseLine(text) {
     // Split on tabs — MT5 tester logs are tab-delimited
@@ -78,8 +78,10 @@ function parseLogFile(logPath) {
     // Format A: [EAName] LEVEL ... → EA name is in the first bracket
     // Format B: [LEVEL] {File:...} → no EA name in brackets, try Tester source col
     let eaName = null;
+    const RE_DETECT_EA = new RegExp(`${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`);
     for (let i = 0; i < Math.min(rawLines.length, 200); i++) {
-        const m = rawLines[i].match(new RegExp(`${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`));
+        const line = rawLines[i].trim();
+        const m = line.match(RE_DETECT_EA);
         if (m && !['INFO', 'DEBUG', 'TRADE', 'ERROR', 'WARN'].includes(m[1])) {
             eaName = m[1];
             break;
@@ -461,7 +463,7 @@ function parseLogSummary(logPath) {
 
         // EA name (skip level-only brackets from LiveLog format)
         if (!eaName) {
-            const m = payload.match(new RegExp(`^${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`));
+            const m = payload.match(new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`));
             if (m && !['INFO', 'DEBUG', 'TRADE', 'ERROR', 'WARN'].includes(m[1])) eaName = m[1];
         }
         if (!eaName && (source === 'Tester' || source.startsWith('Tester'))) {

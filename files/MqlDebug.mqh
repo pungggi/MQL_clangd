@@ -32,23 +32,14 @@ class CMqlDebugState {
 public:
   int __dbgHandle;
   bool __dbgInit;
-  string __dbgFilename;
 
   CMqlDebugState()
-      : __dbgHandle(INVALID_HANDLE), __dbgInit(false), __dbgFilename("") {}
+      : __dbgHandle(INVALID_HANDLE), __dbgInit(false) {}
 };
 
 CMqlDebugState __dbgState;
 
-string __MqlDebugGetFilename() {
-  if (__dbgState.__dbgFilename == "") {
-    __dbgState.__dbgFilename =
-        "mql_debug_" + IntegerToString((long)ChartID()) + "_" +
-        IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)) + "_" +
-        Symbol() + ".log";
-  }
-  return __dbgState.__dbgFilename;
-}
+#define MQLDEBUG_FILENAME "MqlDebug.txt"
 
 //+------------------------------------------------------------------+
 //| Initialize the debug log file                                    |
@@ -58,7 +49,7 @@ bool MqlDebugInit() {
     return true;
 
   __dbgState.__dbgHandle = FileOpen(
-      __MqlDebugGetFilename(), FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI |
+      MQLDEBUG_FILENAME, FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI |
                                    FILE_SHARE_READ | FILE_SHARE_WRITE);
 
   if (__dbgState.__dbgHandle == INVALID_HANDLE) {
@@ -111,8 +102,8 @@ void MqlDebugRotate() {
     StringReplace(timestamp, ":", "_");
     string newName = "MqlDebug_" + timestamp + ".txt";
 
-    if (FileMove(__MqlDebugGetFilename(), 0, newName, FILE_REWRITE)) {
-      __dbgState.__dbgHandle = FileOpen(__MqlDebugGetFilename(),
+    if (FileMove(MQLDEBUG_FILENAME, 0, newName, FILE_REWRITE)) {
+      __dbgState.__dbgHandle = FileOpen(MQLDEBUG_FILENAME,
                                         FILE_WRITE | FILE_TXT | FILE_ANSI |
                                             FILE_SHARE_READ | FILE_SHARE_WRITE);
       if (__dbgState.__dbgHandle != INVALID_HANDLE) {

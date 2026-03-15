@@ -3,8 +3,10 @@ const vscode = require('vscode');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const { COMPILE_MODE_CHECK } = require('./debugBridge');
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -97,6 +99,32 @@ async function pingServer(port = DEFAULT_PORT) {
 }
 
 /**
+ * Verify if the process at 'pid' is actually our node server.
+ * @param {number} pid
+ * @param {string} serverDir
+ * @returns {Promise<boolean>}
+ */
+async function isProcessOurServer(pid, serverDir) {
+    try {
+        let cmd = '';
+        if (process.platform === 'win32') {
+            // powershell is more robust for getting the full command line
+            const { stdout } = await execPromise(`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' | Select-Object -ExpandProperty CommandLine"`, { timeout: 3000 });
+            cmd = stdout;
+        } else {
+            const { stdout } = await execPromise(`ps -p ${pid} -o command=`, { timeout: 3000 });
+            cmd = stdout;
+        }
+
+        const lowerCmd = cmd.toLowerCase();
+        // Check for 'node' and either the server directory path or the entry script name
+        return lowerCmd.includes('node') && (lowerCmd.includes('tradeportserver') || lowerCmd.includes('src/index.js'));
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Auto-start the TradeReportServer if it isn't already running.
  * @param {string} serverDir  Absolute path to the TradeReportServer directory
  * @param {number} port
@@ -119,12 +147,17 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
                 // Check if process is still running
                 try {
                     process.kill(pid, 0); // throws if not running
+
                     // If running, see if it responds on our port
                     if (await pingServer(port)) {
                         return true;
                     }
-                    // If not responding, kill it and restart
-                    process.kill(pid, process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL');
+
+                    // If not responding, verify it's ours before killing
+                    if (await isProcessOurServer(pid, serverDir)) {
+                        process.kill(pid, process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL');
+                    }
+                    // If not ours, we just proceed (stale PID from another process)
                 } catch { /* process not running — proceed */ }
             }
             fs.unlinkSync(pidPath);

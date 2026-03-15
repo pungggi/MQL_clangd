@@ -265,6 +265,12 @@ function instrumentSource(sourcePath, breakpoints) {
 
     const restore = () => {
         try { fs.unlinkSync(tempPath); } catch { /* already gone */ }
+
+        // Also delete compiled binary (.ex4 or .ex5)
+        const binaryPath = tempPath.replace(/\.mq[45]$/i, ext === '.mq5' ? '.ex5' : '.ex4');
+        if (binaryPath !== tempPath) {
+            try { fs.unlinkSync(binaryPath); } catch { /* ignore if not created */ }
+        }
     };
 
     return { tempPath, restore, skipped };

@@ -2873,7 +2873,9 @@ function deactivate() {
     }
 
     try {
-        stopBacktestServer();
+        const mql5Root = findMql5Root();
+        const serverDir = mql5Root ? pathModule.join(mql5Root, 'Tools', 'TradeReportServer') : null;
+        stopBacktestServer(undefined, serverDir);
     } catch (error) {
         console.error('Error during stopBacktestServer():', error);
     }
