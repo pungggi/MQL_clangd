@@ -1,6 +1,7 @@
 'use strict';
 const vscode = require('vscode');
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 
 // LiveLog configuration
@@ -419,23 +420,23 @@ class MqlLogTailer {
     /**
      * Checks for new content in the log file.
      */
-    checkForNewContent() {
+    async checkForNewContent() {
         if (!this.isTailing) return;
 
         try {
-            if (fs.existsSync(this.currentFilePath)) {
-                const stats = fs.statSync(this.currentFilePath);
+            const stats = await fsPromises.stat(this.currentFilePath);
 
-                if (stats.size > this.lastSize) {
-                    this.readNewLines(stats.size);
-                } else if (stats.size < this.lastSize) {
-                    // File was truncated or cleared
-                    this.lastSize = 0;
-                    this.outputChannel.appendLine('[Info] Log file truncated. Refreshing...');
-                }
+            if (stats.size > this.lastSize) {
+                this.readNewLines(stats.size);
+            } else if (stats.size < this.lastSize) {
+                // File was truncated or cleared
+                this.lastSize = 0;
+                this.outputChannel.appendLine('[Info] Log file truncated. Refreshing...');
             }
         } catch (err) {
-            console.error('MQL Tailer content check error:', err);
+            if (err.code !== 'ENOENT') {
+                console.error('MQL Tailer content check error:', err);
+            }
         }
     }
 
@@ -443,7 +444,7 @@ class MqlLogTailer {
      * Backup polling loop for edge cases (file rotation, watcher not set up).
      * Runs less frequently since watcher handles most updates.
      */
-    poll() {
+    async poll() {
         if (!this.isTailing) return;
 
         try {
@@ -460,12 +461,17 @@ class MqlLogTailer {
             }
 
             // Ensure watcher is running (recreate if file now exists or watcher died)
-            if (!this.watcher && fs.existsSync(this.currentFilePath)) {
-                this.setupWatcher();
+            if (!this.watcher) {
+                try {
+                    await fsPromises.access(this.currentFilePath);
+                    this.setupWatcher();
+                } catch {
+                    // File doesn't exist yet, skip
+                }
             }
 
             // Also check for content in case watcher missed something
-            this.checkForNewContent();
+            await this.checkForNewContent();
         } catch (err) {
             console.error('MQL Tailer poll error:', err);
         }

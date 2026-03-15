@@ -357,9 +357,7 @@ class StubGenerator {
      * @param {string} headerName - Name for the header comment
      * @returns {string} The complete header file content
      */
-    generateHeader(parsedDataArrayInput, headerName = 'generated_stubs') {
-        // Prevent mutation of input array since updateTypeReferences modifies it
-        const parsedDataArray = structuredClone(parsedDataArrayInput);
+    generateHeader(parsedDataArray, headerName = 'generated_stubs') {
         const lines = [];
 
         // File header
@@ -378,64 +376,9 @@ class StubGenerator {
         lines.push('#ifdef __clang__');
         lines.push('');
 
-        // Forward declarations for all classes and their base classes
-        const allClasses = [];
-        const baseClasses = new Set();
-
-        for (const data of parsedDataArray) {
-            for (const cls of data.classes) {
-                if (!allClasses.find(c => c.name === cls.name)) {
-                    allClasses.push(cls);
-                }
-                if (cls.baseClass) {
-                    baseClasses.add(cls.baseClass);
-                }
-            }
-        }
-
-        lines.push('// Forward declarations');
-        // First, forward declare everything we have definitions for
-        for (const cls of allClasses) {
-            // Template classes cannot be forward-declared without template params
-            const templateParams = this.detectTemplateParams(cls);
-            if (templateParams.length > 0) {
-                baseClasses.delete(cls.name);
-                continue; // Skip — template definition itself serves as declaration
-            }
-            const keyword = cls.isStruct ? 'struct' : 'class';
-            lines.push(`${keyword} ${cls.name};`);
-            baseClasses.delete(cls.name); // Remove if we already declared it
-        }
-
-        // Collect value member types that aren't in allClasses (need forward decls too)
-        const allClassNames = new Set(allClasses.map(c => c.name));
-        for (const cls of allClasses) {
-            for (const member of cls.members) {
-                if (!member.type.includes('*') && !member.type.includes('&')) {
-                    const typeName = member.type.replace(/[\s*&]+/g, ' ').trim().split(/\s+/)[0];
-                    if (typeName && /^[A-Z]/.test(typeName) && !allClassNames.has(typeName)) {
-                        baseClasses.add(typeName);
-                    }
-                }
-            }
-        }
-
-        // Then, forward declare base classes that weren't in our definitions
-        // (Assuming they are classes unless we know otherwise)
-        if (baseClasses.size > 0) {
-            lines.push('// Base classes from other headers');
-            for (const base of baseClasses) {
-                // Skip common built-in types that might be used as base but aren't classes
-                if (['CObject', 'CArray', 'CList', 'CTreeNode'].includes(base)) {
-                    lines.push(`class ${base};`);
-                } else {
-                    // MQL5 uses struct for many built-ins like MqlTradeRequest
-                    const keyword = base.startsWith('Mql') ? 'struct' : 'class';
-                    lines.push(`${keyword} ${base};`);
-                }
-            }
-        }
-        lines.push('');
+        // classesPerData holds the (possibly type-reference-updated) classes for each data entry.
+        // Starts as a direct reference to d.classes; replaced with a new array only on enum collision.
+        const classesPerData = parsedDataArray.map(d => d.classes);
 
         // Manual extras: constants, typedefs, and types not captured by the parser
         // (MQL5 macros, Windows API types, function pointer typedefs)
@@ -479,38 +422,53 @@ class StubGenerator {
             return true;
         };
 
-        // Helper to update type references in classes when an enum is renamed
+        // Helper to update type references in classes when an enum is renamed.
+        // Returns a new classes array with only the affected objects shallow-copied;
+        // unaffected classes/members/params are reused as-is (no full deep clone).
         const updateTypeReferences = (classes, oldName, newName) => {
-            // Regex to match whole word type name
             const regex = new RegExp(`\\b${oldName}\\b`, 'g');
             const update = (s) => s ? s.replace(regex, newName) : s;
 
-            for (const cls of classes) {
-                for (const m of cls.members) {
-                    m.type = update(m.type);
-                }
-                for (const m of cls.methods) {
-                    m.returnType = update(m.returnType);
-                    for (const p of m.params) {
-                        p.type = update(p.type);
+            return classes.map(cls => {
+                const newMembers = cls.members.map(m => {
+                    const t = update(m.type);
+                    return t !== m.type ? { ...m, type: t } : m;
+                });
+                const newMethods = cls.methods.map(m => {
+                    const rt = update(m.returnType);
+                    const newParams = m.params.map(p => {
+                        const t = update(p.type);
+                        return t !== p.type ? { ...p, type: t } : p;
+                    });
+                    const paramsChanged = newParams.some((p, i) => p !== m.params[i]);
+                    if (rt !== m.returnType || paramsChanged) {
+                        return { ...m, returnType: rt, params: newParams };
                     }
+                    return m;
+                });
+                const membersChanged = newMembers.some((m, i) => m !== cls.members[i]);
+                const methodsChanged = newMethods.some((m, i) => m !== cls.methods[i]);
+                if (membersChanged || methodsChanged) {
+                    return { ...cls, members: newMembers, methods: newMethods };
                 }
-            }
+                return cls;
+            });
         };
 
         // Process enums: deduplicate and handle collisions (unless skipEnums is enabled)
         const finalEnums = [];
         if (!this.skipEnums) {
-            const processedEnums = new Map(); // name -> enumObj
+            const processedEnums = new Map(); // name -> { name, values }
 
-            for (const data of parsedDataArray) {
+            for (let i = 0; i < parsedDataArray.length; i++) {
+                const data = parsedDataArray[i];
                 for (const enumObj of data.enums) {
                     if (processedEnums.has(enumObj.name)) {
                         const existing = processedEnums.get(enumObj.name);
                         if (areEnumsEqual(existing, enumObj)) {
                             continue; // Exact duplicate, skip
                         } else {
-                            // Collision! Rename current enum
+                            // Collision! Use a renamed copy to avoid mutating input
                             const oldName = enumObj.name;
                             let counter = 2;
                             let newName = `${oldName}_${counter}`;
@@ -519,12 +477,12 @@ class StubGenerator {
                                 newName = `${oldName}_${counter}`;
                             }
 
-                            enumObj.name = newName;
-                            processedEnums.set(newName, enumObj);
-                            finalEnums.push(enumObj);
+                            const renamedEnum = { ...enumObj, name: newName };
+                            processedEnums.set(newName, renamedEnum);
+                            finalEnums.push(renamedEnum);
 
-                            // Update references in this file's classes
-                            updateTypeReferences(data.classes, oldName, newName);
+                            // Update type references — returns new array, no mutation of input
+                            classesPerData[i] = updateTypeReferences(classesPerData[i], oldName, newName);
                         }
                     } else {
                         processedEnums.set(enumObj.name, enumObj);
@@ -540,6 +498,66 @@ class StubGenerator {
                 lines.push('');
             }
         }
+
+        // Build allClasses from (possibly updated) classesPerData — after enum processing
+        const allClasses = [];
+        const allClassNamesSet = new Set();
+        const baseClasses = new Set();
+
+        for (const classes of classesPerData) {
+            for (const cls of classes) {
+                if (!allClassNamesSet.has(cls.name)) {
+                    allClassNamesSet.add(cls.name);
+                    allClasses.push(cls);
+                }
+                if (cls.baseClass) {
+                    baseClasses.add(cls.baseClass);
+                }
+            }
+        }
+
+        lines.push('// Forward declarations');
+        // First, forward declare everything we have definitions for
+        for (const cls of allClasses) {
+            // Template classes cannot be forward-declared without template params
+            const templateParams = this.detectTemplateParams(cls);
+            if (templateParams.length > 0) {
+                baseClasses.delete(cls.name);
+                continue; // Skip — template definition itself serves as declaration
+            }
+            const keyword = cls.isStruct ? 'struct' : 'class';
+            lines.push(`${keyword} ${cls.name};`);
+            baseClasses.delete(cls.name); // Remove if we already declared it
+        }
+
+        // Collect value member types that aren't in allClasses (need forward decls too)
+        for (const cls of allClasses) {
+            for (const member of cls.members) {
+                if (!member.type.includes('*') && !member.type.includes('&')) {
+                    const typeName = member.type.replace(/[\s*&]+/g, ' ').trim().split(/\s+/)[0];
+                    if (typeName && /^[A-Z]/.test(typeName) && !allClassNamesSet.has(typeName)) {
+                        baseClasses.add(typeName);
+                    }
+                }
+            }
+        }
+
+        // Then, forward declare base classes that weren't in our definitions
+        // (Assuming they are classes unless we know otherwise)
+        if (baseClasses.size > 0) {
+            lines.push('// Base classes from other headers');
+            for (const base of baseClasses) {
+                // Skip common built-in types that might be used as base but aren't classes
+                if (['CObject', 'CArray', 'CList', 'CTreeNode'].includes(base)) {
+                    lines.push(`class ${base};`);
+                } else {
+                    // MQL5 uses struct for many built-ins like MqlTradeRequest
+                    const keyword = base.startsWith('Mql') ? 'struct' : 'class';
+                    lines.push(`${keyword} ${base};`);
+                }
+            }
+        }
+        lines.push('');
 
         // Generate class definitions (unless forwardDeclOnly mode)
         if (!this.forwardDeclOnly) {

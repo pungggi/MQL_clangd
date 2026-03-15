@@ -5,7 +5,11 @@ const fs = require('fs');
 const lg = require('./language');
 const { resolvePathRelativeToWorkspace } = require('./createProperties');
 const err_codes = require('../data/error-codes.json');
-const obj_items = require('../data/items.json');
+let _obj_items = null;
+function getObjItems() {
+    if (!_obj_items) _obj_items = require('../data/items.json');
+    return _obj_items;
+}
 const colorW = require('../data/color.json');
 
 // Lazy-initialized VS Code-dependent values (must not access vscode at module load time)
@@ -29,12 +33,21 @@ function getMiniIconPath() {
 // DOCUMENT SYMBOL EXTRACTION - For document-aware completion
 // =============================================================================
 
+// Cache: uri -> { version, symbols }
+const _symbolCache = new Map();
+
 /**
  * Extract symbols (variables, functions, defines, classes, structs) from document
  * @param {vscode.TextDocument} document
  * @returns {{ variables: Array, functions: Array, defines: Array, classes: Array, inputs: Array }}
  */
 function extractDocumentSymbols(document) {
+    const key = document.uri.toString();
+    const cached = _symbolCache.get(key);
+    if (cached && cached.version === document.version) {
+        return cached.symbols;
+    }
+
     const text = document.getText();
     const symbols = {
         variables: [],
@@ -107,6 +120,7 @@ function extractDocumentSymbols(document) {
         });
     }
 
+    _symbolCache.set(key, { version: document.version, symbols });
     return symbols;
 }
 
@@ -338,9 +352,9 @@ function Hover_MQL() {
             // =================================================================
             // PRIORITY 2: Check MQL library items
             // =================================================================
-            if (!(word in obj_items)) return undefined;
+            if (!(word in getObjItems())) return undefined;
 
-            const item = obj_items[word];
+            const item = getObjItems()[word];
             const contents = new vscode.MarkdownString();
             contents.supportHtml = true;
 
@@ -524,7 +538,7 @@ function ItemProvider() {
             }
 
             // =================================================================
-            // MQL LIBRARY COMPLETION - From obj_items (standard MQL functions, constants, etc.)
+            // MQL LIBRARY COMPLETION - From getObjItems() (standard MQL functions, constants, etc.)
             // =================================================================
             const docSymbolNames = new Set([
                 ...docSymbols.inputs.map(i => i.name),
@@ -534,7 +548,7 @@ function ItemProvider() {
                 ...docSymbols.classes.map(c => c.name)
             ]);
 
-            const mqlItems = Object.values(obj_items)
+            const mqlItems = Object.values(getObjItems())
                 .filter(item => item.label.toLowerCase().startsWith(prefix))
                 .filter(item => !docSymbolNames.has(item.label)) // Avoid duplicates with local symbols
                 .map(match => {
@@ -592,19 +606,19 @@ function HelpProvider() {
                 return undefined;
             const FunctionName = nf[0];
 
-            if (!(FunctionName in obj_items))
+            if (!(FunctionName in getObjItems()))
                 return undefined;
-            if (obj_items[FunctionName].group !== 2)
+            if (getObjItems()[FunctionName].group !== 2)
                 return undefined;
 
             const sig = new vscode.SignatureHelp();
 
-            sig.signatures = obj_items[FunctionName].code.map((str) => {
+            sig.signatures = getObjItems()[FunctionName].code.map((str) => {
                 if (/(?<=\().+(?=\))/.exec(str.label))
                     var jh = /(?<=\().+(?=\))/.exec(str.label)[0].split(',');
                 else jh = [str.label];
                 const arrParam = jh,
-                    paramDescription = obj_items[FunctionName].parameters[loclang] ? obj_items[FunctionName].parameters[loclang] : obj_items[FunctionName].parameters.en,
+                    paramDescription = getObjItems()[FunctionName].parameters[loclang] ? getObjItems()[FunctionName].parameters[loclang] : getObjItems()[FunctionName].parameters.en,
                     mdSig = new vscode.MarkdownString(`<span style="color:#d19a66;"><i> ${str.description[loclang] ? str.description[loclang] : str.description.en ? str.description.en : ''} </i></span>`);
 
                 mdSig.supportHtml = true;
@@ -633,7 +647,7 @@ function HelpProvider() {
 
             sig.activeSignature = context.triggerKind === 1 || (context.triggerKind === 2 && context.isRetrigger === false) ? 0 : context.activeSignatureHelp.activeSignature;
             let ui = (line.substring(i + 1).match(/(?:\w+|'\w+')(?:,|\s+,)/g) || []).length,
-                pr = obj_items[FunctionName].pr;
+                pr = getObjItems()[FunctionName].pr;
 
             if (pr > 0)
                 if (ui > pr - 1)
@@ -1038,6 +1052,6 @@ module.exports = {
     HelpProvider,
     ColorProvider,
     MQLDocumentSymbolProvider,
-    obj_items,
+    getObjItems,
     extractDocumentSymbols
 };

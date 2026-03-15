@@ -34,8 +34,7 @@ const lg = require('./language');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
-const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider } = require('./provider');
-const { obj_items } = require('./provider');
+const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
@@ -76,7 +75,7 @@ const { store: debugStore } = require('./debugStateStore');
 let spellcheckIndex = null;
 
 /**
- * Build and cache the spellcheck index from obj_items
+ * Build and cache the spellcheck index from items.json
  * Filters to group=2 (functions) and indexes by first character for fast lookup
  * @returns {{ byFirstChar: Object<string, string[]>, all: Set<string> }}
  */
@@ -85,10 +84,11 @@ function getSpellcheckIndex() {
 
     const byFirstChar = {};
     const all = new Set();
+    const items = getObjItems();
 
-    for (const name in obj_items) {
+    for (const name in items) {
         // Only include functions (group 2) with reasonable length
-        if (obj_items[name].group === 2 && name.length >= 3) {
+        if (items[name].group === 2 && name.length >= 3) {
             all.add(name);
             const firstChar = name[0].toUpperCase();
             if (!byFirstChar[firstChar]) byFirstChar[firstChar] = [];
