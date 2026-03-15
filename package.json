@@ -194,6 +194,36 @@
                     "default": false,
                     "markdownDescription": "When opening a Trade Report, copy all referenced MQL source files into a `snapshot/` folder next to the log file. This preserves the exact source code that produced the log, so **click-to-source** navigation remains accurate even after the EA is modified.\n\n**Warning:** Enabling this increases disk usage since a full copy of the source files is stored per run."
                 },
+                "mql_tools.ShowButton.RunBacktest": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the Run Backtest button in the editor title bar for MQL files."
+                },
+                "mql_tools.ShowButton.StartDebugging": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the Start Debugging (bug) button in the editor title bar for MQL files."
+                },
+                "mql_tools.Backtest.ServerPort": {
+                    "type": "number",
+                    "default": 3002,
+                    "description": "Port number for the TradeReportServer."
+                },
+                "mql_tools.Backtest.AutoStartServer": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically start TradeReportServer if it is not running when a backtest is requested."
+                },
+                "mql_tools.Backtest.PromptForParameters": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Show parameter prompts (symbol, date range) before running a backtest. When `false`, uses defaults from the EA's `tester.ini`."
+                },
+                "mql_tools.Backtest.AutoOpenReport": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically open the Trade Report Dashboard when a backtest completes."
+                },
                 "mql_tools.Clangd.PreserveSuppressions": {
                     "type": "string",
                     "enum": [
@@ -392,6 +422,23 @@
                 "command": "mql_tools.openTradeReport",
                 "title": "Open Trade Report Dashboard",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.runBacktest",
+                "title": "%mql_tools.commands.runBacktest.title%",
+                "category": "MQL",
+                "icon": "$(beaker)"
+            },
+            {
+                "command": "mql_tools.startDebugging",
+                "title": "%mql_tools.commands.startDebugging.title%",
+                "category": "MQL",
+                "icon": "$(bug)"
+            },
+            {
+                "command": "mql_tools.stopDebugging",
+                "title": "%mql_tools.commands.stopDebugging.title%",
+                "category": "MQL"
             }
         ],
         "menus": {
@@ -421,6 +468,16 @@
                 {
                     "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Check == true|| resourceExtname == .mq5 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Check == true",
                     "command": "mql_tools.checkFile",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.RunBacktest == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.RunBacktest == true || resourceExtname == .mqh && config.mql_tools.ShowButton.RunBacktest == true",
+                    "command": "mql_tools.runBacktest",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceExtname == .mq5 && config.mql_tools.ShowButton.StartDebugging == true || resourceExtname == .mq4 && config.mql_tools.ShowButton.StartDebugging == true",
+                    "command": "mql_tools.startDebugging",
                     "group": "navigation"
                 }
             ],
@@ -528,6 +585,16 @@
                 "command": "mql_tools.openTradingTerminal",
                 "key": "F4",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.runBacktest",
+                "key": "ctrl+shift+t",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.startDebugging",
+                "key": "ctrl+shift+d",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5"
             }
         ]
     },

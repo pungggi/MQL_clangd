@@ -33,5 +33,8 @@
     "mql_tools.commands.openInME.title": "Open in 'MetaEditor'",
     "mql_tools.commands.openTradingTerminal.title": "Open Trading Terminal",
     "mql_tools.commands.createCommentary.title": "Create a function comment",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Report noisy clangd diagnostic"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Report noisy clangd diagnostic",
+    "mql_tools.commands.runBacktest.title": "Run Backtest",
+    "mql_tools.commands.startDebugging.title": "Start MQL Debug Session",
+    "mql_tools.commands.stopDebugging.title": "Stop MQL Debug Session"
 }

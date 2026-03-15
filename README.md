@@ -16,6 +16,7 @@
 | Compilation - not necessary to open MetaEditor | ❌ | ✅ |
 | Smart Compile Target for Headers | ❌ | ✅ |
 | Document Symbols (Outline, Breadcrumbs) | ❌ | ✅ |
+| Run Backtest from VS Code | ❌ | ✅ |
 
 ---
 
@@ -267,6 +268,37 @@ When a snapshot exists the Trade Report shows **two clickable badges** per sourc
 The dashboard also marks runs that have a snapshot with a small **snapshot** label.
 
 > **Warning:** Enabling this setting increases disk usage because a full copy of every referenced source file is stored per run. If you run many tests the extra space can add up — disable the setting or delete `snapshot/` folders you no longer need.
+
+---
+
+### Run Backtest
+
+Launch an MT5 Strategy Tester run for your EA directly from VS Code — without touching the MetaTrader UI.
+
+**Requires:** [TradeReportServer](../TradeReportServer/) running (or auto-started) and a `tester.ini` file in the EA's folder.
+
+**How to use:**
+
+1. Open any `.mq5`, `.mq4`, or `.mqh` file belonging to your EA.
+2. Press `Ctrl+Shift+T`, click the **⚗ Run Backtest** button in the editor title bar, or run `MQL: Run Backtest` from the Command Palette.
+3. Select the EA (auto-detected from your current file, or pick from a list).
+4. Choose the symbol and date range (pre-filled from `tester.ini`).
+5. MT5 launches the Strategy Tester in the background. A progress notification tracks elapsed time.
+6. When the test finishes, the **Trade Report Dashboard** opens automatically with the new results.
+
+**Settings:**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mql_tools.Backtest.PromptForParameters` | `true` | Show symbol/date prompts before running. Set `false` to use `tester.ini` defaults silently. |
+| `mql_tools.Backtest.AutoOpenReport` | `true` | Open the Trade Report Dashboard when the test completes. |
+| `mql_tools.Backtest.AutoStartServer` | `true` | Auto-start TradeReportServer if it isn't already running. |
+| `mql_tools.Backtest.ServerPort` | `3002` | Port used by TradeReportServer. |
+| `mql_tools.ShowButton.RunBacktest` | `true` | Show/hide the toolbar button on MQL files. |
+
+**Notes:**
+- The test runs fully inside MT5 — cancelling the VS Code progress notification only stops monitoring, not the MT5 test itself.
+- A `tester.ini` file must exist in the EA's folder (e.g. `Experts/Trading/MyEA/tester.ini`) for the server to know the default test configuration.
 
 ---
 

@@ -35,5 +35,6 @@
     "mql_tools.commands.openInME.title": "'MetaEditor'에서 열기",
     "mql_tools.commands.openTradingTerminal.title": "트레이딩 터미널 열기",
     "mql_tools.commands.createCommentary.title": "함수 주석 생성",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "시끄러운 clangd 진단 보고"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "시끄러운 clangd 진단 보고",
+    "mql_tools.commands.runBacktest.title": "Run Backtest"
 }

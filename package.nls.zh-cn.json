@@ -34,5 +34,6 @@
     "mql_tools.commands.openInME.title": "在 'MetaEditor' 中打开",
     "mql_tools.commands.openTradingTerminal.title": "打开交易终端",
     "mql_tools.commands.createCommentary.title": "创建函数注释",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "报告嘈杂的 clangd 诊断"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "报告嘈杂的 clangd 诊断",
+    "mql_tools.commands.runBacktest.title": "Run Backtest"
 }
