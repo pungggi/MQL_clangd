@@ -40,7 +40,7 @@ function readFileWithEncoding(filePath) {
  * We care about the message part after the EA column.
  */
 
-const RE_TIMESTAMP_PATTERN = /\\d{4}\\.\\d{2}\\.\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}/.source;
+const RE_TIMESTAMP_PATTERN = /\\d{4}\\.\\d{2}\\.\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?/.source;
 const RE_TIMESTAMP_PREFIX = `(?:${RE_TIMESTAMP_PATTERN}\\s*)?`;
 
 // Format A (MT5 Tester): [EAName] LEVEL {File:Func:Line}: message
@@ -55,7 +55,7 @@ function parseLine(text) {
     // Typical: hash, 0, wallclock, source, payload
     // EA lines have 5+ parts; system lines have 4-5 parts with "Tester", "Network", etc.
     const wallclock = parts.length >= 3 ? parts[2].trim() : '';
-    const source = parts.length >= 4 ? parts[3].trim() : '';
+    const source = parts.length >= 5 ? parts[3].trim() : '';
     const payload = parts.length >= 5 ? parts.slice(4).join('\t').trim() : (parts.length >= 4 ? parts[3].trim() : text);
 
     return { wallclock, source, payload };
@@ -78,10 +78,11 @@ function parseLogFile(logPath) {
     // Format A: [EAName] LEVEL ... → EA name is in the first bracket
     // Format B: [LEVEL] {File:...} → no EA name in brackets, try Tester source col
     let eaName = null;
-    const RE_DETECT_EA = new RegExp(`${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`);
+    const RE_DETECT_EA = new RegExp(`(?:\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s)`);
     for (let i = 0; i < Math.min(rawLines.length, 200); i++) {
-        const line = rawLines[i].trim();
-        const m = line.match(RE_DETECT_EA);
+        const { payload } = parseLine(rawLines[i]);
+        if (!payload) continue;
+        const m = payload.match(RE_DETECT_EA);
         if (m && !['INFO', 'DEBUG', 'TRADE', 'ERROR', 'WARN'].includes(m[1])) {
             eaName = m[1];
             break;
@@ -506,4 +507,4 @@ function parseLogSummary(logPath) {
     };
 }
 
-module.exports = { parseLogFile, findLatestLog, discoverEAs, parseLogSummary };
+module.exports = { parseLogFile, findLatestLog, discoverEAs, parseLogSummary, parseLine };

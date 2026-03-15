@@ -34,7 +34,7 @@ const lg = require('./language');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
-const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems } = require('./provider');
+const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
@@ -2397,6 +2397,11 @@ function activate(context) {
     // Initialize VS Code API-dependent variables (must be inside activate, not at module level)
     diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
     outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
+
+    // Clear symbol cache when a document is closed
+    context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((document) => {
+        clearSymbolCache(document.uri.toString());
+    }));
 
     const extensionId = 'ngsoftware.mql-tools';
     const currentVersion = vscode.extensions.getExtension(extensionId)?.packageJSON.version;

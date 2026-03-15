@@ -5,6 +5,11 @@
 
 'use strict';
 
+/**
+ * Built-in MQL5 base classes that are always forward-declared as classes
+ */
+const BUILTIN_BASE_CLASSES = ['CObject', 'CArray', 'CList', 'CTreeNode'];
+
 class StubGenerator {
     constructor(options = {}) {
         this.indent = options.indent || '    ';
@@ -353,11 +358,10 @@ class StubGenerator {
 
     /**
      * Generate a complete header file
-     * @param {Array} parsedDataArrayInput - Array of parsed structures (will be deep-cloned to avoid side effects)
+     * @param {Array} parsedDataArray - Array of parsed structures (not mutated; structural sharing used internally)
      * @param {string} headerName - Name for the header comment
      * @returns {string} The complete header file content
-     */
-    generateHeader(parsedDataArray, headerName = 'generated_stubs') {
+     */    generateHeader(parsedDataArray, headerName = 'generated_stubs') {
         const lines = [];
 
         // File header
@@ -399,7 +403,8 @@ class StubGenerator {
         lines.push('// Function pointer typedefs used by CAxis/CCurve');
         lines.push('typedef double (*DoubleToStringFunction)(double value, void* cbdata);');
         lines.push('typedef double (*CurveFunction)(double x, void* cbdata);');
-        lines.push('typedef void (*PlotFunction)(void* cbdata);'); lines.push('');
+        lines.push('typedef void (*PlotFunction)(void* cbdata);');
+        lines.push('');
         lines.push('// OpenCL execution status (not in MQL5 public headers)');
         lines.push('enum ENUM_OPENCL_EXECUTION_STATUS {');
         lines.push('    OPENCL_EXECUTION_STATUS_SUBMITTED = 0,');
@@ -548,7 +553,7 @@ class StubGenerator {
             lines.push('// Base classes from other headers');
             for (const base of baseClasses) {
                 // Skip common built-in types that might be used as base but aren't classes
-                if (['CObject', 'CArray', 'CList', 'CTreeNode'].includes(base)) {
+                if (BUILTIN_BASE_CLASSES.includes(base)) {
                     lines.push(`class ${base};`);
                 } else {
                     // MQL5 uses struct for many built-ins like MqlTradeRequest
@@ -580,5 +585,5 @@ class StubGenerator {
     }
 }
 
-module.exports = { StubGenerator };
+module.exports = { StubGenerator, BUILTIN_BASE_CLASSES };
 

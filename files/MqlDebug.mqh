@@ -32,14 +32,27 @@ class CMqlDebugState {
 private:
   int __dbgHandle;
   bool __dbgInit;
+#ifdef __MQL5__
+  datetime __baselineTime;
+  ulong    __baselineMicro;
+#endif
 
 public:
-  CMqlDebugState() : __dbgHandle(INVALID_HANDLE), __dbgInit(false) {}
+  CMqlDebugState() : __dbgHandle(INVALID_HANDLE), __dbgInit(false)
+#ifdef __MQL5__
+    , __baselineTime(0), __baselineMicro(0)
+#endif
+  {}
 
   int GetDebugHandle() { return __dbgHandle; }
   void SetDebugHandle(int handle) { __dbgHandle = handle; }
   bool IsDebugInitialized() { return __dbgInit; }
   void SetDebugInitialized(bool init) { __dbgInit = init; }
+#ifdef __MQL5__
+  datetime GetBaselineTime()  { return __baselineTime; }
+  ulong    GetBaselineMicro() { return __baselineMicro; }
+  void     SetBaseline(datetime t, ulong micro) { __baselineTime = t; __baselineMicro = micro; }
+#endif
 };
 
 CMqlDebugState __dbgState;
@@ -70,10 +83,19 @@ bool MqlDebugInit() {
 
   if (FileWriteString(__dbgState.GetDebugHandle(), header) > 0) {
     FileFlush(__dbgState.GetDebugHandle());
+#ifdef __MQL5__
+    // Capture a baseline pairing of wall-clock second and monotonic counter
+    // so MqlDebugTime() can derive an aligned millisecond offset.
+    ulong bMicro; datetime bTime;
+    do { bMicro = GetMicrosecondCount(); bTime = TimeLocal(); } while (bTime != TimeLocal());
+    __dbgState.SetBaseline(bTime, bMicro);
+#endif
     __dbgState.SetDebugInitialized(true);
   } else {
     PrintFormat("MqlDebug: Failed to write or flush header. Error: %d",
                 GetLastError());
+    FileClose(__dbgState.GetDebugHandle());
+    __dbgState.SetDebugHandle(INVALID_HANDLE);
     return false;
   }
   return true;
@@ -132,16 +154,11 @@ void MqlDebugRotate() {
 string MqlDebugTime() {
   MqlDateTime dt;
 #ifdef __MQL5__
-  ulong microBefore, microAfter;
-  datetime t;
-  do {
-    microBefore = GetMicrosecondCount();
-    t = TimeLocal();
-    microAfter = GetMicrosecondCount();
-  } while (t != TimeLocal());
-
-  ulong micro = (microBefore + microAfter) / 2;
-  int ms = (int)((micro / 1000) % 1000);
+  ulong nowMicro = GetMicrosecondCount();
+  datetime t = TimeLocal();
+  ulong elapsedMicro = nowMicro - __dbgState.GetBaselineMicro();
+  // ms = sub-second part of the elapsed offset, anchored to the baseline second
+  int ms = (int)((elapsedMicro / 1000) % 1000);
   TimeToStruct(t, dt);
   return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
                       dt.day, dt.hour, dt.min, dt.sec, ms);

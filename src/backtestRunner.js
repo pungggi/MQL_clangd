@@ -117,8 +117,8 @@ async function isProcessOurServer(pid, serverDir) {
         }
 
         const lowerCmd = cmd.toLowerCase();
-        // Check for 'node' and either the server directory path or the entry script name
-        return lowerCmd.includes('node') && (lowerCmd.includes('tradeportserver') || lowerCmd.includes('src/index.js'));
+        // Check for 'node' and our unique identifier
+        return lowerCmd.includes('node') && lowerCmd.includes('mql-trade-report-server');
     } catch {
         return false;
     }
@@ -166,7 +166,7 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
 
     const config = vscode.workspace.getConfiguration('mql_tools');
     const nodeBin = config.get('Backtest.NodePath', 'node');
-    serverProcess = spawn(nodeBin, ['src/index.js', 'serve'], {
+    serverProcess = spawn(nodeBin, ['src/index.js', 'serve', '--title=mql-trade-report-server'], {
         cwd: serverDir,
         detached: true,
         stdio: 'ignore',

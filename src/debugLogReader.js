@@ -89,7 +89,17 @@ class MqlDebugLogReader {
         try {
             this.watcher = fs.watch(this.filePath, (eventType) => {
                 if (!this.isRunning) return;
-                if (eventType === 'change') this._checkForNewContent();
+                if (eventType === 'change') {
+                    this._checkForNewContent();
+                } else if (eventType === 'rename') {
+                    // File might have been rotated or re-created
+                    setTimeout(() => {
+                        if (this.isRunning) {
+                            this._setupWatcher();
+                            this._checkForNewContent();
+                        }
+                    }, 500);
+                }
             });
             this.watcher.on('error', (err) => {
                 this._emitError(err);

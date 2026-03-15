@@ -20,6 +20,7 @@ class MqlLogTailer {
         this.statusBarItem = null;
         this.mode = 'livelog'; // 'standard' or 'livelog' - default to livelog for real-time updates
         this.basePath = null; // Base MQL folder path
+        this.isChecking = false; // Guard against concurrent checkForNewContent() calls
     }
 
     /**
@@ -239,12 +240,10 @@ class MqlLogTailer {
 
         try {
             // Ensure Include directory exists
-            if (!fs.existsSync(includeDir)) {
-                fs.mkdirSync(includeDir, { recursive: true });
-            }
+            await fsPromises.mkdir(includeDir, { recursive: true });
 
             // Copy file
-            fs.copyFileSync(sourcePath, targetPath);
+            await fsPromises.copyFile(sourcePath, targetPath);
             this.outputChannel?.appendLine(`[Info] Installed LiveLog.mqh to: ${targetPath}`);
             return true;
         } catch (err) {
@@ -422,7 +421,9 @@ class MqlLogTailer {
      */
     async checkForNewContent() {
         if (!this.isTailing) return;
+        if (this.isChecking) return;
 
+        this.isChecking = true;
         try {
             const stats = await fsPromises.stat(this.currentFilePath);
 
@@ -437,6 +438,8 @@ class MqlLogTailer {
             if (err.code !== 'ENOENT') {
                 console.error('MQL Tailer content check error:', err);
             }
+        } finally {
+            this.isChecking = false;
         }
     }
 
@@ -485,29 +488,39 @@ class MqlLogTailer {
      * LiveLog files are ANSI (utf8), standard MQL logs are UTF-16LE.
      */
     readNewLines(newSize) {
-        const fd = fs.openSync(this.currentFilePath, 'r');
-        const length = newSize - this.lastSize;
-        const buffer = Buffer.alloc(length);
+        let fd;
+        try {
+            fd = fs.openSync(this.currentFilePath, 'r');
+            const length = newSize - this.lastSize;
+            const buffer = Buffer.alloc(length);
 
-        fs.readSync(fd, buffer, 0, length, this.lastSize);
-        fs.closeSync(fd);
+            fs.readSync(fd, buffer, 0, length, this.lastSize);
 
-        // LiveLog uses ANSI/UTF-8, standard MetaTrader logs use UTF-16LE
-        let content;
-        if (this.mode === 'livelog') {
-            content = buffer.toString('utf8');
-        } else {
-            content = buffer.toString('utf16le');
+            // LiveLog uses ANSI/UTF-8, standard MetaTrader logs use UTF-16LE
+            let content;
+            if (this.mode === 'livelog') {
+                content = buffer.toString('utf8');
+            } else {
+                content = buffer.toString('utf16le');
+            }
+
+            // Trim BOM if present in the middle of a stream (unlikely but safe)
+            const cleanContent = content.replace(/\uFEFF/g, '');
+
+            if (cleanContent) {
+                this.outputChannel.append(cleanContent);
+            }
+
+            this.lastSize = newSize;
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                console.error('MQL Tailer read error:', err);
+            }
+        } finally {
+            if (fd !== undefined) {
+                try { fs.closeSync(fd); } catch { /* ignore close errors */ }
+            }
         }
-
-        // Trim BOM if present in the middle of a stream (unlikely but safe)
-        const cleanContent = content.replace(/\uFEFF/g, '');
-
-        if (cleanContent) {
-            this.outputChannel.append(cleanContent);
-        }
-
-        this.lastSize = newSize;
     }
 }
 

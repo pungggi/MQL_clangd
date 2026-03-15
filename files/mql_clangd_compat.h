@@ -843,8 +843,12 @@ string OrderSymbol();
 string OrderComment();
 
 // MQL4 Order pool constants
+#ifndef MODE_TRADES
 #define MODE_TRADES 0
+#endif
+#ifndef MODE_HISTORY
 #define MODE_HISTORY 1
+#endif
 #define SELECT_BY_POS 0
 #define SELECT_BY_TICKET 1
 
@@ -989,11 +993,11 @@ double NormalizeDouble(double value, int digits);
  * allow clangd to retain concrete type information during conversion.
  */
 template<typename T>
-bool CharArrayToStruct(T& struct_object, const uchar array[], uint start_pos = 0) {
+inline bool CharArrayToStruct(T& struct_object, const uchar array[], uint start_pos = 0) {
     return CharArrayToStruct((void*)&struct_object, array, start_pos);
 }
 template<typename T>
-bool StructToCharArray(const T& struct_object, uchar array[], uint start_pos = 0) {
+inline bool StructToCharArray(const T& struct_object, uchar array[], uint start_pos = 0) {
     return StructToCharArray((const void*)&struct_object, array, start_pos);
 }
 
@@ -1073,19 +1077,19 @@ string FileReadString(int file_handle, int length = -1);
  * allow clangd to retain concrete type information during file operations.
  */
 template<typename T>
-uint FileReadArray(int file_handle, T array[], int start = 0, int count = WHOLE_ARRAY) {
+inline uint FileReadArray(int file_handle, T array[], int start = 0, int count = WHOLE_ARRAY) {
     return FileReadArray(file_handle, (void*)array, start, count);
 }
 template<typename T>
-bool FileReadStruct(int file_handle, T& struct_object, int size = -1) {
+inline bool FileReadStruct(int file_handle, T& struct_object, int size = -1) {
     return FileReadStruct(file_handle, (void*)&struct_object, size);
 }
 template<typename T>
-uint FileWriteArray(int file_handle, const T array[], int start = 0, int count = WHOLE_ARRAY) {
+inline uint FileWriteArray(int file_handle, const T array[], int start = 0, int count = WHOLE_ARRAY) {
     return FileWriteArray(file_handle, (const void*)array, start, count);
 }
 template<typename T>
-uint FileWriteStruct(int file_handle, const T& struct_object, int size = -1) {
+inline uint FileWriteStruct(int file_handle, const T& struct_object, int size = -1) {
     return FileWriteStruct(file_handle, (const void*)&struct_object, size);
 }
 

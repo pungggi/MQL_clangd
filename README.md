@@ -220,7 +220,7 @@ Analyze your Strategy Tester results directly in VS Code. The Trade Report parse
 - Auto-discovers EAs with test runs under `MQL5/Experts/`
 - Shows trade summary: count, net P&L, win rate, gross profit/loss, commissions
 - Individual trade table with entry/exit prices, SL, TP, lots, and exit reason
-- Filterable log viewer (ALL, TRADE, INFO, DEBUG, ERROR)
+- Filterable log viewer (ALL, TRADE, INFO, WARN, DEBUG, ERROR)
 - Click any log line number to jump to that line in the `.log` file
 
 #### Source Code Navigation (Click-to-Source)

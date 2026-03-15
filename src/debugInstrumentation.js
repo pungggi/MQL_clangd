@@ -244,6 +244,16 @@ function instrumentSource(sourcePath, breakpoints) {
     const dir = path.dirname(sourcePath);
     const tempPath = path.join(dir, `${base}.mql_dbg_build${ext}`);
 
+    // Clean up any stale artifacts in this directory from previous aborted/locked sessions
+    try {
+        const files = fs.readdirSync(dir);
+        for (const f of files) {
+            if (f.includes('.mql_dbg_build.')) {
+                try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore locked files */ }
+            }
+        }
+    } catch { /* ignore directory read errors */ }
+
     const raw = fs.readFileSync(sourcePath);
     // Detect BOM (UTF-16LE) and decode accordingly — same logic as logTailer
     let content;
