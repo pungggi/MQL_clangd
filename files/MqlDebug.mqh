@@ -29,12 +29,17 @@
 
 // Global state encapsulated to prevent cross-instance races
 class CMqlDebugState {
-public:
+private:
   int __dbgHandle;
   bool __dbgInit;
 
-  CMqlDebugState()
-      : __dbgHandle(INVALID_HANDLE), __dbgInit(false) {}
+public:
+  CMqlDebugState() : __dbgHandle(INVALID_HANDLE), __dbgInit(false) {}
+
+  int GetDebugHandle() { return __dbgHandle; }
+  void SetDebugHandle(int handle) { __dbgHandle = handle; }
+  bool IsDebugInitialized() { return __dbgInit; }
+  void SetDebugInitialized(bool init) { __dbgInit = init; }
 };
 
 CMqlDebugState __dbgState;
@@ -45,77 +50,78 @@ CMqlDebugState __dbgState;
 //| Initialize the debug log file                                    |
 //+------------------------------------------------------------------+
 bool MqlDebugInit() {
-  if (__dbgState.__dbgInit && __dbgState.__dbgHandle != INVALID_HANDLE)
+  if (__dbgState.IsDebugInitialized() && __dbgState.GetDebugHandle() != INVALID_HANDLE)
     return true;
 
-  __dbgState.__dbgHandle = FileOpen(
+  __dbgState.SetDebugHandle(FileOpen(
       MQLDEBUG_FILENAME, FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI |
-                                   FILE_SHARE_READ | FILE_SHARE_WRITE);
+                                   FILE_SHARE_READ | FILE_SHARE_WRITE));
 
-  if (__dbgState.__dbgHandle == INVALID_HANDLE) {
+  if (__dbgState.GetDebugHandle() == INVALID_HANDLE) {
     PrintFormat("MqlDebug: Failed to open log file. Error: %d", GetLastError());
     return false;
   }
 
-  FileSeek(__dbgState.__dbgHandle, 0, SEEK_END);
+  FileSeek(__dbgState.GetDebugHandle(), 0, SEEK_END);
 
   string header = "\n=== MqlDebug Session Started: " +
                   TimeToString(TimeLocal(), TIME_DATE | TIME_SECONDS) +
                   " ===\n";
 
-  if (FileWriteString(__dbgState.__dbgHandle, header) > 0) {
-    FileFlush(__dbgState.__dbgHandle);
-    __dbgState.__dbgInit = true;
+  if (FileWriteString(__dbgState.GetDebugHandle(), header) > 0) {
+    FileFlush(__dbgState.GetDebugHandle());
+    __dbgState.SetDebugInitialized(true);
   } else {
     PrintFormat("MqlDebug: Failed to write or flush header. Error: %d",
                 GetLastError());
     return false;
   }
-    return true;
+  return true;
 }
 
 //+------------------------------------------------------------------+
 //| Close the debug log file                                         |
 //+------------------------------------------------------------------+
 void MqlDebugClose() {
-  if (__dbgState.__dbgHandle != INVALID_HANDLE) {
-    FileWriteString(__dbgState.__dbgHandle, "=== MqlDebug Session Ended ===\n");
-    FileFlush(__dbgState.__dbgHandle);
-    FileClose(__dbgState.__dbgHandle);
-    __dbgState.__dbgHandle = INVALID_HANDLE;
+  if (__dbgState.GetDebugHandle() != INVALID_HANDLE) {
+    FileWriteString(__dbgState.GetDebugHandle(), "=== MqlDebug Session Ended ===\n");
+    FileFlush(__dbgState.GetDebugHandle());
+    FileClose(__dbgState.GetDebugHandle());
+    __dbgState.SetDebugHandle(INVALID_HANDLE);
   }
-  __dbgState.__dbgInit = false;
+  __dbgState.SetDebugInitialized(false);
 }
 
 //+------------------------------------------------------------------+
 //| Rotate log if over size limit                                    |
 //+------------------------------------------------------------------+
 void MqlDebugRotate() {
-  if (__dbgState.__dbgHandle == INVALID_HANDLE)
+  if (__dbgState.GetDebugHandle() == INVALID_HANDLE)
     return;
-  long size = (long)FileTell(__dbgState.__dbgHandle);
+  long size = (long)FileTell(__dbgState.GetDebugHandle());
   if (size > MQLDEBUG_MAX_SIZE) {
-    FileClose(__dbgState.__dbgHandle);
-    __dbgState.__dbgHandle = INVALID_HANDLE;
+    FileClose(__dbgState.GetDebugHandle());
+    __dbgState.SetDebugHandle(INVALID_HANDLE);
     string timestamp = TimeToString(TimeLocal(), TIME_DATE | TIME_SECONDS);
     StringReplace(timestamp, ".", "_");
     StringReplace(timestamp, ":", "_");
-    string newName = "MqlDebug_" + timestamp + ".txt";
+    string newName = "MqlDebug_" + timestamp + "_" +
+                     IntegerToString(GetTickCount()) + ".txt";
 
     if (FileMove(MQLDEBUG_FILENAME, 0, newName, FILE_REWRITE)) {
-      __dbgState.__dbgHandle = FileOpen(MQLDEBUG_FILENAME,
+      __dbgState.SetDebugHandle(FileOpen(MQLDEBUG_FILENAME,
                                         FILE_WRITE | FILE_TXT | FILE_ANSI |
-                                            FILE_SHARE_READ | FILE_SHARE_WRITE);
-      if (__dbgState.__dbgHandle != INVALID_HANDLE) {
-        FileWriteString(__dbgState.__dbgHandle,
+                                            FILE_SHARE_READ | FILE_SHARE_WRITE));
+      if (__dbgState.GetDebugHandle() != INVALID_HANDLE) {
+        FileWriteString(__dbgState.GetDebugHandle(),
                         "=== MqlDebug Log Rotated ===\n");
-        FileFlush(__dbgState.__dbgHandle);
-        __dbgState.__dbgInit = true;
+        FileFlush(__dbgState.GetDebugHandle());
+        __dbgState.SetDebugInitialized(true);
       } else {
-        __dbgState.__dbgInit = false;
+        __dbgState.SetDebugInitialized(false);
       }
     } else {
-      __dbgState.__dbgInit = false;
+      __dbgState.SetDebugInitialized(false);
     }
   }
 }
@@ -126,16 +132,19 @@ void MqlDebugRotate() {
 string MqlDebugTime() {
   MqlDateTime dt;
 #ifdef __MQL5__
-  ulong micro;
+  ulong microBefore, microAfter;
   datetime t;
   do {
-    micro = GetMicrosecondCount();
+    microBefore = GetMicrosecondCount();
     t = TimeLocal();
+    microAfter = GetMicrosecondCount();
   } while (t != TimeLocal());
+
+  ulong micro = (microBefore + microAfter) / 2;
+  int ms = (int)((micro / 1000) % 1000);
   TimeToStruct(t, dt);
   return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.%03d", dt.year, dt.mon,
-                      dt.day, dt.hour, dt.min, dt.sec,
-                      (int)((micro / 1000) % 1000));
+                      dt.day, dt.hour, dt.min, dt.sec, ms);
 #else
   TimeToStruct(TimeLocal(), dt);
   return StringFormat("%04d.%02d.%02d %02d:%02d:%02d.000", dt.year, dt.mon,
@@ -147,15 +156,15 @@ string MqlDebugTime() {
 //| Core structured write                                            |
 //+------------------------------------------------------------------+
 void MqlDebugWrite(string structured) {
-  if (!__dbgState.__dbgInit)
+  if (!__dbgState.IsDebugInitialized())
     MqlDebugInit();
-  if (__dbgState.__dbgHandle == INVALID_HANDLE)
+  if (__dbgState.GetDebugHandle() == INVALID_HANDLE)
     return;
   MqlDebugRotate();
-  if (__dbgState.__dbgHandle == INVALID_HANDLE)
+  if (__dbgState.GetDebugHandle() == INVALID_HANDLE)
     return;
-  FileWriteString(__dbgState.__dbgHandle, structured + "\n");
-  FileFlush(__dbgState.__dbgHandle);
+  FileWriteString(__dbgState.GetDebugHandle(), structured + "\n");
+  FileFlush(__dbgState.GetDebugHandle());
 }
 
 //+------------------------------------------------------------------+
@@ -166,14 +175,15 @@ string MqlDebugEscape(string val) {
   StringReplace(res, "\\", "\\\\");
   StringReplace(res, "|", "\\|");
   StringReplace(res, "\n", "\\n");
+  StringReplace(res, "\r", "\\r");
   return res;
 }
 
 //+------------------------------------------------------------------+
-//| BREAK - checkpoint hit (maps to a VS Code breakpoint)            |
-//+------------------------------------------------------------------+
-#define MQL_DBG_BREAK(label) \
-    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|BREAK|" + (label))
+#define MQL_DBG_BREAK(label)                                                   \
+  MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" +               \
+                __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|BREAK|" +   \
+                MqlDebugEscape(label))
 
 //+------------------------------------------------------------------+
 //| ENTER / EXIT - call stack tracking                               |
@@ -188,24 +198,24 @@ string MqlDebugEscape(string val) {
 //| WATCH macros - one per type                                      |
 //+------------------------------------------------------------------+
 #define MQL_DBG_WATCH_INT(varName, val) \
-    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + (varName) + "|int|" + IntegerToString((long)(val)))
+    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|int|" + IntegerToString((long)(val)))
 
 #define MQL_DBG_WATCH_LONG(varName, val) \
-    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + (varName) + "|long|" + IntegerToString((long)(val)))
+    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|long|" + IntegerToString((long)(val)))
 
 #define MQL_DBG_WATCH_DBL(varName, val) \
-    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + (varName) + "|double|" + DoubleToString((double)(val), 8))
+    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|double|" + DoubleToString((double)(val), 8))
 
 #define MQL_DBG_WATCH_STR(varName, val)                                        \
   MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" +               \
                 __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" +   \
-                (varName) + "|string|" + MqlDebugEscape(val))
+                MqlDebugEscape(varName) + "|string|" + MqlDebugEscape(val))
 
 #define MQL_DBG_WATCH_BOOL(varName, val) \
-    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + (varName) + "|bool|" + ((val) ? "true" : "false"))
+    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|bool|" + ((val) ? "true" : "false"))
 
 #define MQL_DBG_WATCH_DATETIME(varName, val) \
-    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + (varName) + "|datetime|" + TimeToString((datetime)(val), TIME_DATE | TIME_SECONDS))
+    MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|datetime|" + TimeToString((datetime)(val), TIME_DATE | TIME_SECONDS))
 
 //+------------------------------------------------------------------+
 //| Convenience: auto-detect common numeric types via overloading.   |

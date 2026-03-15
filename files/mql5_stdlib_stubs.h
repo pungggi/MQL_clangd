@@ -1114,7 +1114,7 @@ struct FILE_ID_128 { uchar Identifier[16]; };
 // Function pointer typedefs used by CAxis/CCurve
 typedef double (*DoubleToStringFunction)(double value, void* cbdata);
 typedef double (*CurveFunction)(double x, void* cbdata);
-typedef void (*PlotFucntion)(void* cbdata);
+typedef void (*PlotFunction)(void* cbdata);
 
 // OpenCL execution status enum
 enum ENUM_OPENCL_EXECUTION_STATUS {
@@ -7413,8 +7413,8 @@ public:
     void StepsDimension(const int dimension);
     int HistogramWidth(void) const;
     void HistogramWidth(const int width);
-    PlotFucntion CustomPlotFunction(void) const;
-    void CustomPlotFunction(PlotFucntion func);
+    PlotFunction CustomPlotFunction(void) const;
+    void CustomPlotFunction(PlotFunction func);
     void CustomPlotCBData(void * cbdata);
     bool TrendLineVisible(void) const;
     uint TrendLineColor(void) const;

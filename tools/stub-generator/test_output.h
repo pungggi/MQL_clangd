@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "../../files/mql_clangd_compat.h"
+
 #ifdef __clang__
 
 // Forward declarations
@@ -16,21 +18,6 @@ class CWndContainer;
 class CPositionInfo;
 class COrderInfo;
 class CTrade;
-// Base classes from other headers
-class CObject;
-
-
-
-// Enums
-enum ENUM_TRADE_REQUEST_ACTIONS {
-    TRADE_ACTION_DEAL = 0,
-    TRADE_ACTION_PENDING = 1,
-    TRADE_ACTION_SLTP = 2,
-    TRADE_ACTION_MODIFY = 3,
-    TRADE_ACTION_REMOVE = 4,
-    TRADE_ACTION_CLOSE_BY = 5
-};
-
 // Classes
 class CWndObj : public CObject {
 public:

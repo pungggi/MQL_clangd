@@ -3,7 +3,7 @@ const vscode = require('vscode');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
-const { spawn, exec } = require('child_process');
+const { spawn, exec, spawnSync } = require('child_process');
 const { COMPILE_MODE_CHECK } = require('./debugBridge');
 const util = require('util');
 const execPromise = util.promisify(exec);
@@ -155,7 +155,7 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
 
                     // If not responding, verify it's ours before killing
                     if (await isProcessOurServer(pid, serverDir)) {
-                        process.kill(pid, process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL');
+                        process.kill(pid, 'SIGTERM'); // Windows ignores signals; used here for cross-platform consistency
                     }
                     // If not ours, we just proceed (stale PID from another process)
                 } catch { /* process not running — proceed */ }
@@ -199,7 +199,7 @@ async function stopServer(port = DEFAULT_PORT, serverDir = null) {
 
             if (!terminated && serverProcess.pid) {
                 try {
-                    spawn('taskkill', ['/PID', String(serverProcess.pid), '/T', '/F'], {
+                    spawnSync('taskkill', ['/PID', String(serverProcess.pid), '/T', '/F'], {
                         detached: false,
                         stdio: 'ignore',
                     });
@@ -551,6 +551,10 @@ async function runBacktest(context, opts) {
                     vscode.window.showErrorMessage(
                         `tester.ini for ${eaName} is missing required fields: ${missing.join(', ')}. Enable parameter prompts.`,
                     );
+                    return;
+                }
+                if (!isValidDate(data.fromDate) || !isValidDate(data.toDate)) {
+                    vscode.window.showErrorMessage(`tester.ini for ${eaName} contains invalid dates (expected YYYY.MM.DD).`);
                     return;
                 }
                 params = {

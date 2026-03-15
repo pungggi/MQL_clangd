@@ -70,6 +70,7 @@ public:
     _mql_string(long long val) {}
     _mql_string(int val) {}
     _mql_string(double val) {}
+    _mql_string(decltype(nullptr)) {}
 
     _mql_string& operator=(const char* s) { return *this; }
     _mql_string& operator=(const _mql_string& s) { return *this; }
@@ -91,9 +92,9 @@ public:
     ushort& operator[](int index) { static ushort dummy = 0; return dummy; }
 
     // Conversion operators to handle MQL's loose typing
-    operator int() const { return 0; }
-    operator long() const { return 0; }
-    operator double() const { return 0.0; }
+    explicit operator int() const { return 0; }
+    explicit operator long() const { return 0; }
+    explicit operator double() const { return 0.0; }
     operator const char*() const { return ""; }
 
     friend _mql_string operator+(const char* s, const _mql_string& ms) { return ms; }
@@ -133,6 +134,10 @@ union ref_sockaddr_in {
 #endif // _REF_SOCKADDR_DEFINED
 
 // Windows structures (for DLL interop)
+/**
+ * CREATESTRUCTW defines lpszName and lpszClass as MQL string for better MQL interop,
+ * though Windows API uses LPCWSTR. This deviation is intentional for MQL users.
+ */
 struct CREATESTRUCTW {
     long lpCreateParams;
     long hInstance;
@@ -185,7 +190,9 @@ struct MqlTradeResult {
     int retcode_external;
 };
 
+#ifndef NULL
 #define NULL 0
+#endif
 #define EMPTY -1
 #define WRONG_VALUE -1
 #define clrNONE 0xFFFFFF
@@ -321,10 +328,13 @@ enum ENUM_MQL_INFO_STRING { MQL_PROGRAM_NAME=0, MQL_PROGRAM_PATH=1 };
 #define CHARTEVENT_CUSTOM 1000
 #define CHARTEVENT_CUSTOM_LAST 65535
 
+#ifndef MODE_TRADES
 #define MODE_TRADES 0
+#endif
+#ifndef MODE_HISTORY
 #define MODE_HISTORY 1
+#endif
 #define MODE_SELECT 2
-
 // Tester statistics enum
 enum ENUM_STATISTICS { STAT_INITIAL_DEPOSIT=0, STAT_WITHDRAWAL=1, STAT_PROFIT=2, STAT_GROSS_PROFIT=3, STAT_GROSS_LOSS=4, STAT_MAX_PROFITTRADE=5, STAT_MAX_LOSSTRADE=6, STAT_CONPROFITMAX=7, STAT_CONPROFITMAX_TRADES=8, STAT_MAX_CONWINS=9, STAT_MAX_CONPROFIT_TRADES=10, STAT_CONLOSSMAX=11, STAT_CONLOSSMAX_TRADES=12, STAT_MAX_CONLOSSES=13, STAT_MAX_CONLOSS_TRADES=14, STAT_BALANCEMIN=15, STAT_BALANCE_DD=16, STAT_BALANCEDD_PERCENT=17, STAT_BALANCE_DDREL_PERCENT=18, STAT_BALANCE_DD_RELATIVE=19, STAT_EQUITYMIN=20, STAT_EQUITY_DD=21, STAT_EQUITYDD_PERCENT=22, STAT_EQUITY_DDREL_PERCENT=23, STAT_EQUITY_DD_RELATIVE=24, STAT_EXPECTED_PAYOFF=25, STAT_PROFIT_FACTOR=26, STAT_RECOVERY_FACTOR=27, STAT_SHARPE_RATIO=28, STAT_MIN_MARGINLEVEL=29, STAT_CUSTOM_ONTESTER=30, STAT_DEALS=31, STAT_TRADES=32, STAT_PROFIT_TRADES=33, STAT_LOSS_TRADES=34, STAT_SHORT_TRADES=35, STAT_LONG_TRADES=36, STAT_PROFIT_SHORTTRADES=37, STAT_PROFIT_LONGTRADES=38, STAT_PROFITTRADES_AVGCON=39, STAT_LOSSTRADES_AVGCON=40 };
 
@@ -973,6 +983,21 @@ double StringToDouble(string value);
 datetime StringToTime(string value);
 color StringToColor(string value);
 double NormalizeDouble(double value, int digits);
+
+/**
+ * Templated overloads for CharArrayToStruct and StructToCharArray 
+ * allow clangd to retain concrete type information during conversion.
+ */
+template<typename T>
+bool CharArrayToStruct(T& struct_object, const uchar array[], uint start_pos = 0) {
+    return CharArrayToStruct((void*)&struct_object, array, start_pos);
+}
+template<typename T>
+bool StructToCharArray(const T& struct_object, uchar array[], uint start_pos = 0) {
+    return StructToCharArray((const void*)&struct_object, array, start_pos);
+}
+
+// Low-level signatures used by templates or for raw memory access
 bool CharArrayToStruct(void* struct_object, const uchar array[], uint start_pos = 0);
 bool StructToCharArray(const void* struct_object, uchar array[], uint start_pos = 0);
 
@@ -1042,6 +1067,29 @@ float FileReadFloat(int file_handle);
 long FileReadLong(int file_handle);
 int FileReadNumber(int file_handle);
 string FileReadString(int file_handle, int length = -1);
+
+/**
+ * Templated overloads for FileReadArray, FileReadStruct, FileWriteArray, and FileWriteStruct
+ * allow clangd to retain concrete type information during file operations.
+ */
+template<typename T>
+uint FileReadArray(int file_handle, T array[], int start = 0, int count = WHOLE_ARRAY) {
+    return FileReadArray(file_handle, (void*)array, start, count);
+}
+template<typename T>
+bool FileReadStruct(int file_handle, T& struct_object, int size = -1) {
+    return FileReadStruct(file_handle, (void*)&struct_object, size);
+}
+template<typename T>
+uint FileWriteArray(int file_handle, const T array[], int start = 0, int count = WHOLE_ARRAY) {
+    return FileWriteArray(file_handle, (const void*)array, start, count);
+}
+template<typename T>
+uint FileWriteStruct(int file_handle, const T& struct_object, int size = -1) {
+    return FileWriteStruct(file_handle, (const void*)&struct_object, size);
+}
+
+// Low-level signatures used by templates or for raw memory access
 uint FileReadArray(int file_handle, void* array, int start = 0, int count = WHOLE_ARRAY);
 bool FileReadStruct(int file_handle, void* struct_object, int size = -1);
 uint FileWriteInteger(int file_handle, int value, int size = 4);
@@ -1249,9 +1297,10 @@ bool IndicatorSetInteger(int prop_id, int prop_value);
 bool IndicatorSetInteger(int prop_id, int prop_modifier, int prop_value);
 bool IndicatorSetString(int prop_id, string prop_value);
 bool IndicatorSetString(int prop_id, int prop_modifier, string prop_value);
-int IndicatorCreate(string symbol, ENUM_TIMEFRAMES period, ENUM_INDICATOR indicator_type, int parameters_cnt = 0, const MqlParam parameters_array[] = 0);
+int IndicatorCreate(string symbol, ENUM_TIMEFRAMES period,
+                    ENUM_INDICATOR indicator_type, int parameters_cnt = 0,
+                    const MqlParam *parameters_array = nullptr);
 bool IndicatorRelease(int indicator_handle);
-
 // Graphical object plotting
 bool PlotIndexSetDouble(int plot_index, int prop_id, double prop_value);
 bool PlotIndexSetInteger(int plot_index, int prop_id, int prop_value);
@@ -1276,7 +1325,7 @@ bool GlobalVariableSet(string name, double value);
 void GlobalVariablesFlush();
 bool GlobalVariableTemp(string name);
 bool GlobalVariableSetOnCondition(string name, double value, double check_value);
-int GlobalVariablesDeleteAll(string prefix_name = 0, datetime limit_data = 0);
+int GlobalVariablesDeleteAll(string prefix_name = "", datetime limit_data = 0);
 int GlobalVariablesTotal();
 
 // Resource functions

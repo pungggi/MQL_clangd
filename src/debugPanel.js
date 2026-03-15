@@ -266,7 +266,8 @@ function renderHits(hits) {
   let html = '<table><thead><tr><th>Label</th><th>Function</th><th>Line</th><th>File</th><th>Time</th></tr></thead><tbody>';
   hits.forEach((h, i) => {
     const effectiveIdx = _selectedHitIdx >= 0 ? _selectedHitIdx : hits.length - 1;
-    const selected = i === effectiveIdx ? ' selected' : '';    html += '<tr class="hit-row' + selected + '" data-idx="' + i + '">'
+    const selected = i === effectiveIdx ? ' selected' : '';
+    html += '<tr class="hit-row' + selected + '" data-idx="' + i + '">'
       + '<td>' + esc(h.label) + '</td>'
       + '<td class="func">' + esc(h.func) + '</td>'
       + '<td>' + esc(h.line) + '</td>'

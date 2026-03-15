@@ -74,8 +74,14 @@ function isConditionSafe(condition) {
     for (let i = 0; i < condition.length; i++) {
         const char = condition[i];
         if (inQuote) {
-            if (char === inQuote && condition[i - 1] !== '\\') {
-                inQuote = null;
+            if (char === inQuote) {
+                let backslashCount = 0;
+                for (let j = i - 1; j >= 0 && condition[j] === '\\'; j--) {
+                    backslashCount++;
+                }
+                if (backslashCount % 2 === 0) {
+                    inQuote = null;
+                }
             }
             continue;
         }
@@ -137,13 +143,30 @@ function parseWatchAnnotations(lines, bpLine) {
     const RE_WATCH = /\/\/\s*@watch\s+(\w+)/;
     const vars = [];
     const from = Math.max(0, bpLine - 6);
-    const to   = Math.min(lines.length - 1, bpLine + 1);
+    const to = Math.min(lines.length - 1, bpLine + 1);
 
     for (let i = from; i <= to; i++) {
         const m = lines[i].match(RE_WATCH);
         if (m) vars.push(m[1]);
     }
     return vars;
+}
+
+/**
+ * Sanitize a condition string for safe embedding into a single-line comment.
+ * @param {string} condition
+ * @returns {string}
+ */
+function sanitizeCondition(condition) {
+    if (!condition) return "";
+    // If it contains newlines or comment delimiters, use JSON encoding as a safe fallback
+    const isUnsafe = /[\r\n]|\/\/|\/\*|\*\//.test(condition);
+    if (!isUnsafe) return condition;
+
+    return JSON.stringify(condition).slice(1, -1)
+        .replace(/\/\//g, '/\\/')
+        .replace(/\/\*/g, '/\\*')
+        .replace(/\*\//g, '*\\/');
 }
 
 /**
@@ -168,7 +191,7 @@ function buildInjectionLines(label, watchVars, condition) {
         } else {
             // Fallback for malformed conditions: inject unconditional break plus a comment
             return [
-                `// Invalid breakpoint condition: ${condition}`,
+                `// Invalid breakpoint condition: ${sanitizeCondition(condition)}`,
                 breakLine,
                 ...watchLines
             ];
@@ -216,12 +239,12 @@ function ensureInclude(lines) {
  *   skipped   - 1-based line numbers for which no injection point was found
  */
 function instrumentSource(sourcePath, breakpoints) {
-    const ext  = path.extname(sourcePath);         // .mq5 or .mq4
+    const ext = path.extname(sourcePath);         // .mq5 or .mq4
     const base = path.basename(sourcePath, ext);
-    const dir  = path.dirname(sourcePath);
+    const dir = path.dirname(sourcePath);
     const tempPath = path.join(dir, `${base}.mql_dbg_build${ext}`);
 
-    const raw   = fs.readFileSync(sourcePath);
+    const raw = fs.readFileSync(sourcePath);
     // Detect BOM (UTF-16LE) and decode accordingly — same logic as logTailer
     let content;
     if (raw[0] === 0xFF && raw[1] === 0xFE) {
@@ -231,7 +254,7 @@ function instrumentSource(sourcePath, breakpoints) {
     }
 
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
-    const lines  = content.split(/\r?\n/);
+    const lines = content.split(/\r?\n/);
     const skipped = [];
 
     // Collect all injection points: { afterLine0Based, injectionLines[] }
@@ -265,9 +288,8 @@ function instrumentSource(sourcePath, breakpoints) {
 
     const restore = () => {
         try { fs.unlinkSync(tempPath); } catch { /* already gone */ }
-
         // Also delete compiled binary (.ex4 or .ex5)
-        const binaryPath = tempPath.replace(/\.mq[45]$/i, ext === '.mq5' ? '.ex5' : '.ex4');
+        const binaryPath = tempPath.replace(/\.mq[45]$/i, ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4');
         if (binaryPath !== tempPath) {
             try { fs.unlinkSync(binaryPath); } catch { /* ignore if not created */ }
         }

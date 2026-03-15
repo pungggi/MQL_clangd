@@ -82,6 +82,56 @@ class StubGenerator {
     ]);
 
     /**
+     * C++ keywords that should be escaped if used as parameter names
+     */
+    static CXX_KEYWORDS = new Set([
+        'alignas', 'alignof', 'and', 'and_eq', 'asm', 'auto', 'bitand', 'bitor', 'bool', 'break', 'case',
+        'catch', 'char', 'char8_t', 'char16_t', 'char32_t', 'class', 'compl', 'concept', 'const', 'consteval',
+        'constexpr', 'constinit', 'const_cast', 'continue', 'co_await', 'co_return', 'co_yield', 'decltype',
+        'default', 'delete', 'do', 'double', 'dynamic_cast', 'else', 'enum', 'explicit', 'export', 'extern',
+        'false', 'float', 'for', 'friend', 'goto', 'if', 'inline', 'int', 'long', 'mutable', 'namespace',
+        'new', 'noexcept', 'not', 'not_eq', 'nullptr', 'operator', 'or', 'or_eq', 'private', 'protected',
+        'public', 'reflexpr', 'register', 'reinterpret_cast', 'requires', 'return', 'short', 'signed', 'sizeof',
+        'static', 'static_assert', 'static_cast', 'struct', 'switch', 'template', 'this', 'thread_local',
+        'throw', 'true', 'try', 'typedef', 'typeid', 'typename', 'union', 'unsigned', 'using', 'virtual',
+        'void', 'volatile', 'wchar_t', 'while', 'xor', 'xor_eq'
+    ]);
+
+    /**
+     * Manual fixes for specific MQL5 classes to handle parser limitations
+     */
+    static MANUAL_FIXES = {
+        'CArrayObj': (generator, publicMethods, lines) => {
+            if (!publicMethods.some(m => m.name === 'At')) {
+                lines.push(generator.indent + 'CObject *At(const int index) const;');
+            }
+        },
+        'CDictionary_String_Obj': (generator, publicMethods, lines) => {
+            // Check if getter exists, if not add it (parser often skips overloads with same name)
+            if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
+                lines.push(generator.indent + 'CObject *Value();');
+            }
+        },
+        'CDictionary_Obj_Obj': (generator, publicMethods, lines) => {
+            if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
+                lines.push(generator.indent + 'CObject *Value();');
+            }
+            if (!publicMethods.some(m => m.name === 'Key' && (!m.params || m.params.length === 0))) {
+                lines.push(generator.indent + 'CObject *Key();');
+            }
+        },
+        'CFileBin': (generator, _publicMethods, lines) => {
+            // Template methods are not currently parsed correctly
+            lines.push(generator.indent + 'template<typename T> uint WriteStruct(T &data);');
+            lines.push(generator.indent + 'template<typename T> uint WriteArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
+            lines.push(generator.indent + 'template<typename T> uint WriteEnum(const T value);');
+            lines.push(generator.indent + 'template<typename T> uint ReadArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
+            lines.push(generator.indent + 'template<typename T> bool ReadStruct(T &data);');
+            lines.push(generator.indent + 'template<typename T> bool ReadEnum(T &value);');
+        }
+    };
+
+    /**
      * Detect template parameters used in a class
      * Scans all methods and members for type names that look like template parameters
      */
@@ -158,34 +208,7 @@ class StubGenerator {
             }
 
             // Manual fixes for methods that might be missed by parser or require templates
-            if (classObj.name === 'CArrayObj') {
-                if (!publicMethods.some(m => m.name === 'At')) {
-                    lines.push(this.indent + 'CObject *At(const int index) const;');
-                }
-            }
-            if (classObj.name === 'CDictionary_String_Obj') {
-                // Check if getter exists, if not add it (parser often skips overloads with same name)
-                if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
-                    lines.push(this.indent + 'CObject *Value();');
-                }
-            }
-            if (classObj.name === 'CDictionary_Obj_Obj') {
-                if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
-                    lines.push(this.indent + 'CObject *Value();');
-                }
-                if (!publicMethods.some(m => m.name === 'Key' && (!m.params || m.params.length === 0))) {
-                    lines.push(this.indent + 'CObject *Key();');
-                }
-            }
-            if (classObj.name === 'CFileBin') {
-                // Template methods are not currently parsed correctly
-                lines.push(this.indent + 'template<typename T> uint WriteStruct(T &data);');
-                lines.push(this.indent + 'template<typename T> uint WriteArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
-                lines.push(this.indent + 'template<typename T> uint WriteEnum(const T value);');
-                lines.push(this.indent + 'template<typename T> uint ReadArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
-                lines.push(this.indent + 'template<typename T> bool ReadStruct(T &data);');
-                lines.push(this.indent + 'template<typename T> bool ReadEnum(T &value);');
-            }
+            this.applyManualFixes(classObj.name, publicMethods, lines);
         }
 
         // Protected section
@@ -216,6 +239,16 @@ class StubGenerator {
     }
 
     /**
+     * Apply manual fixes for specific classes
+     */
+    applyManualFixes(className, publicMethods, lines) {
+        const fix = StubGenerator.MANUAL_FIXES[className];
+        if (fix) {
+            fix(this, publicMethods, lines);
+        }
+    }
+
+    /**
      * Generate method declaration
      */
     generateMethod(method) {
@@ -242,18 +275,7 @@ class StubGenerator {
      * Generate parameter list
      */
     generateParams(params) {
-        const CXX_KEYWORDS = new Set([
-            'alignas', 'alignof', 'and', 'and_eq', 'asm', 'auto', 'bitand', 'bitor', 'bool', 'break', 'case',
-            'catch', 'char', 'char8_t', 'char16_t', 'char32_t', 'class', 'compl', 'concept', 'const', 'consteval',
-            'constexpr', 'constinit', 'const_cast', 'continue', 'co_await', 'co_return', 'co_yield', 'decltype',
-            'default', 'delete', 'do', 'double', 'dynamic_cast', 'else', 'enum', 'explicit', 'export', 'extern',
-            'false', 'float', 'for', 'friend', 'goto', 'if', 'inline', 'int', 'long', 'mutable', 'namespace',
-            'new', 'noexcept', 'not', 'not_eq', 'nullptr', 'operator', 'or', 'or_eq', 'private', 'protected',
-            'public', 'reflexpr', 'register', 'reinterpret_cast', 'requires', 'return', 'short', 'signed', 'sizeof',
-            'static', 'static_assert', 'static_cast', 'struct', 'switch', 'template', 'this', 'thread_local',
-            'throw', 'true', 'try', 'typedef', 'typeid', 'typename', 'union', 'unsigned', 'using', 'virtual',
-            'void', 'volatile', 'wchar_t', 'while', 'xor', 'xor_eq'
-        ]);
+        const CXX_KEYWORDS = StubGenerator.CXX_KEYWORDS;
 
         return params.map(p => {
             let param = '';
@@ -269,7 +291,11 @@ class StubGenerator {
                 }
                 param += ' ' + safeName;
             }
-            if (p.defaultValue !== undefined && p.defaultValue !== null) param += ' = ' + p.defaultValue;
+            if (p.defaultValue !== undefined && p.defaultValue !== null) {
+                let val = p.defaultValue;
+                if (val === 'NULL') val = 'nullptr';
+                param += ' = ' + val;
+            }
             return param;
         }).join(', ');
     }
@@ -327,8 +353,13 @@ class StubGenerator {
 
     /**
      * Generate a complete header file
+     * @param {Array} parsedDataArrayInput - Array of parsed structures (will be deep-cloned to avoid side effects)
+     * @param {string} headerName - Name for the header comment
+     * @returns {string} The complete header file content
      */
-    generateHeader(parsedDataArray, headerName = 'generated_stubs') {
+    generateHeader(parsedDataArrayInput, headerName = 'generated_stubs') {
+        // Prevent mutation of input array since updateTypeReferences modifies it
+        const parsedDataArray = structuredClone(parsedDataArrayInput);
         const lines = [];
 
         // File header
@@ -341,6 +372,8 @@ class StubGenerator {
         lines.push(' */');
         lines.push('');
         lines.push('#pragma once');
+        lines.push('');
+        lines.push('#include "mql_clangd_compat.h"');
         lines.push('');
         lines.push('#ifdef __clang__');
         lines.push('');
@@ -423,8 +456,7 @@ class StubGenerator {
         lines.push('// Function pointer typedefs used by CAxis/CCurve');
         lines.push('typedef double (*DoubleToStringFunction)(double value, void* cbdata);');
         lines.push('typedef double (*CurveFunction)(double x, void* cbdata);');
-        lines.push('typedef void (*PlotFucntion)(void* cbdata);');
-        lines.push('');
+        lines.push('typedef void (*PlotFunction)(void* cbdata);'); lines.push('');
         lines.push('// OpenCL execution status (not in MQL5 public headers)');
         lines.push('enum ENUM_OPENCL_EXECUTION_STATUS {');
         lines.push('    OPENCL_EXECUTION_STATUS_SUBMITTED = 0,');

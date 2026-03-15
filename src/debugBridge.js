@@ -171,7 +171,12 @@ class MqlDebugBridge {
         try {
             await fs.promises.access(targetPath);
             return true; // Already deployed
-        } catch { /* proceed */ }
+        } catch (e) {
+            if (e.code !== 'ENOENT') {
+                throw e; // Rethrow permission errors or other FS issues
+            }
+            // If ENOENT, proceed to deploy
+        }
 
         const extensionPath = context.extensionPath;
         const sourcePath    = path.join(extensionPath, 'files', MQLDEBUG_MQH);
