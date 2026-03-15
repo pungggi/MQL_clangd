@@ -77,7 +77,7 @@ class StubGenerator {
     static TEMPLATE_PARAMS = new Set([
         'T', 'K', 'V', 'U', 'R', 'E', 'N', 'M',
         'T1', 'T2', 'T3', 'T4', 'T5',
-        'TKey', 'TValue', 'TResult', 'TInput', 'TOutput',
+        'TKey', 'TItem', 'TValue', 'TResult', 'TInput', 'TOutput',
         'PURGER', 'FUNCTOR', 'COMPARATOR', 'ALLOCATOR'
     ]);
 
@@ -223,7 +223,10 @@ class StubGenerator {
 
         if (method.isVirtual) decl += 'virtual ';
         if (method.isStatic) decl += 'static ';
-        if (method.returnType) decl += method.returnType + ' ';
+
+        let safeReturnType = method.returnType;
+        if (safeReturnType === 'INPUT_TYPE') safeReturnType = 'int';
+        if (safeReturnType) decl += safeReturnType + ' ';
 
         decl += method.name + '(';
         decl += this.generateParams(method.params);
@@ -239,11 +242,33 @@ class StubGenerator {
      * Generate parameter list
      */
     generateParams(params) {
+        const CXX_KEYWORDS = new Set([
+            'alignas', 'alignof', 'and', 'and_eq', 'asm', 'auto', 'bitand', 'bitor', 'bool', 'break', 'case',
+            'catch', 'char', 'char8_t', 'char16_t', 'char32_t', 'class', 'compl', 'concept', 'const', 'consteval',
+            'constexpr', 'constinit', 'const_cast', 'continue', 'co_await', 'co_return', 'co_yield', 'decltype',
+            'default', 'delete', 'do', 'double', 'dynamic_cast', 'else', 'enum', 'explicit', 'export', 'extern',
+            'false', 'float', 'for', 'friend', 'goto', 'if', 'inline', 'int', 'long', 'mutable', 'namespace',
+            'new', 'noexcept', 'not', 'not_eq', 'nullptr', 'operator', 'or', 'or_eq', 'private', 'protected',
+            'public', 'reflexpr', 'register', 'reinterpret_cast', 'requires', 'return', 'short', 'signed', 'sizeof',
+            'static', 'static_assert', 'static_cast', 'struct', 'switch', 'template', 'this', 'thread_local',
+            'throw', 'true', 'try', 'typedef', 'typeid', 'typename', 'union', 'unsigned', 'using', 'virtual',
+            'void', 'volatile', 'wchar_t', 'while', 'xor', 'xor_eq'
+        ]);
+
         return params.map(p => {
             let param = '';
             if (p.isConst) param += 'const ';
-            param += p.type;
-            if (p.name) param += ' ' + p.name;
+            let safeType = p.type;
+            if (safeType === 'INPUT_TYPE') safeType = 'int';
+            param += safeType;
+
+            if (p.name) {
+                let safeName = p.name;
+                if (CXX_KEYWORDS.has(safeName)) {
+                    safeName = safeName + '_';
+                }
+                param += ' ' + safeName;
+            }
             if (p.defaultValue !== undefined && p.defaultValue !== null) param += ' = ' + p.defaultValue;
             return param;
         }).join(', ');
@@ -256,7 +281,11 @@ class StubGenerator {
         let decl = this.indent;
         if (member.isStatic) decl += 'static ';
         if (member.isConst) decl += 'const ';
-        decl += member.type + ' ' + member.name + ';';
+
+        let safeType = member.type;
+        if (safeType === 'INPUT_TYPE') safeType = 'int';
+
+        decl += safeType + ' ' + member.name + ';';
         return decl;
     }
 
@@ -334,6 +363,12 @@ class StubGenerator {
         lines.push('// Forward declarations');
         // First, forward declare everything we have definitions for
         for (const cls of allClasses) {
+            // Template classes cannot be forward-declared without template params
+            const templateParams = this.detectTemplateParams(cls);
+            if (templateParams.length > 0) {
+                baseClasses.delete(cls.name);
+                continue; // Skip — template definition itself serves as declaration
+            }
             const keyword = cls.isStruct ? 'struct' : 'class';
             lines.push(`${keyword} ${cls.name};`);
             baseClasses.delete(cls.name); // Remove if we already declared it
@@ -368,7 +403,38 @@ class StubGenerator {
             }
         }
         lines.push('');
+
+        // Manual extras: constants, typedefs, and types not captured by the parser
+        // (MQL5 macros, Windows API types, function pointer typedefs)
+        lines.push('// Constants defined as macros in MQL5 headers');
+        lines.push('const long CONTROLS_INVALID_ID = -1;');
+        lines.push('const int CL_USE_ANY = -1;');
+        lines.push('const int OBJ_ALL_PERIODS = -1;');
         lines.push('');
+        lines.push('// Windows API types used in Win32 stubs');
+        lines.push('typedef void* PVOID;');
+        lines.push('typedef void* HANDLE;');
+        lines.push('struct DISPLAYCONFIG_MODE { unsigned int modeInfoIdx; };');
+        lines.push('struct RAWFORMAT { unsigned char data[16]; };');
+        lines.push('struct FILETIME { unsigned int dwLowDateTime; unsigned int dwHighDateTime; };');
+        lines.push('struct LUID { unsigned int LowPart; int HighPart; };');
+        lines.push('struct FILE_ID_128 { unsigned char Identifier[16]; };');
+        lines.push('');
+        lines.push('// Function pointer typedefs used by CAxis/CCurve');
+        lines.push('typedef double (*DoubleToStringFunction)(double value, void* cbdata);');
+        lines.push('typedef double (*CurveFunction)(double x, void* cbdata);');
+        lines.push('typedef void (*PlotFucntion)(void* cbdata);');
+        lines.push('');
+        lines.push('// OpenCL execution status (not in MQL5 public headers)');
+        lines.push('enum ENUM_OPENCL_EXECUTION_STATUS {');
+        lines.push('    OPENCL_EXECUTION_STATUS_SUBMITTED = 0,');
+        lines.push('    OPENCL_EXECUTION_STATUS_RUNNING = 1,');
+        lines.push('    OPENCL_EXECUTION_STATUS_COMPLETE = 2,');
+        lines.push('    OPENCL_EXECUTION_STATUS_ERROR = -1');
+        lines.push('};');
+        lines.push('');
+        lines.push('// Template forward declaration needed by CLinkedListNode');
+        lines.push('template<typename T> class CLinkedList;');
         lines.push('');
 
         // Helper to check if two enums are identical
