@@ -3,7 +3,7 @@ const vscode = require('vscode');
 const fs     = require('fs');
 const path   = require('path');
 
-const { instrumentSource }   = require('./debugInstrumentation');
+const { instrumentWorkspace }  = require('./debugInstrumentation');
 const { MqlDebugLogReader }  = require('./debugLogReader');
 const { store }              = require('./debugStateStore');
 
@@ -52,7 +52,7 @@ class MqlDebugBridge {
      * @param {object}   context       VS Code extension context
      * @param {Function} openPanel     Callback: openPanel(store) — opens/updates the debug panel
      */
-    async start(sourcePath, mql5Root, compilePath, context, openPanel) {
+    async start(sourcePath, mql5Root, compilePath, context, openPanel, originalPath = null) {
         if (this._active) {
             vscode.window.showWarningMessage('MQL Debug session already running. Stop it first.');
             return;
@@ -62,20 +62,24 @@ class MqlDebugBridge {
         const deployed = await this._deployLibrary(mql5Root, context);
         if (!deployed) return;
 
-        // 2. Collect breakpoints for this file
-        const breakpoints = this._collectBreakpoints(sourcePath);
-        if (breakpoints.length === 0) {
+        // 2. Collect breakpoints across the workspace
+        const breakpointMap = this._collectAllBreakpoints();
+        if (breakpointMap.size === 0) {
             const answer = await vscode.window.showInformationMessage(
-                'No breakpoints found in this file. Run anyway with only session-start logging?',
-                'Yes', 'Cancel'
+                 'No breakpoints found anywhere in the workspace. Run anyway with only session-start logging?',
+                 'Yes', 'Cancel'
             );
             if (answer !== 'Yes') return;
         }
 
-        // 3. Instrument source → temp file
+        // 3. Instrument workspace and resolve includes
         let tempPath, restore, skipped;
         try {
-            ({ tempPath, restore, skipped } = instrumentSource(sourcePath, breakpoints));
+            ({ tempPath, restore, skipped } = instrumentWorkspace(sourcePath, breakpointMap, mql5Root));
+            if (!tempPath) {
+                vscode.window.showErrorMessage(`MQL Debug: Failed to instrument workspace.`);
+                return;
+            }
         } catch (err) {
             vscode.window.showErrorMessage(`MQL Debug: Failed to instrument source: ${err.message}`);
             return;
@@ -100,7 +104,8 @@ class MqlDebugBridge {
 
                 if (compileError) {
                     restore();
-                    vscode.window.showErrorMessage(`MQL Debug: Compilation failed — ${compileError}`);
+                    const errMsg = compileError === true ? 'Check the Output panel or Problems view for details.' : compileError;
+                    vscode.window.showErrorMessage(`MQL Debug: Compilation failed — ${errMsg}`);
                     return false;
                 }
                 return true;
@@ -199,22 +204,21 @@ class MqlDebugBridge {
     }
 
     /**
-     * Collect VS Code breakpoints for the given source file.
-     * @param {string} sourcePath
-     * @returns {Array<{line: number, condition?: string}>}
+     * Collect all VS Code breakpoints mapped by lowercase file path.
+     * @returns {Map<string, Array<{line: number, condition?: string}>>}
      */
-    _collectBreakpoints(sourcePath) {
-        const normalised = sourcePath.toLowerCase().replace(/\\/g, '/');
-        return vscode.debug.breakpoints
-            .filter(bp => {
-                if (!(bp instanceof vscode.SourceBreakpoint)) return false;
-                const bpPath = bp.location.uri.fsPath.toLowerCase().replace(/\\/g, '/');
-                return bpPath === normalised;
-            })
-            .map(bp => ({
-                line:      bp.location.range.start.line + 1, // VS Code is 0-based, MQL is 1-based
+    _collectAllBreakpoints() {
+        const bpMap = new Map();
+        for (const bp of vscode.debug.breakpoints) {
+            if (!(bp instanceof vscode.SourceBreakpoint)) continue;
+            const bpPath = bp.location.uri.fsPath.toLowerCase().replace(/\\/g, '/');
+            if (!bpMap.has(bpPath)) bpMap.set(bpPath, []);
+            bpMap.get(bpPath).push({
+                line: bp.location.range.start.line + 1, // VS Code is 0-based, MQL is 1-based
                 condition: bp.condition || '',
-            }));
+            });
+        }
+        return bpMap;
     }
 }
 

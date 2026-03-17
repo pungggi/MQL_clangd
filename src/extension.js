@@ -2682,11 +2682,32 @@ function activate(context) {
             vscode.window.showErrorMessage('MQL Debug: Open an MQL source file first.');
             return;
         }
-        const sourcePath = editor.document.uri.fsPath;
+        let sourcePath = editor.document.uri.fsPath;
         const ext = pathModule.extname(sourcePath).toLowerCase();
-        if (!['.mq4', '.mq5'].includes(ext)) {
-            vscode.window.showErrorMessage('MQL Debug: The active file must be an .mq5 or .mq4 EA/script.');
+        if (!['.mq4', '.mq5', '.mqh'].includes(ext)) {
+            vscode.window.showErrorMessage('MQL Debug: The active file must be an .mq5, .mq4, or .mqh EA/script/header.');
             return;
+        }
+
+        if (ext === '.mqh') {
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+            if (!workspaceFolder) {
+                vscode.window.showErrorMessage('MQL Debug: .mqh file must be inside a workspace folder to resolve its compile target.');
+                return;
+            }
+            const targets = await resolveCompileTargets({
+                document: editor.document,
+                workspaceFolder,
+                context,
+                rt: COMPILE_MODE_COMPILE
+            });
+            if (!targets || targets.length === 0) {
+                return; // User cancelled or no targets
+            }
+            if (targets.length > 1) {
+                vscode.window.showInformationMessage(`MQL Debug: Multiple targets found. Debugging the first one: ${pathModule.basename(targets[0])}`);
+            }
+            sourcePath = targets[0];
         }
 
         const mql5Root = findMql5Root();
@@ -2695,9 +2716,11 @@ function activate(context) {
             return;
         }
 
+        const originalPath = editor.document.uri.fsPath;
         await debugBridge.start(sourcePath, mql5Root, compilePath, context, () => {
+            OpenTradingTerminal();
             MqlDebugPanel.show(debugStore, context);
-        });
+        }, originalPath);
     }));
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.stopDebugging', () => {

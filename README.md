@@ -303,6 +303,32 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 
 ---
 
+### MQL Debugger (Real-Time Variable Inspection)
+
+Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. This feature automatically injects telemetry code at your VS Code breakpoints and streams variable states back to a specialized dashboard.
+
+**How to use:**
+
+1. Open the `.mq5`, `.mq4`, or `.mqh` file you want to debug.
+2. Place breakpoints in the editor margin (click to the left of the line numbers) where you want to inspect variables.
+3. Click the **Start Debugging** (bug icon 🐞) button in the editor title bar, or run `MQL: Start Debugging` from the Command Palette.
+   * *If you start from an `.mqh` file, the extension will automatically resolve its dependencies and ask you which main EA to instrument and compile.*
+4. The extension will automatically:
+   - Deploy `MqlDebug.mqh` to your MetaTrader `Include/` folder if it's missing.
+   - Inject temporary telemetry code at your breakpoints.
+   - Compile a temporary `.ex4`/`.ex5` file.
+   - Start MetaTrader.
+   - Open the **MQL Debug panel** in VS Code.
+5. In MetaTrader, attach the newly compiled EA/Script to a chart.
+6. As the EA executes and hits the breakpoints, the variables will automatically populate and update in real-time in the VS Code debug dashboard!
+7. When you are finished, click `MQL: Stop Debugging` in the Command Palette to safely clean up the temporary files and end the session.
+
+**Notes:**
+- Only basic variable types and common structs are supported for serialization at this time.
+- If an injection point is deemed unsafe (e.g. inside a single-line block without braces), the debugger will warn you and skip that line.
+
+---
+
 ### Troubleshooting clangd diagnostics (MQL-specific)
 
 If you open built-in examples like `MQL5/Experts/Examples/MACD/MACD Sample.mq5` and see a large number of clangd errors, work through the steps below.

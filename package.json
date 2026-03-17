@@ -70,12 +70,12 @@
                 "mql_tools.Metaeditor.Include4Dir": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "Path to the **MQL4 Data Folder** (the one containing `Include`, `Logs`, `Experts`, etc.). This is critical for finding library headers and for the **Live Runtime Log** feature to locate your terminal logs. Supports `${workspaceFolder}`."
+                    "markdownDescription": "Path to **MQL4 Data Folder** (containing `Include`, `Logs`, etc.). Essential for library headers and **Live Runtime Logs**. Automatically inferred if left blank. Supports `${workspaceFolder}`."
                 },
                 "mql_tools.Metaeditor.Include5Dir": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "Path to the **MQL5 Data Folder** (the one containing `Include`, `Logs`, `Experts`, etc.). This is critical for finding library headers and for the **Live Runtime Log** feature to locate your terminal logs. Supports `${workspaceFolder}`."
+                    "markdownDescription": "Path to **MQL5 Data Folder** (containing `Include`, `Logs`, etc.). Essential for library headers and **Live Runtime Logs**. Automatically inferred if left blank. Supports `${workspaceFolder}`."
                 },
                 "mql_tools.Metaeditor.Portable4": {
                     "type": "boolean",
@@ -476,7 +476,7 @@
                     "group": "navigation"
                 },
                 {
-                    "when": "resourceExtname == .mq5 && config.mql_tools.ShowButton.StartDebugging == true || resourceExtname == .mq4 && config.mql_tools.ShowButton.StartDebugging == true",
+                    "when": "resourceExtname == .mq5 && config.mql_tools.ShowButton.StartDebugging == true || resourceExtname == .mq4 && config.mql_tools.ShowButton.StartDebugging == true || resourceExtname == .mqh && config.mql_tools.ShowButton.StartDebugging == true",
                     "command": "mql_tools.startDebugging",
                     "group": "navigation"
                 }
@@ -594,7 +594,7 @@
             {
                 "command": "mql_tools.startDebugging",
                 "key": "ctrl+shift+d",
-                "when": "resourceExtname == .mq4 || resourceExtname == .mq5"
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             }
         ]
     },
@@ -618,9 +618,10 @@
         "@types/mocha": "^10.0.10",
         "@types/node": "22.x",
         "@types/vscode": "^1.90.0",
-        "eslint": "^8.57.1",
+        "eslint": "^10.0.3",
+        "glob": "^13.0.6",
         "mocha": "^11.7.5",
-        "webpack": "^5.104.1",
+        "webpack": "^5.105.4",
         "webpack-cli": "^6.0.1"
     },
     "license": "SEE LICENSE IN LICENSE"

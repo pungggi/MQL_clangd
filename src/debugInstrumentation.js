@@ -227,84 +227,210 @@ function ensureInclude(lines) {
 }
 
 /**
- * Instrument a source file for debugging.
+ * Resolves an include path to its absolute filesystem path.
  *
- * @param {string}   sourcePath   Absolute path to the original .mq5/.mq4 file
- * @param {Array<{line: number, condition?: string}>} breakpoints
- *   Array of VS Code breakpoints with 1-based line numbers
- * @returns {{ tempPath: string, restore: () => void, skipped: number[] }}
- *   tempPath  - path to the instrumented copy to compile
- *   restore() - deletes the temp file
- *   skipped   - 1-based line numbers for which no injection point was found
+ * @param {string} incPath      Path as written in the #include directive
+ * @param {string} includeBase  Absolute path to the directory doing the include
+ * @param {string} mql5Root     MQL5 root directory
+ * @returns {string|null}       Absolute path, or null if not found
  */
-function instrumentSource(sourcePath, breakpoints) {
-    const ext = path.extname(sourcePath);         // .mq5 or .mq4
-    const base = path.basename(sourcePath, ext);
-    const dir = path.dirname(sourcePath);
-    const tempPath = path.join(dir, `${base}.mql_dbg_build${ext}`);
+function resolveIncludePath(incPath, includeBase, mql5Root) {
+    const relPath = path.join(includeBase, ...incPath.split(/[\\/]/));
+    if (fs.existsSync(relPath)) return relPath;
 
-    // Clean up any stale artifacts in this directory from previous aborted/locked sessions
-    try {
-        const files = fs.readdirSync(dir);
-        for (const f of files) {
-            if (f.includes('.mql_dbg_build.')) {
-                try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore locked files */ }
+    // Additionally check the user's custom /inc: VS Code settings
+    const vscode = require('vscode');
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    const isMql5 = (mql5Root && mql5Root.toLowerCase().includes('mql5')) || relPath.toLowerCase().includes('mql5');
+    const customIncDir = isMql5 ? config.get('Metaeditor.Include5Dir') : config.get('Metaeditor.Include4Dir');
+    
+    if (customIncDir && fs.existsSync(customIncDir)) {
+        const customPath = path.join(customIncDir, ...incPath.split(/[\\/]/));
+        if (fs.existsSync(customPath)) return customPath;
+    }
+
+    if (mql5Root) {
+        const extPath = path.join(mql5Root, 'Include', ...incPath.split(/[\\/]/));
+        if (fs.existsSync(extPath)) return extPath;
+    }
+    return null;
+}
+
+/**
+ * Instrument a source file and its included dependencies for debugging.
+ *
+ * @param {string}   entryPointPath Absolute path to the main .mq5/.mq4 file
+ * @param {Map<string, Array<{line: number, condition?: string}>>} breakpointMap
+ *   Map of normalized path -> array of VS Code breakpoints
+ * @param {string}   mql5Root       MQL5 root directory (for resolving includes)
+ * @returns {{ tempPath: string, restore: () => void, skipped: string[] }}
+ */
+function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
+    const graph = new Map();
+
+    function buildNode(filePath) {
+        const normPath = filePath.toLowerCase().replace(/\\/g, '/');
+        if (graph.has(normPath)) return graph.get(normPath);
+
+        const node = {
+            normPath,
+            filePath,
+            lines: null,
+            eol: '\n',
+            bps: breakpointMap.get(normPath) || [],
+            includes: [], // { lineIdx, incPath, prefix, suffix, absPath }
+            needsCopy: false
+        };
+        graph.set(normPath, node);
+
+        if (node.bps.length > 0) {
+            node.needsCopy = true;
+        }
+
+        let raw;
+        try {
+            raw = fs.readFileSync(filePath);
+        } catch {
+            return node;
+        }
+
+        let content;
+        if (raw[0] === 0xFF && raw[1] === 0xFE) {
+            content = raw.toString('utf16le');
+        } else {
+            content = raw.toString('utf8').replace(/^\uFEFF/, '');
+        }
+
+        node.eol = content.includes('\r\n') ? '\r\n' : '\n';
+        node.lines = content.split(/\r?\n/);
+
+        // Find includes
+        for (let i = 0; i < node.lines.length; i++) {
+            const m = node.lines[i].match(/^(\s*#include\s+["<])([^">]+)([">])/);
+            if (m) {
+                const incPath = m[2];
+                const absPath = resolveIncludePath(incPath, path.dirname(filePath), mql5Root);
+                if (absPath) {
+                    node.includes.push({
+                        lineIdx: i,
+                        incPath,
+                        prefix: m[1],
+                        suffix: m[3],
+                        absPath
+                    });
+                    buildNode(absPath);
+                }
             }
         }
-    } catch { /* ignore directory read errors */ }
-
-    const raw = fs.readFileSync(sourcePath);
-    // Detect BOM (UTF-16LE) and decode accordingly — same logic as logTailer
-    let content;
-    if (raw[0] === 0xFF && raw[1] === 0xFE) {
-        content = raw.toString('utf16le');
-    } else {
-        content = raw.toString('utf8').replace(/^\uFEFF/, '');
+        return node;
     }
 
-    const eol = content.includes('\r\n') ? '\r\n' : '\n';
-    const lines = content.split(/\r?\n/);
-    const skipped = [];
+    // 1. Build DAG of includes
+    buildNode(entryPointPath);
 
-    // Collect all injection points: { afterLine0Based, injectionLines[] }
-    // Process in reverse order so insertions don't shift earlier line numbers.
-    const injections = [];
-
-    for (const bp of breakpoints) {
-        const injPoint = findInjectionPoint(lines, bp.line);
-        if (injPoint === null) {
-            skipped.push(bp.line);
-            continue;
+    // 2. Propagate needsCopy = true upstream
+    let changed;
+    do {
+        changed = false;
+        for (const node of graph.values()) {
+            if (!node.needsCopy) {
+                for (const inc of node.includes) {
+                    const childNode = graph.get(inc.absPath.toLowerCase().replace(/\\/g, '/'));
+                    if (childNode && childNode.needsCopy) {
+                        node.needsCopy = true;
+                        changed = true;
+                        break;
+                    }
+                }
+            }
         }
-        const watchVars = parseWatchAnnotations(lines, bp.line);
-        const label = `bp_${bp.line}`;
-        const macroLines = buildInjectionLines(label, watchVars, bp.condition || '');
-        injections.push({ afterLine: injPoint, macroLines });
+    } while (changed);
+
+    // Entry point MUST always be copied (so we can compile it without destroying the user's .ex5)
+    const entryNode = graph.get(entryPointPath.toLowerCase().replace(/\\/g, '/'));
+    if (entryNode) entryNode.needsCopy = true;
+
+    // 3. Perform copies and rewrites
+    const tempFiles = [];
+    const skippedArr = [];
+    let entryTempPath = '';
+
+    for (const node of graph.values()) {
+        if (!node.needsCopy) continue;
+
+        // Clean stale files in this directory before we write a new one
+        const dir = path.dirname(node.filePath);
+        try {
+            const files = fs.readdirSync(dir);
+            for (const f of files) {
+                if (f.includes('.mql_dbg_build.')) {
+                    try { fs.unlinkSync(path.join(dir, f)); } catch {}
+                }
+            }
+        } catch {}
+
+        // Rewrite includes that point to copied children
+        for (const inc of node.includes) {
+            const childNode = graph.get(inc.absPath.toLowerCase().replace(/\\/g, '/'));
+            if (childNode && childNode.needsCopy) {
+                const childExt = path.extname(inc.incPath);
+                const childBase = inc.incPath.slice(0, -childExt.length);
+                const newIncPath = `${childBase}.mql_dbg_build${childExt}`;
+                node.lines[inc.lineIdx] = `#include "${newIncPath}"`;
+            }
+        }
+
+        // Inject macros
+        if (node.bps.length > 0) {
+            const injections = [];
+            for (const bp of node.bps) {
+                const injPoint = findInjectionPoint(node.lines, bp.line);
+                if (injPoint === null) {
+                    const base = path.basename(node.filePath);
+                    skippedArr.push(`${base}:${bp.line}`);
+                    continue;
+                }
+                const watchVars = parseWatchAnnotations(node.lines, bp.line);
+                const label = `bp_${path.basename(node.filePath)}_${bp.line}`;
+                const macroLines = buildInjectionLines(label, watchVars, bp.condition || '');
+                injections.push({ afterLine: injPoint, macroLines });
+            }
+            injections.sort((a, b) => b.afterLine - a.afterLine);
+            for (const { afterLine, macroLines } of injections) {
+                node.lines.splice(afterLine + 1, 0, ...macroLines);
+            }
+            ensureInclude(node.lines);
+        }
+
+        // Save
+        const ext = path.extname(node.filePath);
+        const base = path.basename(node.filePath, ext);
+        const tempPath = path.join(dir, `${base}.mql_dbg_build${ext}`);
+
+        if (node.filePath === entryPointPath) {
+            entryTempPath = tempPath;
+        }
+
+        try {
+            fs.writeFileSync(tempPath, node.lines.join(node.eol), 'utf8');
+            tempFiles.push(tempPath);
+        } catch (err) {
+            skippedArr.push(`[Write Error: ${base}${ext}] ${err.message}`);
+        }
     }
-
-    // Sort descending so we inject from bottom to top (preserves line numbers)
-    injections.sort((a, b) => b.afterLine - a.afterLine);
-
-    for (const { afterLine, macroLines } of injections) {
-        lines.splice(afterLine + 1, 0, ...macroLines);
-    }
-
-    // Ensure MqlDebug.mqh is included
-    ensureInclude(lines);
-
-    // Write temp file as UTF-8 (MetaEditor accepts UTF-8 for .mq5)
-    fs.writeFileSync(tempPath, lines.join(eol), 'utf8');
 
     const restore = () => {
-        try { fs.unlinkSync(tempPath); } catch { /* already gone */ }
-        // Also delete compiled binary (.ex4 or .ex5)
-        const binaryPath = tempPath.replace(/\.mq[45]$/i, ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4');
-        if (binaryPath !== tempPath) {
-            try { fs.unlinkSync(binaryPath); } catch { /* ignore if not created */ }
+        for (const tf of tempFiles) {
+            try { fs.unlinkSync(tf); } catch {}
+        }
+        if (entryTempPath) {
+            const ext = path.extname(entryPointPath);
+            const binaryPath = entryTempPath.replace(/\.mq[45]$/i, ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4');
+            try { fs.unlinkSync(binaryPath); } catch {}
         }
     };
 
-    return { tempPath, restore, skipped };
+    return { tempPath: entryTempPath, restore, skipped: skippedArr };
 }
 
-module.exports = { instrumentSource };
+module.exports = { instrumentWorkspace };
