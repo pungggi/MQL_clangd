@@ -1,20 +1,20 @@
 'use strict';
 const vscode = require('vscode');
-const fs     = require('fs');
-const path   = require('path');
+const fs = require('fs');
+const path = require('path');
 
-const { instrumentWorkspace }  = require('./debugInstrumentation');
-const { MqlDebugLogReader }  = require('./debugLogReader');
-const { store }              = require('./debugStateStore');
+const { instrumentWorkspace } = require('./debugInstrumentation');
+const { MqlDebugLogReader } = require('./debugLogReader');
+const { store } = require('./debugStateStore');
 
 const MQLDEBUG_MQH = 'MqlDebug.mqh';
 
 /**
  * Compile modes for compilePath()
  */
-const COMPILE_MODE_CHECK   = 0;
+const COMPILE_MODE_CHECK = 0;
 const COMPILE_MODE_COMPILE = 1;
-const COMPILE_MODE_SCRIPT  = 2;
+const COMPILE_MODE_SCRIPT = 2;
 
 /**
  * MqlDebugBridge — Phase 1 orchestrator.
@@ -25,16 +25,16 @@ const COMPILE_MODE_SCRIPT  = 2;
  *   3. Call instrumentSource() to produce a temp .mql_dbg_build file.
  *   4. Invoke compilePath() via the provided compile function.
  *   5. Start MqlDebugLogReader and forward events to DebugStateStore.
- *   6. Open the DebugPanel webview.
+ *   6. Invoke optional onStarted callback (e.g. open trading terminal).
  *   7. Clean up temp files and stop the reader on session end.
  */
 class MqlDebugBridge {
     constructor() {
         /** @type {MqlDebugLogReader|null} */
-        this._reader    = null;
+        this._reader = null;
         /** @type {(() => void)|null} */
-        this._restore   = null;
-        this._active    = false;
+        this._restore = null;
+        this._active = false;
     }
 
     get isActive() { return this._active; }
@@ -50,9 +50,9 @@ class MqlDebugBridge {
      * @param {string}   mql5Root      MQL5 root folder (has Include/, Files/, Experts/)
      * @param {Function} compilePath   The compilePath(rt, path, context) function from extension.js
      * @param {object}   context       VS Code extension context
-     * @param {Function} openPanel     Callback: openPanel(store) — opens/updates the debug panel
+     * @param {Function} [onStarted]   Optional callback invoked after session starts (e.g. open terminal)
      */
-    async start(sourcePath, mql5Root, compilePath, context, openPanel, originalPath = null) {
+    async start(sourcePath, mql5Root, compilePath, context, onStarted) {
         if (this._active) {
             vscode.window.showWarningMessage('MQL Debug session already running. Stop it first.');
             return;
@@ -66,8 +66,8 @@ class MqlDebugBridge {
         const breakpointMap = this._collectAllBreakpoints();
         if (breakpointMap.size === 0) {
             const answer = await vscode.window.showInformationMessage(
-                 'No breakpoints found anywhere in the workspace. Run anyway with only session-start logging?',
-                 'Yes', 'Cancel'
+                'No breakpoints found anywhere in the workspace. Run anyway with only session-start logging?',
+                'Yes', 'Cancel'
             );
             if (answer !== 'Yes') return;
         }
@@ -75,11 +75,12 @@ class MqlDebugBridge {
         // 3. Instrument workspace and resolve includes
         let tempPath, restore, skipped;
         try {
-            ({ tempPath, restore, skipped } = instrumentWorkspace(sourcePath, breakpointMap, mql5Root));
-            if (!tempPath) {
+            const result = instrumentWorkspace(sourcePath, breakpointMap, mql5Root);
+            if (!result) {
                 vscode.window.showErrorMessage(`MQL Debug: Failed to instrument workspace.`);
                 return;
             }
+            ({ tempPath, restore, skipped } = result);
         } catch (err) {
             vscode.window.showErrorMessage(`MQL Debug: Failed to instrument source: ${err.message}`);
             return;
@@ -97,6 +98,10 @@ class MqlDebugBridge {
             async () => {
                 let compileError;
                 try {
+                    // compilePath returns:
+                    // - false/null: Success
+                    // - true: Generic compilation error (details in Output/Problems view)
+                    // - string: Specific setup/environment error
                     compileError = await compilePath(COMPILE_MODE_COMPILE, tempPath, context);
                 } catch (err) {
                     compileError = err.message || String(err);
@@ -104,7 +109,8 @@ class MqlDebugBridge {
 
                 if (compileError) {
                     restore();
-                    const errMsg = compileError === true ? 'Check the Output panel or Problems view for details.' : compileError;
+                    // If compileError is true, it's a generic compilation failure; otherwise use the error string.
+                    const errMsg = (compileError === true) ? 'Check the Output panel or Problems view for details.' : compileError;
                     vscode.window.showErrorMessage(`MQL Debug: Compilation failed — ${errMsg}`);
                     return false;
                 }
@@ -118,20 +124,20 @@ class MqlDebugBridge {
         // (MetaTrader needs the .ex5 which is next to the temp file)
 
         // 5. Start debug session
-        this._active  = true;
+        this._active = true;
         this._restore = restore;
         store.startSession();
 
         this._reader = new MqlDebugLogReader(mql5Root);
-        this._reader.onBatch  = (evts) => store.applyBatch(evts);
-        this._reader.onError  = (err) => {
+        this._reader.onBatch = (evts) => store.applyBatch(evts);
+        this._reader.onError = (err) => {
             vscode.window.showErrorMessage(`MQL Debug: Log reader error — ${err.message || String(err)}`);
             this.stop();
         };
         this._reader.start();
 
-        // 6. Open the panel
-        openPanel(store);
+        // 6. Invoke optional post-start callback (e.g. open trading terminal)
+        if (typeof onStarted === 'function') onStarted();
 
         vscode.window.showInformationMessage(
             'MQL Debug session started. Attach the compiled EA in MetaTrader to begin.',
@@ -184,7 +190,7 @@ class MqlDebugBridge {
         }
 
         const extensionPath = context.extensionPath;
-        const sourcePath    = path.join(extensionPath, 'files', MQLDEBUG_MQH);
+        const sourcePath = path.join(extensionPath, 'files', MQLDEBUG_MQH);
 
         try {
             await fs.promises.access(sourcePath);

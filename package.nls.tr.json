@@ -30,7 +30,7 @@
     "mql_tools.commands.InsNameMQH.title": "MQH'yi #include olarak ekle",
     "mql_tools.commands.InsResource.title": "BMP/WAV'ı #resource olarak ekle",
     "mql_tools.commands.InsImport.title": "DLL/EX5'i #import olarak ekle",
-    "mql_tools.commands.InsTime.title": "Tarih ve saati YYYY.AA.GG ss:dd:ss formatında ekle",
+    "mql_tools.commands.InsTime.title": "Tarih ve saati YYYY.AA.GG ss:dd:sn formatında ekle",
     "mql_tools.commands.InsIcon.title": "Simgeyi #property olarak ekle",
     "mql_tools.commands.openInME.title": "'MetaEditor'de aç",
     "mql_tools.commands.openTradingTerminal.title": "Ticaret terminalini aç",

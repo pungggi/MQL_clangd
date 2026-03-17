@@ -126,7 +126,7 @@ function parseLogFile(logPath, options = {}) {
         const raw = rawLines[i];
         if (!raw.trim()) continue;
 
-    const { wallclock: _wallclock, source, payload } = parseLine(raw);
+        const { wallclock: _wallclock, source, payload } = parseLine(raw);
 
         // ---- Extract test config from system (Tester) lines -----------------
         if (source === 'Tester' || source.startsWith('Tester')) {
@@ -188,9 +188,8 @@ function parseLogFile(logPath, options = {}) {
             // If we had an incomplete trade, save it to incompleteTrades
             if (currentTrade) {
                 incompleteTrades.push(currentTrade);
-                logger.warn(`[logParser] Incomplete trade lost at line ${currentTrade.orderLine}. Symbol: ${currentTrade.symbol}, TS: ${currentTrade.timestamp}`);
-            }
-            currentTrade = {
+                logger.warn(`[logParser] Incomplete trade detected at line ${currentTrade.orderLine}. Symbol: ${currentTrade.symbol}, TS: ${currentTrade.timestamp}`);
+            } currentTrade = {
                 type: orderMatch[1].toLowerCase(),
                 orderLine: lineNumber,
                 orderSourceFile: srcFile,

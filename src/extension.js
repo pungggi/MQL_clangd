@@ -30,7 +30,7 @@ let isAutoCheckRunning = false;
 let autoCheckDocVersions = new Map(); // Track document versions to ignore our own edits
 // Guard to prevent CheckOnSave from re-triggering itself when Compile() saves files.
 let internalSaveDepth = 0;
-const lg = require('./language');
+const { tf } = require('./timeUtils');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
@@ -64,7 +64,7 @@ const {
     COMPILE_MODE_COMPILE,
     COMPILE_MODE_SCRIPT
 } = require('./debugBridge');
-const { MqlDebugPanel } = require('./debugPanel');
+const { MqlDebugAdapter } = require('./debugAdapter');
 const { store: debugStore } = require('./debugStateStore');
 
 
@@ -348,8 +348,14 @@ function inferMqlDataDirFromPath(filePath, isMql5) {
 }
 
 /**
- * Compile a single file path
- * Extracted from Compile() to support compiling multiple targets
+ * Compile a single file path.
+ *
+ * @param {number} rt           - Compile mode (COMPILE_MODE_CHECK, COMPILE_MODE_COMPILE, COMPILE_MODE_SCRIPT)
+ * @param {string} pathToCompile - Absolute path to the MQL source file
+ * @param {object} _context      - VS Code extension context
+ * @returns {Promise<boolean|string>} - Returns false/null on success, true for generic compilation
+ *                                      errors (logged to output/problems), or a string for specific
+ *                                      setup/environment errors.
  */
 async function compilePath(rt, pathToCompile, _context) {
     const config = vscode.workspace.getConfiguration('mql_tools');
@@ -397,7 +403,7 @@ async function compilePath(rt, pathToCompile, _context) {
             }
         }
     } else {
-        return undefined;
+        return `Unsupported file extension: ${extension}`;
     }
 
     if (isMql5) {
@@ -430,12 +436,12 @@ async function compilePath(rt, pathToCompile, _context) {
     // Early validation - before Promise
     if (!fs.existsSync(MetaDir)) {
         vscode.window.showErrorMessage(CommM);
-        return undefined;
+        return CommM;
     }
 
     if (incDir && !fs.existsSync(incDir)) {
         vscode.window.showErrorMessage(CommI);
-        return undefined;
+        return CommI;
     }
 
     const portableSwitch = generatePortableSwitch(portableMode);
@@ -456,8 +462,9 @@ async function compilePath(rt, pathToCompile, _context) {
         // Validate MetaEditor path format (must be Unix path, not Windows path)
         const pathValidation = validateWinePath(MetaDir);
         if (!pathValidation.valid) {
-            vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
-            return undefined;
+            const wineErr = `Wine Configuration Error: ${pathValidation.error}`;
+            vscode.window.showErrorMessage(wineErr);
+            return wineErr;
         }
 
         // When no Include dir is configured, try to infer the MQL data folder
@@ -523,8 +530,9 @@ async function compilePath(rt, pathToCompile, _context) {
         // We do this here (after other conversions) to ensure we have it for buildWineCmd
         const metaResult = await toWineWindowsPath(MetaDir, wineBinary, winePrefix);
         if (!metaResult.success) {
-            outputChannel.appendLine(`[Wine] MetaEditor path conversion failed: ${metaResult.error}`);
-            return undefined;
+            const wineMetaErr = `[Wine] MetaEditor path conversion failed: ${metaResult.error}`;
+            outputChannel.appendLine(wineMetaErr);
+            return wineMetaErr;
         }
         metaEditorWinPath = metaResult.path;
 
@@ -539,7 +547,7 @@ async function compilePath(rt, pathToCompile, _context) {
         } catch (batchErr) {
             outputChannel.appendLine(`[Error] Failed to create Wine batch file: ${batchErr.message}`);
             vscode.window.showErrorMessage(`Wine compilation setup failed: ${batchErr.message}`);
-            return undefined;
+            return batchErr.message || String(batchErr);
         }
         const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
         command = wineCmd.executable;
@@ -591,8 +599,10 @@ async function compilePath(rt, pathToCompile, _context) {
 
                 data = await fsPromises.readFile(logFile, 'ucs-2');
             } catch (err) {
+                const readErr = `${lg['err_read_log']} ${err.message}`;
                 outputChannel.appendLine(`[Error] Failed to read log file: ${err.message}`);
-                return vscode.window.showErrorMessage(`${lg['err_read_log']} ${err.message}`), resolve();
+                vscode.window.showErrorMessage(readErr);
+                return resolve(readErr);
             }
 
             config.LogFile.DeleteLog && fs.unlink(logFile, (err) => {
@@ -643,30 +653,33 @@ async function compilePath(rt, pathToCompile, _context) {
 
                         childProcess.spawn(wineCmd.executable, wineCmd.args, buildSpawnOptions({ env: wineEnv }))
                             .on('error', (error) => {
-                                outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
+                                const startErr = `${lg['err_start_script']}: ${error.message}`;
+                                outputChannel.appendLine(`[Error]  ${startErr}`);
                                 cleanupBatchFile(rt2BatFile.unixPath);
-                                resolve();
+                                resolve(startErr);
                             })
                             .on('close', () => {
                                 outputChannel.appendLine(String(log.text + lg['info_log_compile']));
                                 cleanupBatchFile(rt2BatFile.unixPath);
-                                resolve();
+                                resolve(false);
                             });
                     } catch (batchErr) {
-                        outputChannel.appendLine(`[Error] Failed to create Wine batch file for script execution: ${batchErr.message}`);
-                        resolve();
+                        const batchFailErr = `Failed to create Wine batch file for script execution: ${batchErr.message}`;
+                        outputChannel.appendLine(`[Error] ${batchFailErr}`);
+                        resolve(batchFailErr);
                     }
                 } else {
                     // Direct execution on Windows – windowsVerbatimArguments keeps quotes intact (fixes #6)
                     const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
                     childProcess.spawn(executable, args, { shell: false, windowsVerbatimArguments: true })
                         .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
-                            resolve();
+                            const startErr = `${lg['err_start_script']}: ${error.message}`;
+                            outputChannel.appendLine(`[Error]  ${startErr}`);
+                            resolve(startErr);
                         })
                         .on('close', () => {
                             outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                            resolve();
+                            resolve(false);
                         });
                 }
             } else {
@@ -720,6 +733,7 @@ async function compilePath(rt, pathToCompile, _context) {
         });
     });
 }
+
 
 function shouldFocusProblemsPanel(hasErrors, options = {}) {
     return Boolean(hasErrors) && !options.background;
@@ -1020,20 +1034,6 @@ function FindParentFile() {
     } else {
         return undefined;
     }
-}
-
-function tf(date, t, d) {
-
-    switch (t) {
-        case 'Y': d = date.getFullYear(); break;
-        case 'M': d = date.getMonth() + 1; break;
-        case 'D': d = date.getDate(); break;
-        case 'h': d = date.getHours(); break;
-        case 'm': d = date.getMinutes(); break;
-        case 's': d = date.getSeconds(); break;
-    }
-
-    return d < 10 ? '0' + d.toString() : d.toString();
 }
 
 function extractPropertyVersion(text) {
@@ -2675,7 +2675,25 @@ function activate(context) {
         });
     }));
 
-    // MQL Debugger Bridge — Phase 1: instrument source + file-watch variable panel
+    // MQL Debugger Bridge — DAP adapter shim
+    context.subscriptions.push(
+        vscode.debug.registerDebugAdapterDescriptorFactory('mql5', {
+            createDebugAdapterDescriptor(session) {
+                const cfg = session.configuration;
+                const adapter = new MqlDebugAdapter(
+                    debugStore,
+                    debugBridge,
+                    cfg.program,
+                    cfg._mql5Root,
+                    compilePath,
+                    context,
+                    cfg._originalPath
+                );
+                return new vscode.DebugAdapterInlineImplementation(adapter);
+            }
+        })
+    );
+
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.startDebugging', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -2717,14 +2735,21 @@ function activate(context) {
         }
 
         const originalPath = editor.document.uri.fsPath;
-        await debugBridge.start(sourcePath, mql5Root, compilePath, context, () => {
-            OpenTradingTerminal();
-            MqlDebugPanel.show(debugStore, context);
-        }, originalPath);
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri)
+            || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
+
+        await vscode.debug.startDebugging(workspaceFolder, {
+            type:          'mql5',
+            request:       'launch',
+            name:          'MQL Debug',
+            program:       sourcePath,
+            _mql5Root:     mql5Root,
+            _originalPath: originalPath,
+        });
     }));
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.stopDebugging', () => {
-        debugBridge.stop();
+        vscode.debug.stopDebugging();
     }));
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));

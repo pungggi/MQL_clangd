@@ -14,7 +14,7 @@
     "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "Show compile & open terminal button",
     "mql_tools.configuration.Wine.Enabled.description": "Enable Wine wrapper for running MetaEditor on macOS/Linux. When enabled, MetaEditor is executed via Wine and paths are converted using winepath.",
     "mql_tools.configuration.Wine.Binary.description": "Path to the Wine binary (e.g., 'wine64', 'wine', or full path like '/usr/local/bin/wine64').",
-    "mql_tools.configuration.context": "Do not disable!",
+    "mql_tools.configuration.context": "obsolete",
     "mql_tools.commands.compileFile.title": "Compile MQL file",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "Compile MQL file and open MetaTrader terminal",
     "mql_tools.commands.checkFile.title": "Check MQL syntax",

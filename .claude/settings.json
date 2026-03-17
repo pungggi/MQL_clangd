@@ -1,12 +1,12 @@
 {
   "hooks": {
-    "postToolUse": [
+    "PostToolUse": [
       {
         "matcher": "Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "file_path=$(jq -r '.tool_input.file_path'); grep -n 'void\\|int\\|double\\|string\\|class' \"$file_path\" | head -5; echo \"--- Edit applied to: $file_path ---\""
+            "command": "file_path=$(jq -r '.tool_input.file_path'); if [ -n \"$file_path\" ] && [ -f \"$file_path\" ]; then grep -n 'void\\|int\\|double\\|string\\|class' \"$file_path\" | head -5; echo \"--- Edit applied to: $file_path ---\"; else echo \"Warning: Invalid or missing file path\"; fi"
           }
         ]
       }

@@ -6,7 +6,7 @@ const MAX_CALL_FRAMES = 50;
 /**
  * In-memory store for the current MQL debug session state.
  *
- * Consumers (debugPanel, future DAP adapter) read from this store;
+ * Consumers (MqlDebugAdapter DAP shim) read from this store;
  * debugBridge writes to it by forwarding events from MqlDebugLogReader.
  *
  * @typedef {Object} WatchEntry

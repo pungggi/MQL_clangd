@@ -39,6 +39,16 @@
     "main": "./src/extension.js",
     "activationEvents": [],
     "contributes": {
+        "debuggers": [
+            {
+                "type": "mql5",
+                "label": "MQL5 Debug"
+            }
+        ],
+        "breakpoints": [
+            { "language": "mql5" },
+            { "language": "mql4" }
+        ],
         "configuration": {
             "title": "MQL Clangd",
             "properties": {

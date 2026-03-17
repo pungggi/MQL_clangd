@@ -1,5 +1,8 @@
 const assert = require('assert');
-const { parseLine, RE_EA_LINE, RE_LIVELOG_LINE, RE_DETECT_EA } = require('../src/logParser');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { parseLine, RE_EA_LINE, RE_LIVELOG_LINE, RE_DETECT_EA, parseLogFile } = require('../src/logParser');
 
 suite('Log Parser Reproduction Tests', () => {
     test('Comment 9: parseLine should handle 4-column lines correctly', () => {
@@ -45,10 +48,7 @@ suite('Log Parser Reproduction Tests', () => {
     });
 
     test('Incomplete trade detection in parseLogFile', () => {
-        const fs = require('fs');
-        const path = require('path');
-        const { parseLogFile } = require('../src/logParser');
-        const logPath = path.join(__dirname, 'incomplete_trade.log');
+        const logPath = path.join(os.tmpdir(), `incomplete_trade_${crypto.randomUUID()}.log`);
         
         // Log with two consecutive orders without fill/exit/pnl for the first one
         const content = 
@@ -69,7 +69,7 @@ suite('Log Parser Reproduction Tests', () => {
             assert.strictEqual(result.incompleteTrades.length, 1, 'Should have one incomplete trade');
             assert.strictEqual(result.incompleteTrades[0].type, 'buy', 'The incomplete trade should be the first one (buy)');
             assert.strictEqual(warnings.length, 1, 'Should have emitted one warning');
-            assert.ok(warnings[0].includes('Incomplete trade lost at line 2'), 'Warning message should mention line 2');
+            assert.ok(warnings[0].includes('Incomplete trade detected at line 2'), 'Warning message should mention line 2');
         } finally {
             if (fs.existsSync(logPath)) fs.unlinkSync(logPath);
         }

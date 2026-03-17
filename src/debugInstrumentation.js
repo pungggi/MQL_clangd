@@ -2,6 +2,13 @@
 const fs = require('fs');
 const path = require('path');
 
+let vscode;
+try {
+    vscode = require('vscode');
+} catch (e) {
+    vscode = null;
+}
+
 // Injected at the top of every instrumented file (after #property directives)
 const INCLUDE_LINE = '#include <MqlDebug.mqh>';
 
@@ -153,6 +160,17 @@ function parseWatchAnnotations(lines, bpLine) {
 }
 
 /**
+ * Sanitize a string for use as a label in MQL macros.
+ * Strips or replaces anything except letters, numbers, underscore, and dash.
+ * @param {string} label
+ * @returns {string}
+ */
+function sanitizeLabel(label) {
+    if (!label) return "";
+    return label.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+/**
  * Sanitize a condition string for safe embedding into a single-line comment.
  * @param {string} condition
  * @returns {string}
@@ -239,14 +257,15 @@ function resolveIncludePath(incPath, includeBase, mql5Root) {
     if (fs.existsSync(relPath)) return relPath;
 
     // Additionally check the user's custom /inc: VS Code settings
-    const vscode = require('vscode');
-    const config = vscode.workspace.getConfiguration('mql_tools');
-    const isMql5 = (mql5Root && mql5Root.toLowerCase().includes('mql5')) || relPath.toLowerCase().includes('mql5');
-    const customIncDir = isMql5 ? config.get('Metaeditor.Include5Dir') : config.get('Metaeditor.Include4Dir');
-    
-    if (customIncDir && fs.existsSync(customIncDir)) {
-        const customPath = path.join(customIncDir, ...incPath.split(/[\\/]/));
-        if (fs.existsSync(customPath)) return customPath;
+    if (vscode) {
+        const config = vscode.workspace.getConfiguration('mql_tools');
+        const isMql5 = (mql5Root && mql5Root.toLowerCase().includes('mql5')) || relPath.toLowerCase().includes('mql5');
+        const customIncDir = isMql5 ? config.get('Metaeditor.Include5Dir') : config.get('Metaeditor.Include4Dir');
+        
+        if (customIncDir && fs.existsSync(customIncDir)) {
+            const customPath = path.join(customIncDir, ...incPath.split(/[\\/]/));
+            if (fs.existsSync(customPath)) return customPath;
+        }
     }
 
     if (mql5Root) {
@@ -263,7 +282,7 @@ function resolveIncludePath(incPath, includeBase, mql5Root) {
  * @param {Map<string, Array<{line: number, condition?: string}>>} breakpointMap
  *   Map of normalized path -> array of VS Code breakpoints
  * @param {string}   mql5Root       MQL5 root directory (for resolving includes)
- * @returns {{ tempPath: string, restore: () => void, skipped: string[] }}
+ * @returns {{ tempPath: string, restore: () => void, skipped: string[] }|null}
  */
 function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const graph = new Map();
@@ -290,7 +309,9 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
         let raw;
         try {
             raw = fs.readFileSync(filePath);
-        } catch {
+        } catch (err) {
+            console.warn(`[debugInstrumentation] Failed to read file: ${filePath}`, err);
+            node.lines = []; // Ensure node.lines is an array to prevent downstream crashes
             return node;
         }
 
@@ -354,20 +375,26 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const tempFiles = [];
     const skippedArr = [];
     let entryTempPath = '';
+    const cleanedDirs = new Set();
 
     for (const node of graph.values()) {
         if (!node.needsCopy) continue;
 
-        // Clean stale files in this directory before we write a new one
         const dir = path.dirname(node.filePath);
-        try {
-            const files = fs.readdirSync(dir);
-            for (const f of files) {
-                if (f.includes('.mql_dbg_build.')) {
-                    try { fs.unlinkSync(path.join(dir, f)); } catch {}
+
+        // Clean stale files in this directory before we write new ones,
+        // but only do it once per directory per debug session!
+        if (!cleanedDirs.has(dir)) {
+            cleanedDirs.add(dir);
+            try {
+                const files = fs.readdirSync(dir);
+                for (const f of files) {
+                    if (f.includes('.mql_dbg_build.')) {
+                        try { fs.unlinkSync(path.join(dir, f)); } catch {}
+                    }
                 }
-            }
-        } catch {}
+            } catch {}
+        }
 
         // Rewrite includes that point to copied children
         for (const inc of node.includes) {
@@ -376,7 +403,14 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 const childExt = path.extname(inc.incPath);
                 const childBase = inc.incPath.slice(0, -childExt.length);
                 const newIncPath = `${childBase}.mql_dbg_build${childExt}`;
-                node.lines[inc.lineIdx] = `#include "${newIncPath}"`;
+                
+                // Preserve original delimiter style (quotes vs angle brackets)
+                if (inc.prefix && inc.suffix) {
+                    node.lines[inc.lineIdx] = `${inc.prefix}${newIncPath}${inc.suffix}`;
+                } else {
+                    // Fallback to quotes if delimiter style cannot be determined
+                    node.lines[inc.lineIdx] = `#include "${newIncPath}" /* fallback */`;
+                }
             }
         }
 
@@ -391,7 +425,8 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                     continue;
                 }
                 const watchVars = parseWatchAnnotations(node.lines, bp.line);
-                const label = `bp_${path.basename(node.filePath)}_${bp.line}`;
+                const sanitizedBase = sanitizeLabel(path.basename(node.filePath));
+                const label = `bp_${sanitizedBase}_${bp.line}`;
                 const macroLines = buildInjectionLines(label, watchVars, bp.condition || '');
                 injections.push({ afterLine: injPoint, macroLines });
             }
@@ -429,6 +464,8 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             try { fs.unlinkSync(binaryPath); } catch {}
         }
     };
+
+    if (!entryTempPath) return null;
 
     return { tempPath: entryTempPath, restore, skipped: skippedArr };
 }
