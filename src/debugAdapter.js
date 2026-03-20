@@ -274,8 +274,6 @@ class MqlDebugAdapter extends EventEmitter {
         this._sendContinueCommand();  // unblock EA if paused
         this._sendResponse(req, {});
         this._bridge.stop();
-        this._sendEvent('exited', { exitCode: 0 });
-        this._sendEvent('terminated', {});
     }
 
     // -------------------------------------------------------------------------
@@ -365,7 +363,7 @@ class MqlDebugAdapter extends EventEmitter {
         if (!filePath) return filePath;
         // Replace .mql_dbg_build.mq5 → .mq5 (and .mq4)
         const mapped = filePath.replace(/\.mql_dbg_build\.(mq[45])/i, '.$1');
-        if (mapped !== filePath && this._originalPath) {
+        if (filePath === this._sourcePath && this._originalPath) {
             // If we have the original path, use it directly (handles full path)
             return this._originalPath;
         }

@@ -1481,8 +1481,7 @@ class MqlCodeActionProvider {
             vscode.CodeActionKind.QuickFix
         );
 
-        action.edit = new vscode.Workspace
-        Edit();
+        action.edit = new vscode.WorkspaceEdit();
 
         // Find closing brace of function
         const closingBrace = this._findFunctionClosingBrace(document, line);

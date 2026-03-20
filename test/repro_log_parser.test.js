@@ -1,5 +1,6 @@
 const assert = require('assert');
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const os = require('os');
 const { parseLine, RE_EA_LINE, RE_LIVELOG_LINE, RE_DETECT_EA, parseLogFile } = require('../src/logParser');
@@ -66,8 +67,9 @@ suite('Log Parser Reproduction Tests', () => {
             
             const result = parseLogFile(logPath, { logger });
             
-            assert.strictEqual(result.incompleteTrades.length, 1, 'Should have one incomplete trade');
+            assert.strictEqual(result.incompleteTrades.length, 2, 'Should have two incomplete trades');
             assert.strictEqual(result.incompleteTrades[0].type, 'buy', 'The incomplete trade should be the first one (buy)');
+            assert.strictEqual(result.incompleteTrades[1].type, 'sell', 'The second incomplete trade should be a sell');
             assert.strictEqual(warnings.length, 1, 'Should have emitted one warning');
             assert.ok(warnings[0].includes('Incomplete trade detected at line 2'), 'Warning message should mention line 2');
         } finally {

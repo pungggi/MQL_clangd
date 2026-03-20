@@ -360,10 +360,487 @@ function parseFunctionParams(lines, braceLineIdx) {
         // Pattern: [const] [&] type [&] name [= default]
         const pm = trimmed.match(/(?:(?:const|static|input)\s+)*([A-Za-z_]\w*)(?:\s*&)?\s+(?:&\s*)?([A-Za-z_]\w*)/);
         if (pm) {
-            params.push({ name: pm[2], type: pm[1] });
+            params.push({ name: pm[2], type: pm[1], isArray: trimmed.includes('[') });
         }
     }
     return params;
+}
+
+// -------------------------------------------------------------------------
+// Class and global type resolution for member access debugging
+// -------------------------------------------------------------------------
+
+/**
+ * Parse class/struct definitions from source lines.
+ * Extracts class name, parent class, and member declarations.
+ *
+ * @param {string[]} lines
+ * @returns {{ name: string, parent: string|null, members: { name: string, type: string, isArray: boolean }[] }[]}
+ */
+function parseClassDefinitions(lines) {
+    const classes = [];
+    const RE_CLASS = /^\s*(?:class|struct)\s+([A-Za-z_]\w*)(?:\s*:\s*(?:(?:public|private|protected)\s+)?([A-Za-z_]\w*))?/;
+    const RE_DECL = /^\s*(?:(?:static|const)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
+    const SKIP = new Set([
+        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
+        'new', 'virtual', 'override', 'public', 'private', 'protected',
+        'template', 'typedef', 'namespace',
+    ]);
+
+    for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(RE_CLASS);
+        if (!m) continue;
+        if (lines[i].trimEnd().endsWith(';')) continue; // forward declaration
+
+        const className = m[1];
+        const parent = m[2] || null;
+
+        // Find opening brace
+        let braceIdx = -1;
+        for (let j = i; j < Math.min(i + 5, lines.length); j++) {
+            if (lines[j].includes('{')) { braceIdx = j; break; }
+        }
+        if (braceIdx < 0) continue;
+
+        // Find matching closing brace
+        let depth = 0, endIdx = -1;
+        for (let j = braceIdx; j < lines.length; j++) {
+            for (const ch of lines[j]) {
+                if (ch === '{') depth++;
+                else if (ch === '}') { depth--; if (depth === 0) { endIdx = j; break; } }
+            }
+            if (endIdx >= 0) break;
+        }
+        if (endIdx < 0) continue;
+
+        // Scan member declarations at class body depth (depth 1)
+        const members = [];
+        let bodyDepth = 0;
+        for (let j = braceIdx; j <= endIdx; j++) {
+            const prevDepth = bodyDepth;
+            for (const ch of lines[j]) {
+                if (ch === '{') bodyDepth++;
+                else if (ch === '}') bodyDepth--;
+            }
+            if (prevDepth !== 1) continue;
+
+            const trimmed = lines[j].trimStart();
+            if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+                trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+
+            const dm = trimmed.match(RE_DECL);
+            if (!dm) continue;
+            if (SKIP.has(dm[1])) continue;
+
+            RE_VNAME.lastIndex = 0;
+            let vm;
+            while ((vm = RE_VNAME.exec(dm[2])) !== null) {
+                if (!SKIP.has(vm[1])) {
+                    members.push({ name: vm[1], type: dm[1], isArray: vm[0].includes('[') });
+                }
+            }
+        }
+
+        classes.push({ name: className, parent, members });
+        i = endIdx;
+    }
+    return classes;
+}
+
+/**
+ * Parse global (file-scope) variable declarations.
+ * Skips class/struct/function bodies by tracking brace depth.
+ *
+ * @param {string[]} lines
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function parseGlobalDeclarations(lines) {
+    const globals = [];
+    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
+    const SKIP = new Set([
+        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
+        'new', 'virtual', 'override', 'public', 'private', 'protected',
+        'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
+    ]);
+
+    let depth = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const prevDepth = depth;
+        for (const ch of lines[i]) {
+            if (ch === '{') depth++;
+            else if (ch === '}') depth--;
+        }
+        if (prevDepth !== 0) continue;
+
+        const trimmed = lines[i].trimStart();
+        if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+            trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+
+        const m = trimmed.match(RE_DECL);
+        if (!m) continue;
+        if (SKIP.has(m[1])) continue;
+
+        const isInput = /\binput\b/.test(lines[i]);
+        RE_VNAME.lastIndex = 0;
+        let vm;
+        while ((vm = RE_VNAME.exec(m[2])) !== null) {
+            if (!SKIP.has(vm[1])) {
+                globals.push({ name: vm[1], type: m[1], isArray: vm[0].includes('['), isInput });
+            }
+        }
+    }
+    return globals;
+}
+
+/**
+ * Build a type database from all files in the include graph.
+ *
+ * @param {Map} graph  The include graph built by instrumentWorkspace
+ * @returns {{ classMap: Map<string, { parent: string|null, members: Map<string, { type: string, isArray: boolean }> }>, globalMap: Map<string, { type: string, isArray: boolean }> }}
+ */
+function buildTypeDatabase(graph) {
+    const classMap = new Map();
+    const globalMap = new Map();
+
+    for (const node of graph.values()) {
+        if (!node.lines) continue;
+
+        for (const cls of parseClassDefinitions(node.lines)) {
+            if (!classMap.has(cls.name)) {
+                const memberMap = new Map();
+                for (const m of cls.members) {
+                    memberMap.set(m.name, { type: m.type, isArray: m.isArray });
+                }
+                classMap.set(cls.name, { parent: cls.parent, members: memberMap });
+            }
+        }
+
+        for (const g of parseGlobalDeclarations(node.lines)) {
+            if (!globalMap.has(g.name)) {
+                globalMap.set(g.name, { type: g.type, isArray: g.isArray, isInput: g.isInput });
+            }
+        }
+    }
+
+    return { classMap, globalMap };
+}
+
+/**
+ * Find member access expressions (obj.member, this.field, a.b.c) used in the
+ * function body up to the breakpoint line.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based breakpoint line
+ * @returns {string[]}  Unique member access expressions
+ */
+function findMemberAccessExpressions(lines, bpLine) {
+    const idx = bpLine - 1;
+    if (idx < 0 || idx >= lines.length) return [];
+
+    // Find function body start (walk backwards to opening brace)
+    let braceDepth = 0, funcStart = -1;
+    for (let i = idx; i >= 0; i--) {
+        for (let c = lines[i].length - 1; c >= 0; c--) {
+            if (lines[i][c] === '}') braceDepth++;
+            else if (lines[i][c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) { funcStart = i; break; }
+            }
+        }
+        if (funcStart >= 0) break;
+    }
+    if (funcStart < 0) return [];
+
+    const RE = /\b((?:this|[a-zA-Z_]\w*)(?:\.[a-zA-Z_]\w*)+)/g;
+    const exprs = new Set();
+
+    for (let i = funcStart; i <= idx && i < lines.length; i++) {
+        const trimmed = lines[i].trimStart();
+        if (trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+            trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+
+        RE.lastIndex = 0;
+        let m;
+        while ((m = RE.exec(lines[i])) !== null) {
+            const expr = m[1];
+            const afterIdx = m.index + m[0].length;
+            const afterChar = afterIdx < lines[i].length ? lines[i][afterIdx] : '';
+
+            if (afterChar === '(') {
+                // Last segment is a method call — trim it and keep the object part
+                const lastDot = expr.lastIndexOf('.');
+                if (lastDot > 0) {
+                    const objPart = expr.substring(0, lastDot);
+                    if (objPart.includes('.')) exprs.add(objPart);
+                }
+            } else {
+                exprs.add(expr);
+            }
+        }
+    }
+
+    return Array.from(exprs);
+}
+
+/**
+ * Determine the enclosing class name for the function containing a breakpoint.
+ * Checks for ClassName::MethodName in the signature, or whether the function
+ * is lexically inside a class body (inline method).
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based
+ * @returns {string|null}
+ */
+function findEnclosingClassName(lines, bpLine) {
+    const idx = bpLine - 1;
+    if (idx < 0 || idx >= lines.length) return null;
+
+    // Find function body start
+    let braceDepth = 0, funcStart = -1;
+    for (let i = idx; i >= 0; i--) {
+        for (let c = lines[i].length - 1; c >= 0; c--) {
+            if (lines[i][c] === '}') braceDepth++;
+            else if (lines[i][c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) { funcStart = i; break; }
+            }
+        }
+        if (funcStart >= 0) break;
+    }
+    if (funcStart < 0) return null;
+
+    // Check for ClassName::MethodName pattern in the signature
+    let sigText = '';
+    for (let i = Math.max(0, funcStart - 5); i <= funcStart; i++) {
+        sigText += ' ' + lines[i];
+    }
+    const cm = sigText.match(/([A-Za-z_]\w*)\s*::\s*[A-Za-z_~]\w*\s*\(/);
+    if (cm) return cm[1];
+
+    // Check if the function is lexically inside a class body (inline method)
+    braceDepth = 0;
+    for (let i = funcStart - 1; i >= 0; i--) {
+        for (let c = lines[i].length - 1; c >= 0; c--) {
+            if (lines[i][c] === '}') braceDepth++;
+            else if (lines[i][c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) {
+                    // We exited a scope — check if it's a class/struct
+                    for (let k = i; k >= Math.max(0, i - 5); k--) {
+                        const km = lines[k].match(/(?:class|struct)\s+([A-Za-z_]\w*)/);
+                        if (km) return km[1];
+                    }
+                    return null;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Look up a member in a class, following the inheritance chain.
+ *
+ * @param {Map} classMap
+ * @param {string} className
+ * @param {string} memberName
+ * @returns {{ type: string, isArray: boolean }|null}
+ */
+function lookupClassMember(classMap, className, memberName) {
+    const visited = new Set();
+    let current = className;
+    while (current && !visited.has(current)) {
+        visited.add(current);
+        const def = classMap.get(current);
+        if (!def) return null;
+        if (def.members.has(memberName)) return def.members.get(memberName);
+        current = def.parent;
+    }
+    return null;
+}
+
+/**
+ * Resolve the type of a member access expression by walking the class map.
+ * Handles chains (a.b.c) and inheritance.
+ *
+ * @param {string} expr  e.g. 'g_timers.lastTime' or 'this.count'
+ * @param {{ name: string, type: string }[]} locals
+ * @param {Map} globalMap
+ * @param {Map} classMap
+ * @param {string|null} enclosingClass
+ * @returns {{ type: string, isArray: boolean }|null}
+ */
+function resolveMemberType(expr, locals, globalMap, classMap, enclosingClass) {
+    const parts = expr.split('.');
+    if (parts.length < 2) return null;
+
+    // Resolve the root object's type
+    let currentType = null;
+    const root = parts[0];
+
+    if (root === 'this') {
+        currentType = enclosingClass;
+    } else {
+        const local = locals.find(l => l.name === root);
+        if (local) {
+            currentType = local.type;
+        } else if (globalMap.has(root)) {
+            currentType = globalMap.get(root).type;
+        }
+    }
+
+    if (!currentType) return null;
+
+    // Walk the member chain
+    for (let i = 1; i < parts.length; i++) {
+        const member = lookupClassMember(classMap, currentType, parts[i]);
+        if (!member) return null;
+        if (i === parts.length - 1) return member;
+        // Intermediate segment — its type should be another class
+        currentType = member.type;
+    }
+
+    return null;
+}
+
+/**
+ * Check if a type is watchable (primitive or enum) rather than a class/struct.
+ *
+ * @param {string} typeName
+ * @param {Map} classMap
+ * @returns {boolean}
+ */
+function isWatchableType(typeName, classMap) {
+    const key = typeName.replace(/\b(const|static|input)\b/g, '').trim();
+    const lower = key.toLowerCase();
+    if (MQL_TYPE_MACROS.hasOwnProperty(lower)) return true;
+    if (lower.startsWith('enum_')) return true;
+    if (classMap.has(key)) return false;
+    return false; // unknown type — skip to avoid compile errors
+}
+
+/**
+ * Find implicit class members (accessed without this.) used near a breakpoint.
+ * Only returns members with watchable (primitive/enum) types.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based
+ * @param {{ name: string, type: string }[]} locals
+ * @param {Map} classMap
+ * @param {string|null} enclosingClass
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function findImplicitClassMembers(lines, bpLine, locals, classMap, enclosingClass) {
+    if (!enclosingClass) return [];
+
+    // Collect all members from the class and its ancestors
+    const allMembers = new Map();
+    const visited = new Set();
+    let current = enclosingClass;
+    while (current && !visited.has(current) && classMap.has(current)) {
+        visited.add(current);
+        const cd = classMap.get(current);
+        for (const [name, info] of cd.members) {
+            if (!allMembers.has(name)) allMembers.set(name, info);
+        }
+        current = cd.parent;
+    }
+    if (allMembers.size === 0) return [];
+
+    const localNames = new Set(locals.map(l => l.name));
+    const idx = bpLine - 1;
+    const from = Math.max(0, idx - 10);
+    const results = [];
+
+    for (const [memberName, memberInfo] of allMembers) {
+        if (localNames.has(memberName)) continue; // shadowed by local
+        if (!isWatchableType(memberInfo.type, classMap)) continue;
+
+        const re = new RegExp('\\b' + memberName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+        for (let i = from; i <= idx && i < lines.length; i++) {
+            const trimmed = lines[i].trimStart();
+            if (trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+                trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+            if (re.test(lines[i])) {
+                results.push({ name: memberName, type: memberInfo.type, isArray: memberInfo.isArray });
+                break;
+            }
+        }
+    }
+
+    return results;
+}
+
+/**
+ * Find global primitive variables referenced near a breakpoint.
+ * Scans ±15 lines around bpLine for identifiers matching globalMap entries.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine    1-based
+ * @param {Map}      globalMap
+ * @param {Map}      classMap
+ * @param {Set}      seen      Already-seen variable names (locals, params, members)
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function findGlobalVarsNearBreakpoint(lines, bpLine, globalMap, classMap, seen) {
+    const results = [];
+    const idx = bpLine - 1;
+    const from = Math.max(0, idx - 15);
+    const to = Math.min(lines.length - 1, idx + 5);
+
+    for (const [varName, info] of globalMap) {
+        if (seen.has(varName)) continue;
+        if (!isWatchableType(info.type, classMap)) continue;
+
+        const re = new RegExp('\\b' + varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+        for (let i = from; i <= to; i++) {
+            const trimmed = lines[i].trimStart();
+            if (trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+                trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+            if (re.test(lines[i])) {
+                results.push({ name: varName, type: info.type, isArray: info.isArray });
+                break;
+            }
+        }
+    }
+    return results;
+}
+
+/**
+ * Expand local variables of class type into their watchable primitive fields.
+ * Returns watch entries of the form { name: 'local.field', type, isArray }.
+ *
+ * @param {{ name: string, type: string }[]} locals
+ * @param {Map} classMap
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function findClassFieldExpansions(locals, classMap) {
+    const results = [];
+    for (const local of locals) {
+        if (!classMap.has(local.type)) continue;
+        const visited = new Set();
+        let current = local.type;
+        while (current && !visited.has(current) && classMap.has(current)) {
+            visited.add(current);
+            const cd = classMap.get(current);
+            for (const [memberName, memberInfo] of cd.members) {
+                if (isWatchableType(memberInfo.type, classMap)) {
+                    results.push({
+                        name: `${local.name}.${memberName}`,
+                        type: memberInfo.type,
+                        isArray: memberInfo.isArray,
+                    });
+                }
+            }
+            current = cd.parent;
+        }
+    }
+    return results;
 }
 
 /**
@@ -578,6 +1055,10 @@ function resolveIncludePath(incPath, includeBase, mql5Root) {
 function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const graph = new Map();
 
+    // Read debug detail level from VS Code settings
+    const _config = vscode ? vscode.workspace.getConfiguration('mql_tools') : null;
+    const deepAnalysis = _config ? _config.get('Debug.DetailLevel') === 'deepAnalysis' : false;
+
     function buildNode(filePath) {
         const normPath = filePath.toLowerCase().replace(/\\/g, '/');
         if (graph.has(normPath)) return graph.get(normPath);
@@ -661,6 +1142,9 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     // Entry point MUST always be copied (so we can compile it without destroying the user's .ex5)
     const entryNode = graph.get(entryPointPath.toLowerCase().replace(/\\/g, '/'));
     if (entryNode) entryNode.needsCopy = true;
+
+    // 2b. Build type database from the include graph for member access resolution
+    const typeDB = buildTypeDatabase(graph);
 
     // 3. Perform copies and rewrites
     const tempFiles = [];
@@ -746,12 +1230,52 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 for (const name of annotatedVars) {
                     seen.add(name);
                     const local = localVars.find(l => l.name === name);
-                    watchVars.push({ name, type: local ? local.type : '' });
+                    watchVars.push({ name, type: local ? local.type : '', isArray: local ? local.isArray : false });
                 }
                 for (const local of localVars) {
                     if (!seen.has(local.name)) {
                         seen.add(local.name);
                         watchVars.push(local);
+                    }
+                }
+
+                // Resolve member access expressions (obj.member, this.field, a.b.c)
+                const enclosingClass = findEnclosingClassName(node.lines, bp.line);
+                for (const expr of findMemberAccessExpressions(node.lines, bp.line)) {
+                    if (seen.has(expr)) continue;
+                    const resolved = resolveMemberType(expr, localVars, typeDB.globalMap, typeDB.classMap, enclosingClass);
+                    if (resolved && isWatchableType(resolved.type, typeDB.classMap)) {
+                        seen.add(expr);
+                        watchVars.push({ name: expr, type: resolved.type, isArray: resolved.isArray });
+                    }
+                }
+
+                // Watch implicit class members (accessed without this. prefix)
+                for (const member of findImplicitClassMembers(node.lines, bp.line, localVars, typeDB.classMap, enclosingClass)) {
+                    if (!seen.has(member.name)) {
+                        seen.add(member.name);
+                        watchVars.push(member);
+                    }
+                }
+
+                // Deep analysis: global primitives near breakpoint + class field expansion + input vars
+                if (deepAnalysis) {
+                    for (const g of findGlobalVarsNearBreakpoint(node.lines, bp.line, typeDB.globalMap, typeDB.classMap, seen)) {
+                        seen.add(g.name);
+                        watchVars.push(g);
+                    }
+                    for (const field of findClassFieldExpansions(localVars, typeDB.classMap)) {
+                        if (!seen.has(field.name)) {
+                            seen.add(field.name);
+                            watchVars.push(field);
+                        }
+                    }
+                    // Watch all input variables unconditionally (always relevant context)
+                    for (const [varName, info] of typeDB.globalMap) {
+                        if (!info.isInput || seen.has(varName)) continue;
+                        if (!isWatchableType(info.type, typeDB.classMap)) continue;
+                        seen.add(varName);
+                        watchVars.push({ name: varName, type: info.type, isArray: info.isArray });
                     }
                 }
 
@@ -787,7 +1311,7 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                     // Wrap in braces to avoid breaking braceless if/for/while blocks.
                     // e.g. `if (x) return;` → `if (x) { MQL_DBG_EXIT; return; }`
                     for (let i = fn.bodyEnd - 1; i > fn.bodyStart; i--) {
-                        if (/^return\b/.test(node.lines[i].trimStart())) {
+                        if (/^return\b[\s\S]*;\s*$/.test(node.lines[i].trim())) {
                             const retIndent = getIndent(node.lines[i]);
                             node.lines[i] = `${retIndent}{ MQL_DBG_EXIT; ${node.lines[i].trim()} }`;
                         }

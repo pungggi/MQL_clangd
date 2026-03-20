@@ -189,7 +189,8 @@ function parseLogFile(logPath, options = {}) {
             if (currentTrade) {
                 incompleteTrades.push(currentTrade);
                 logger.warn(`[logParser] Incomplete trade detected at line ${currentTrade.orderLine}. Symbol: ${currentTrade.symbol}, TS: ${currentTrade.timestamp}`);
-            } currentTrade = {
+            }
+            currentTrade = {
                 type: orderMatch[1].toLowerCase(),
                 orderLine: lineNumber,
                 orderSourceFile: srcFile,

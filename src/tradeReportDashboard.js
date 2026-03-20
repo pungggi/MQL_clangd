@@ -298,7 +298,8 @@ body {
     function esc(v) {
         return String(v == null ? '' : v)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
     function fmt(v, d) { d = d === undefined ? 2 : d; return Number(v || 0).toFixed(d); }
     function pnlClass(v) { return v >= 0 ? 'positive' : 'negative'; }

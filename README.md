@@ -305,27 +305,84 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 
 ### MQL Debugger (Real-Time Variable Inspection)
 
-Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. This feature automatically injects telemetry code at your VS Code breakpoints and streams variable states back to a specialized dashboard.
+Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The extension automatically injects telemetry code at your VS Code breakpoints, compiles a temporary instrumented build, and streams variable states back to a live debug dashboard — no MetaEditor debugger required.
 
 **How to use:**
 
 1. Open the `.mq5`, `.mq4`, or `.mqh` file you want to debug.
 2. Place breakpoints in the editor margin (click to the left of the line numbers) where you want to inspect variables.
-3. Click the **Start Debugging** (bug icon 🐞) button in the editor title bar, or run `MQL: Start Debugging` from the Command Palette.
-   * *If you start from an `.mqh` file, the extension will automatically resolve its dependencies and ask you which main EA to instrument and compile.*
+3. Click the **Start Debugging** (bug icon) button in the editor title bar, or press `Ctrl+Shift+D`, or run `MQL: Start Debugging` from the Command Palette.
+   - *Starting from an `.mqh` file automatically resolves dependencies and asks which main EA to instrument.*
 4. The extension will automatically:
-   - Deploy `MqlDebug.mqh` to your MetaTrader `Include/` folder if it's missing.
-   - Inject temporary telemetry code at your breakpoints.
-   - Compile a temporary `.ex4`/`.ex5` file.
-   - Start MetaTrader.
+   - Deploy `MqlDebug.mqh` to your MetaTrader `Include/` folder (always up to date).
+   - Instrument all relevant source files (main EA + included headers with breakpoints).
+   - Compile a temporary `*.mql_dbg_build.ex5` file without touching your original `.ex5`.
+   - Start watching the debug log file.
    - Open the **MQL Debug panel** in VS Code.
 5. In MetaTrader, attach the newly compiled EA/Script to a chart.
-6. As the EA executes and hits the breakpoints, the variables will automatically populate and update in real-time in the VS Code debug dashboard!
-7. When you are finished, click `MQL: Stop Debugging` in the Command Palette to safely clean up the temporary files and end the session.
+6. As the EA executes and hits breakpoints, variables populate and update in real-time in the debug dashboard.
+7. When finished, click **Stop Session** in the notification or run `MQL: Stop Debugging`.
+
+#### What variables are automatically watched
+
+At each breakpoint the extension automatically collects variables into two tiers depending on the `mql_tools.Debug.DetailLevel` setting:
+
+**Default mode** (always active):
+
+| Source | Example |
+|--------|---------|
+| Function parameters | `double price`, `int magic` |
+| Local variables declared before the breakpoint | `int bar = 0;` |
+| Member access expressions used in the function | `g_timers.lastTime`, `this.m_count`, `a.b.c` |
+| Implicit class members referenced near the breakpoint | `m_lotSize` used inside a class method |
+
+**Deep Analysis mode** (`mql_tools.Debug.DetailLevel: deepAnalysis`) — additionally:
+
+| Source | Example |
+|--------|---------|
+| Global primitive variables referenced within ±15 lines | `g_spread`, `g_signal` |
+| `input` / `sinput` parameter variables (always, no proximity filter) | `InpLotSize`, `InpMaxOrders` |
+| Primitive fields of local class-typed variables | `order.lots`, `order.openPrice` |
+
+**Supported types:** `int`, `uint`, `short`, `ushort`, `char`, `uchar`, `long`, `ulong`, `double`, `float`, `string`, `bool`, `datetime`, `color`, common `ENUM_*` types, and arrays of numeric types.
+
+#### Manual watch annotations
+
+Add a `// @watch` comment near any breakpoint to explicitly name variables that should be watched, even if the auto-detector would miss them:
+
+```mql5
+// @watch myVar otherVar
+SomeFunction();  // ← breakpoint here
+```
+
+Multiple variables can be listed on one line. Annotated variables are always watched first.
+
+#### Breakpoint conditions
+
+VS Code conditional breakpoints are fully supported. Set a condition in the breakpoint editor and the injected code wraps the telemetry in an `if` block — the EA only pauses when the condition is true.
+
+#### Pause / Continue (blocking breakpoints)
+
+Each breakpoint also injects a `MQL_DBG_PAUSE` call, which spin-waits until VS Code sends a **Continue** command (by stopping the debug session or using the Stop button). This lets you inspect a frozen state before the EA resumes.
+
+> **Warning:** The EA thread is fully blocked while paused. No `OnTick`/`OnTimer` events fire. Use only on demo accounts or in the Strategy Tester.
+> Auto-resumes after 120 seconds as a safety failsafe.
+
+#### Call stack tracking
+
+Functions containing breakpoints automatically get `ENTER`/`EXIT` instrumentation injected, so the debug dashboard shows a live call stack as functions are entered and returned.
+
+#### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mql_tools.Debug.DetailLevel` | `default` | `default`: locals + member access. `deepAnalysis`: also global primitives, `input` vars, and class field expansion. |
+| `mql_tools.ShowButton.StartDebugging` | `true` | Show/hide the toolbar bug button on MQL files. |
 
 **Notes:**
-- Only basic variable types and common structs are supported for serialization at this time.
-- If an injection point is deemed unsafe (e.g. inside a single-line block without braces), the debugger will warn you and skip that line.
+- Class-typed variables are not serialized directly (would cause compile errors). Only their primitive/enum fields are watched.
+- If an injection point is unsafe (e.g. inside a braceless single-line block), the debugger warns and skips that line. Use `// @watch` or add a statement to create a safe injection point.
+- The instrumented build uses `.mql_dbg_build` in the filename — never commit or deploy these files.
 
 ---
 

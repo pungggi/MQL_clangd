@@ -248,6 +248,19 @@
                         "Automatically merge existing suppressions",
                         "Always overwrite the .clangd file"
                     ]
+                },
+                "mql_tools.Debug.DetailLevel": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "deepAnalysis"
+                    ],
+                    "default": "default",
+                    "description": "Debug watch detail level. 'default': watches locals, parameters, and class members accessed near the breakpoint. 'deepAnalysis': additionally watches global primitive variables referenced near the breakpoint and expands local class-typed variables into their primitive fields.",
+                    "enumDescriptions": [
+                        "Watch local variables, function parameters, and class members accessed near the breakpoint.",
+                        "Also watch global primitive variables referenced near the breakpoint, and expand local class-typed variables into their primitive fields."
+                    ]
                 }
             }
         },
