@@ -30,6 +30,7 @@ let isAutoCheckRunning = false;
 let autoCheckDocVersions = new Map(); // Track document versions to ignore our own edits
 // Guard to prevent CheckOnSave from re-triggering itself when Compile() saves files.
 let internalSaveDepth = 0;
+const lg = require('./language');
 const { tf } = require('./timeUtils');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
@@ -792,24 +793,23 @@ async function Compile(rt, context, options = {}) {
         }
 
         if (targets.length === 0) {
-        // No targets resolved by mapping/inference (or user cancelled)
-        // Fall back to magic comment for backward compatibility
-        const magicPath = FindParentFile();
-        if (magicPath && fs.existsSync(magicPath)) {
-        pathsToCompile = [magicPath];
+            // No targets resolved by mapping/inference (or user cancelled)
+            // Fall back to magic comment for backward compatibility
+            const magicPath = FindParentFile();
+            if (magicPath && fs.existsSync(magicPath)) {
+                pathsToCompile = [magicPath];
+            } else {
+                // If rt === COMPILE_MODE_CHECK (checking), we can't fall back to current file for headers effectively
+                // but we should check if we should allow checking the header itself or just warn.
+                // Existing behavior for rt !== COMPILE_MODE_CHECK was to warn.
+                if (rt !== COMPILE_MODE_CHECK) {
+                    return vscode.window.showWarningMessage(lg['mqh']);
+                } else {
+                    // For rt === COMPILE_MODE_CHECK, if no target found, just check the header itself as a fallback
+                    pathsToCompile = [document.fileName];
+                }
+            }
         } else {
-        // If rt === COMPILE_MODE_CHECK (checking), we can't fall back to current file for headers effectively
-        // but we should check if we should allow checking the header itself or just warn.
-        // Existing behavior for rt !== COMPILE_MODE_CHECK was to warn.
-        if (rt !== COMPILE_MODE_CHECK) {
-            return vscode.window.showWarningMessage(lg['mqh']);
-        } else {
-            // For rt === COMPILE_MODE_CHECK, if no target found, just check the header itself as a fallback
-            pathsToCompile = [document.fileName];
-        }
-        }
-        } else {
-
             pathsToCompile = targets;
         }
     } else {
@@ -1481,7 +1481,8 @@ class MqlCodeActionProvider {
             vscode.CodeActionKind.QuickFix
         );
 
-        action.edit = new vscode.WorkspaceEdit();
+        action.edit = new vscode.Workspace
+        Edit();
 
         // Find closing brace of function
         const closingBrace = this._findFunctionClosingBrace(document, line);
@@ -2739,11 +2740,11 @@ function activate(context) {
             || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
 
         await vscode.debug.startDebugging(workspaceFolder, {
-            type:          'mql5',
-            request:       'launch',
-            name:          'MQL Debug',
-            program:       sourcePath,
-            _mql5Root:     mql5Root,
+            type: 'mql5',
+            request: 'launch',
+            name: 'MQL Debug',
+            program: sourcePath,
+            _mql5Root: mql5Root,
             _originalPath: originalPath,
         });
     }));

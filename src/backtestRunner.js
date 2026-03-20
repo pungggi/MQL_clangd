@@ -143,7 +143,7 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
     if (fs.existsSync(pidPath)) {
         try {
             const pid = parseInt(fs.readFileSync(pidPath, 'utf8'), 10);
-            if (!isNaN(pid)) {
+            if (!isNaN(pid) && pid > 0 && pid < 4294967295) {
                 // Check if process is still running
                 try {
                     process.kill(pid, 0); // throws if not running

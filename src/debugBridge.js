@@ -35,6 +35,8 @@ class MqlDebugBridge {
         /** @type {(() => void)|null} */
         this._restore = null;
         this._active = false;
+        /** @type {string|null} */
+        this._mql5Root = null;
     }
 
     get isActive() { return this._active; }
@@ -57,6 +59,11 @@ class MqlDebugBridge {
             vscode.window.showWarningMessage('MQL Debug session already running. Stop it first.');
             return;
         }
+
+        this._mql5Root = mql5Root;
+
+        // 0. Clean up stale command file from a previous session
+        this._cleanCmdFile();
 
         // 1. Deploy MqlDebug.mqh
         const deployed = await this._deployLibrary(mql5Root, context);
@@ -129,18 +136,25 @@ class MqlDebugBridge {
         store.startSession();
 
         this._reader = new MqlDebugLogReader(mql5Root);
-        this._reader.onBatch = (evts) => store.applyBatch(evts);
+        this._reader.onBatch = (evts) => {
+            this._log(`Reader batch: ${evts.length} events`);
+            store.applyBatch(evts);
+        };
         this._reader.onError = (err) => {
             vscode.window.showErrorMessage(`MQL Debug: Log reader error — ${err.message || String(err)}`);
             this.stop();
         };
+        this._reader.onLog = (msg) => this._log(msg);
         this._reader.start();
 
         // 6. Invoke optional post-start callback (e.g. open trading terminal)
         if (typeof onStarted === 'function') onStarted();
 
+        const isMql5 = sourcePath.toLowerCase().endsWith('.mq5');
+        const exName = path.basename(tempPath).replace(/\.mq[45]$/i, isMql5 ? '.ex5' : '.ex4');
+
         vscode.window.showInformationMessage(
-            'MQL Debug session started. Attach the compiled EA in MetaTrader to begin.',
+            `MQL Debug session started. Attach the temporary "${exName}" in MetaTrader to begin.`,
             'Stop Session'
         ).then(selection => {
             if (selection === 'Stop Session') this.stop();
@@ -152,6 +166,9 @@ class MqlDebugBridge {
         if (!this._active) return;
         this._active = false;
 
+        // Unblock the EA if it's paused at a breakpoint
+        this._sendContinueCommand();
+
         if (this._reader) {
             this._reader.stop();
             this._reader = null;
@@ -161,6 +178,9 @@ class MqlDebugBridge {
             this._restore = null;
         }
 
+        // Clean up command file
+        this._cleanCmdFile();
+
         store.endSession();
         vscode.window.showInformationMessage('MQL Debug session stopped.');
     }
@@ -169,8 +189,47 @@ class MqlDebugBridge {
     // Private helpers
     // -------------------------------------------------------------------------
 
+    /** Log to the MQL output channel (visible in Output panel). */
+    _log(msg) {
+        const ch = this._getOutputChannel();
+        if (ch) ch.appendLine(`[MQL Debug] ${msg}`);
+        console.log(`[MqlDebugBridge] ${msg}`);
+    }
+
+    _getOutputChannel() {
+        if (!this._outputChannel) {
+            try {
+                this._outputChannel = vscode.window.createOutputChannel('MQL Debug');
+            } catch { /* ignore */ }
+        }
+        return this._outputChannel;
+    }
+
+    /** Write CONTINUE to the command file so a paused EA resumes. */
+    _sendContinueCommand() {
+        if (!this._mql5Root) return;
+        const cmdPath = path.join(this._mql5Root, 'Files', 'MqlDebugCmd.txt');
+        try {
+            fs.writeFileSync(cmdPath, 'CONTINUE\n', 'utf-8');
+        } catch (err) {
+            console.warn('[MqlDebugBridge] Failed to write continue command:', err.message);
+        }
+    }
+
+    /** Delete the command file (cleanup). */
+    _cleanCmdFile() {
+        if (!this._mql5Root) return;
+        const cmdPath = path.join(this._mql5Root, 'Files', 'MqlDebugCmd.txt');
+        try {
+            fs.unlinkSync(cmdPath);
+        } catch {
+            // File may not exist — that's fine
+        }
+    }
+
     /**
      * Deploy MqlDebug.mqh from extension bundle to MQL Include folder.
+     * Always overwrites to ensure the latest version (with pause support etc.).
      * @param {string} mql5Root
      * @param {object} context  VS Code extension context
      * @returns {Promise<boolean>}
@@ -178,19 +237,7 @@ class MqlDebugBridge {
     async _deployLibrary(mql5Root, context) {
         const includeDir = path.join(mql5Root, 'Include');
         const targetPath = path.join(includeDir, MQLDEBUG_MQH);
-
-        try {
-            await fs.promises.access(targetPath);
-            return true; // Already deployed
-        } catch (e) {
-            if (e.code !== 'ENOENT') {
-                throw e; // Rethrow permission errors or other FS issues
-            }
-            // If ENOENT, proceed to deploy
-        }
-
-        const extensionPath = context.extensionPath;
-        const sourcePath = path.join(extensionPath, 'files', MQLDEBUG_MQH);
+        const sourcePath = path.join(context.extensionPath, 'files', MQLDEBUG_MQH);
 
         try {
             await fs.promises.access(sourcePath);

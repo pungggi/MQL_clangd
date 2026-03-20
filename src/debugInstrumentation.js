@@ -139,24 +139,231 @@ function findInjectionPoint(lines, targetLine) {
 }
 
 /**
- * Parse `// @watch varName` annotations from lines around the breakpoint.
+ * Parse `// @watch varName [varName2 ...]` annotations from lines around the breakpoint.
  * Searches up to 5 lines before and 2 lines after the breakpoint line.
+ * Supports multiple variable names on a single annotation line.
  *
  * @param {string[]} lines
  * @param {number}   bpLine  1-based breakpoint line
  * @returns {string[]}  Variable names to watch
  */
 function parseWatchAnnotations(lines, bpLine) {
-    const RE_WATCH = /\/\/\s*@watch\s+(\w+)/;
+    const RE_WATCH = /\/\/\s*@watch\s+([\w\s]+)/;
     const vars = [];
     const from = Math.max(0, bpLine - 6);
     const to = Math.min(lines.length - 1, bpLine + 1);
 
     for (let i = from; i <= to; i++) {
         const m = lines[i].match(RE_WATCH);
-        if (m) vars.push(m[1]);
+        if (m) {
+            const names = m[1].trim().split(/\s+/);
+            for (const n of names) {
+                if (n && !vars.includes(n)) vars.push(n);
+            }
+        }
     }
     return vars;
+}
+
+// -------------------------------------------------------------------------
+// MQL5 type → watch macro mapping
+// -------------------------------------------------------------------------
+
+const MQL_TYPE_MACROS = {
+    'int':      'MQL_DBG_WATCH_INT',
+    'uint':     'MQL_DBG_WATCH_INT',
+    'short':    'MQL_DBG_WATCH_INT',
+    'ushort':   'MQL_DBG_WATCH_INT',
+    'char':     'MQL_DBG_WATCH_INT',
+    'uchar':    'MQL_DBG_WATCH_INT',
+    'long':     'MQL_DBG_WATCH_LONG',
+    'ulong':    'MQL_DBG_WATCH_LONG',
+    'double':   'MQL_DBG_WATCH_DBL',
+    'float':    'MQL_DBG_WATCH_DBL',
+    'string':   'MQL_DBG_WATCH_STR',
+    'bool':     'MQL_DBG_WATCH_BOOL',
+    'datetime': 'MQL_DBG_WATCH_DATETIME',
+    'color':    'MQL_DBG_WATCH_INT',
+    'ENUM_TIMEFRAMES':       'MQL_DBG_WATCH_INT',
+    'ENUM_ORDER_TYPE':       'MQL_DBG_WATCH_INT',
+    'ENUM_POSITION_TYPE':    'MQL_DBG_WATCH_INT',
+    'ENUM_DEAL_TYPE':        'MQL_DBG_WATCH_INT',
+    'ENUM_TRADE_REQUEST_ACTIONS': 'MQL_DBG_WATCH_INT',
+};
+
+const MQL_ARRAY_MACROS = {
+    'int':      'MQL_DBG_WATCH_ARRAY_INT',
+    'uint':     'MQL_DBG_WATCH_ARRAY_INT',
+    'short':    'MQL_DBG_WATCH_ARRAY_INT',
+    'ushort':   'MQL_DBG_WATCH_ARRAY_INT',
+    'char':     'MQL_DBG_WATCH_ARRAY_INT',
+    'uchar':    'MQL_DBG_WATCH_ARRAY_INT',
+    'long':     'MQL_DBG_WATCH_ARRAY_LONG',
+    'ulong':    'MQL_DBG_WATCH_ARRAY_LONG',
+    'double':   'MQL_DBG_WATCH_ARRAY_DBL',
+    'float':    'MQL_DBG_WATCH_ARRAY_DBL',
+    'string':   'MQL_DBG_WATCH_ARRAY_STR',
+};
+
+/**
+ * Pick the typed macro for a given MQL5 type string.
+ * Falls back to MQL_DBG_WATCH (double) for unknown types.
+ * @param {string} mqlType
+ * @param {boolean} [isArray=false]
+ */
+function macroForType(mqlType, isArray) {
+    if (!mqlType) return 'MQL_DBG_WATCH';
+    const key = mqlType.replace(/\b(const|static|input)\b/g, '').trim().toLowerCase();
+    if (isArray) {
+        return MQL_ARRAY_MACROS[key] || null; // null = skip unsupported array type
+    }
+    if (key.startsWith('enum_')) return 'MQL_DBG_WATCH_INT';
+    return MQL_TYPE_MACROS[key] || 'MQL_DBG_WATCH';
+}
+
+// -------------------------------------------------------------------------
+// Local variable discovery
+// -------------------------------------------------------------------------
+
+/**
+ * Find the enclosing function body for a given line and extract local variable
+ * declarations visible at that line.
+ *
+ * Strategy: walk backwards from bpLine to find the function opening brace,
+ * then scan forward through the function body up to bpLine collecting
+ * variable declarations.
+ *
+ * @param {string[]} lines   Source lines (0-based array)
+ * @param {number}   bpLine  1-based breakpoint line
+ * @returns {{ name: string, type: string }[]}
+ */
+function parseLocalsInScope(lines, bpLine) {
+    const idx = bpLine - 1; // convert to 0-based
+    if (idx < 0 || idx >= lines.length) return [];
+
+    // Walk backwards to find the function start (opening brace at depth 0)
+    let braceDepth = 0;
+    let funcBodyStart = -1;
+    for (let i = idx; i >= 0; i--) {
+        const line = lines[i];
+        // Count braces (simplified — ignores braces in strings/comments)
+        for (let c = line.length - 1; c >= 0; c--) {
+            if (line[c] === '}') braceDepth++;
+            else if (line[c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) {
+                    funcBodyStart = i;
+                    break;
+                }
+            }
+        }
+        if (funcBodyStart >= 0) break;
+    }
+
+    if (funcBodyStart < 0) return [];
+
+    // Also grab function parameters from the line(s) before the opening brace
+    const params = parseFunctionParams(lines, funcBodyStart);
+
+    // Scan from funcBodyStart+1 to bpLine collecting local declarations
+    const locals = [];
+    const seen = new Set();
+
+    // Add params first
+    for (const p of params) {
+        if (!seen.has(p.name)) {
+            seen.add(p.name);
+            locals.push(p);
+        }
+    }
+
+    // MQL5 declaration pattern: type [modifiers] name [= ...][, name2 [= ...]];
+    // Matches: int x;  double y = 1.0;  string a, b;  const int z = 5;
+    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_VARNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
+
+    // Skip types that are clearly not variable declarations
+    const NON_TYPE_KEYWORDS = new Set([
+        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
+        'new', 'virtual', 'override', 'public', 'private', 'protected',
+        'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
+    ]);
+
+    for (let i = funcBodyStart + 1; i <= idx && i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trimStart();
+
+        // Skip comments, preprocessor, blank
+        if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('#') || trimmed.startsWith('*')) continue;
+
+        const m = trimmed.match(RE_DECL);
+        if (!m) continue;
+
+        const typeName = m[1];
+        if (NON_TYPE_KEYWORDS.has(typeName)) continue;
+
+        const varsPart = m[2];
+        let vm;
+        RE_VARNAME.lastIndex = 0;
+        while ((vm = RE_VARNAME.exec(varsPart)) !== null) {
+            const vName = vm[1];
+            const isArray = vm[0].includes('[');
+            if (!seen.has(vName) && !NON_TYPE_KEYWORDS.has(vName)) {
+                seen.add(vName);
+                locals.push({ name: vName, type: typeName, isArray });
+            }
+        }
+    }
+
+    return locals;
+}
+
+/**
+ * Parse function parameters from the signature above the opening brace.
+ * Looks at the lines leading up to funcBodyStart for a parenthesized param list.
+ *
+ * @param {string[]} lines
+ * @param {number}   braceLineIdx  0-based index of the line with '{'
+ * @returns {{ name: string, type: string }[]}
+ */
+function parseFunctionParams(lines, braceLineIdx) {
+    // Collect up to 10 lines before the brace to handle multi-line signatures
+    const from = Math.max(0, braceLineIdx - 10);
+    let sigText = '';
+    for (let i = from; i <= braceLineIdx; i++) {
+        sigText += ' ' + lines[i];
+    }
+
+    // Find the last parenthesized group before '{'
+    const bracePos = sigText.lastIndexOf('{');
+    const parenClose = sigText.lastIndexOf(')', bracePos);
+    if (parenClose < 0) return [];
+    let depth = 1;
+    let parenOpen = parenClose - 1;
+    while (parenOpen >= 0 && depth > 0) {
+        if (sigText[parenOpen] === ')') depth++;
+        else if (sigText[parenOpen] === '(') depth--;
+        if (depth === 0) break;
+        parenOpen--;
+    }
+    if (depth !== 0) return [];
+
+    const paramStr = sigText.substring(parenOpen + 1, parenClose);
+    if (!paramStr.trim()) return [];
+
+    const params = [];
+    // Split by comma (simplified — doesn't handle template params with commas)
+    for (const chunk of paramStr.split(',')) {
+        const trimmed = chunk.trim();
+        if (!trimmed) continue;
+        // Pattern: [const] [&] type [&] name [= default]
+        const pm = trimmed.match(/(?:(?:const|static|input)\s+)*([A-Za-z_]\w*)(?:\s*&)?\s+(?:&\s*)?([A-Za-z_]\w*)/);
+        if (pm) {
+            params.push({ name: pm[2], type: pm[1] });
+        }
+    }
+    return params;
 }
 
 /**
@@ -191,30 +398,114 @@ function sanitizeCondition(condition) {
  * Generate the macro injection lines for one breakpoint.
  *
  * @param {string}   label     Breakpoint label (e.g. "bp_42")
- * @param {string[]} watchVars Variable names from @watch annotations
+ * @param {{ name: string, type?: string }[]} watchVars  Variables to watch with optional type info
  * @param {string}   condition Optional condition string (may be empty)
  * @returns {string[]}  Lines to insert
  */
 function buildInjectionLines(label, watchVars, condition) {
     const breakLine = `MQL_DBG_BREAK("${label}");`;
-    const watchLines = watchVars.map(v =>
-        `MQL_DBG_WATCH("${v}", ${v});`
-    );
+    const watchLines = [];
+    for (const v of watchVars) {
+        if (v.isArray) {
+            const arrMacro = macroForType(v.type, true);
+            if (arrMacro) {
+                watchLines.push(`${arrMacro}("${v.name}", ${v.name});`);
+            }
+            // Skip unsupported array types (bool[], datetime[], etc.)
+        } else {
+            const macro = macroForType(v.type);
+            watchLines.push(`${macro}("${v.name}", ${v.name});`);
+        }
+    }
+    const pauseLine = `MQL_DBG_PAUSE;`;
 
     if (condition && condition.trim()) {
         if (isConditionSafe(condition)) {
-            const bodyLines = [breakLine, ...watchLines];
+            const bodyLines = [breakLine, ...watchLines, pauseLine];
             return [`if (${condition}) {`, ...bodyLines.map(l => `  ${l}`), `}`];
         } else {
-            // Fallback for malformed conditions: inject unconditional break plus a comment
             return [
                 `// Invalid breakpoint condition: ${sanitizeCondition(condition)}`,
                 breakLine,
-                ...watchLines
+                ...watchLines,
+                pauseLine
             ];
         }
     }
-    return [breakLine, ...watchLines];
+    return [breakLine, ...watchLines, pauseLine];
+}
+
+/**
+ * Get the leading whitespace from a line.
+ */
+function getIndent(line) {
+    const m = line.match(/^(\s*)/);
+    return m ? m[1] : '';
+}
+
+/**
+ * Find function boundaries in MQL5 source.
+ * Returns array of { bodyStart, bodyEnd } (0-based line indices).
+ *
+ * Looks for patterns like:
+ *   type FuncName(...) {       or
+ *   void OnTick() {
+ *
+ * @param {string[]} lines
+ * @returns {{ bodyStart: number, bodyEnd: number }[]}
+ */
+function findFunctionBoundaries(lines) {
+    const functions = [];
+    // Regex to detect a function signature line (type + name + parens)
+    // Handles: void OnTick(), int Calculate(int x, double y), etc.
+    const RE_FUNC_SIG = /^\s*(?:(?:static|virtual|override|const|inline)\s+)*[A-Za-z_]\w*(?:\s*[*&])?\s+[A-Za-z_]\w*\s*\(/;
+
+    // Also match class method definitions: void CMyClass::Method(...)
+    const RE_METHOD_SIG = /^\s*(?:(?:static|virtual|override|const|inline)\s+)*[A-Za-z_]\w*(?:\s*[*&])?\s+[A-Za-z_]\w*\s*::\s*[A-Za-z_~]\w*\s*\(/;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!RE_FUNC_SIG.test(line) && !RE_METHOD_SIG.test(line)) continue;
+
+        // Skip if it looks like a forward declaration (ends with ;)
+        // Scan forward to find '{' (might be on next line)
+        let braceIdx = -1;
+        for (let j = i; j < Math.min(i + 5, lines.length); j++) {
+            const trimmed = lines[j].trimEnd();
+            if (trimmed.endsWith(';')) break; // forward declaration or prototype
+            const bracePos = lines[j].indexOf('{');
+            if (bracePos >= 0) {
+                braceIdx = j;
+                break;
+            }
+        }
+
+        if (braceIdx < 0) continue;
+
+        // Find the matching closing brace
+        let depth = 0;
+        let endIdx = -1;
+        for (let j = braceIdx; j < lines.length; j++) {
+            for (const ch of lines[j]) {
+                if (ch === '{') depth++;
+                else if (ch === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        endIdx = j;
+                        break;
+                    }
+                }
+            }
+            if (endIdx >= 0) break;
+        }
+
+        if (endIdx > braceIdx) {
+            functions.push({ bodyStart: braceIdx, bodyEnd: endIdx });
+            i = endIdx; // skip past this function
+        }
+    }
+
+    return functions;
 }
 
 /**
@@ -414,8 +705,31 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             }
         }
 
-        // Inject macros
+        // Inject debug instrumentation
         if (node.bps.length > 0) {
+            // 1. Identify which function names need ENTER/EXIT from ORIGINAL lines
+            const bpLineSet = new Set(node.bps.map(b => b.line));
+            const origFuncs = findFunctionBoundaries(node.lines);
+            const funcNamesToInstrument = new Set();
+            for (const fn of origFuncs) {
+                for (let i = fn.bodyStart; i <= fn.bodyEnd; i++) {
+                    if (bpLineSet.has(i + 1)) {
+                        // Tag this function by its bodyStart line content for re-identification
+                        funcNamesToInstrument.add(fn.bodyStart);
+                        break;
+                    }
+                }
+            }
+            // Store the function signature lines so we can re-find them after injection
+            const funcSigLines = new Set();
+            for (const fn of origFuncs) {
+                if (funcNamesToInstrument.has(fn.bodyStart)) {
+                    // Record the text of the line containing the opening brace
+                    funcSigLines.add(node.lines[fn.bodyStart]);
+                }
+            }
+
+            // 2. Inject breakpoint macros (on original line numbers)
             const injections = [];
             for (const bp of node.bps) {
                 const injPoint = findInjectionPoint(node.lines, bp.line);
@@ -424,7 +738,23 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                     skippedArr.push(`${base}:${bp.line}`);
                     continue;
                 }
-                const watchVars = parseWatchAnnotations(node.lines, bp.line);
+                const annotatedVars = parseWatchAnnotations(node.lines, bp.line);
+                const localVars = parseLocalsInScope(node.lines, bp.line);
+
+                const seen = new Set();
+                const watchVars = [];
+                for (const name of annotatedVars) {
+                    seen.add(name);
+                    const local = localVars.find(l => l.name === name);
+                    watchVars.push({ name, type: local ? local.type : '' });
+                }
+                for (const local of localVars) {
+                    if (!seen.has(local.name)) {
+                        seen.add(local.name);
+                        watchVars.push(local);
+                    }
+                }
+
                 const sanitizedBase = sanitizeLabel(path.basename(node.filePath));
                 const label = `bp_${sanitizedBase}_${bp.line}`;
                 const macroLines = buildInjectionLines(label, watchVars, bp.condition || '');
@@ -434,7 +764,39 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             for (const { afterLine, macroLines } of injections) {
                 node.lines.splice(afterLine + 1, 0, ...macroLines);
             }
+
             ensureInclude(node.lines);
+
+            // 3. Inject ENTER/EXIT on the modified source
+            //    Re-find function boundaries, then filter to only the functions
+            //    we identified in step 1 (matched by signature line text)
+            if (funcSigLines.size > 0) {
+                const modifiedFuncs = findFunctionBoundaries(node.lines);
+                const relevantFuncs = modifiedFuncs.filter(fn =>
+                    funcSigLines.has(node.lines[fn.bodyStart])
+                );
+                // Process in reverse to preserve indices
+                relevantFuncs.sort((a, b) => b.bodyStart - a.bodyStart);
+                for (const fn of relevantFuncs) {
+                    const indent = getIndent(node.lines[fn.bodyStart]) + '    ';
+
+                    // EXIT before closing brace
+                    node.lines.splice(fn.bodyEnd, 0, `${indent}MQL_DBG_EXIT;`);
+
+                    // EXIT before each return (backwards)
+                    // Wrap in braces to avoid breaking braceless if/for/while blocks.
+                    // e.g. `if (x) return;` → `if (x) { MQL_DBG_EXIT; return; }`
+                    for (let i = fn.bodyEnd - 1; i > fn.bodyStart; i--) {
+                        if (/^return\b/.test(node.lines[i].trimStart())) {
+                            const retIndent = getIndent(node.lines[i]);
+                            node.lines[i] = `${retIndent}{ MQL_DBG_EXIT; ${node.lines[i].trim()} }`;
+                        }
+                    }
+
+                    // ENTER after opening brace
+                    node.lines.splice(fn.bodyStart + 1, 0, `${indent}MQL_DBG_ENTER;`);
+                }
+            }
         }
 
         // Save
@@ -460,7 +822,7 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
         }
         if (entryTempPath) {
             const ext = path.extname(entryPointPath);
-            const binaryPath = entryTempPath.replace(/\.mq[45]$/i, ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4');
+            const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
             try { fs.unlinkSync(binaryPath); } catch {}
         }
     };

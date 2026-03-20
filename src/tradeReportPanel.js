@@ -41,6 +41,7 @@ class TradeReportPanel {
     constructor(panel, context, parsedData, logFilePath) {
         this._panel = panel;
         this._context = context;
+        this._isDisposing = false;
         this._logFilePath = logFilePath;
         this._eaName = parsedData.eaName;
         this._eaFile = parsedData.testConfig ? parsedData.testConfig.eaFile : null;
@@ -335,6 +336,8 @@ class TradeReportPanel {
     }
 
     dispose() {
+        if (this._isDisposing) return;
+        this._isDisposing = true;
         TradeReportPanel.currentPanel = null;
         this._panel.dispose();
         while (this._disposables.length) {
@@ -344,11 +347,12 @@ class TradeReportPanel {
     }
 
     _getHtml(data) {
-        const safeJson = (obj) => JSON.stringify(obj).replace(/<\//g, '<\\/');
+        const safeJson = (obj) => JSON.stringify(obj).replace(/</g, '\\u003c');
         return /*html*/`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MQL Trade Report</title>
 <style>

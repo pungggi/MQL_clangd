@@ -1,6 +1,8 @@
 'use strict';
 const vscode = require('vscode');
 const { EventEmitter } = require('events');
+const fs = require('fs');
+const path = require('path');
 
 const THREAD_ID = 1;
 
@@ -42,7 +44,8 @@ class MqlDebugAdapter extends EventEmitter {
 
         // onDidSendMessage is required by VS Code's DebugAdapter interface.
         // We expose it as an EventEmitter event named 'message'.
-        this.onDidSendMessage = new vscode.EventEmitter();
+        this._sendMessageEmitter = new vscode.EventEmitter();
+        this.onDidSendMessage = this._sendMessageEmitter.event;
 
         this._storeListener = () => this._onStoreChange();
         this._store.onChange(this._storeListener);
@@ -70,12 +73,13 @@ class MqlDebugAdapter extends EventEmitter {
             case 'stepOut':             this._onContinue(message); break;
             case 'terminate':           this._onTerminate(message); break;
             case 'disconnect':          this._onDisconnect(message); break;
-            case 'setBreakpoints':      this._sendResponse(message, { breakpoints: [] }); break;
+            case 'setBreakpoints':      this._onSetBreakpoints(message); break;
             case 'setExceptionBreakpoints': this._sendResponse(message, {}); break;
             case 'setFunctionBreakpoints':  this._sendResponse(message, { breakpoints: [] }); break;
+            case 'source':              this._onSource(message); break;
             default:
-                // Respond with a generic error for unknown requests
-                this._sendErrorResponse(message, `Unsupported request: ${message.command}`);
+                // Acknowledge unknown requests gracefully so VS Code doesn't show errors
+                this._sendResponse(message, {});
                 break;
         }
     }
@@ -84,7 +88,7 @@ class MqlDebugAdapter extends EventEmitter {
         if (this._disposed) return;
         this._disposed = true;
         this._store.removeListener(this._storeListener);
-        this.onDidSendMessage.dispose();
+        this._sendMessageEmitter.dispose();
     }
 
     // -------------------------------------------------------------------------
@@ -99,22 +103,36 @@ class MqlDebugAdapter extends EventEmitter {
         this._sendEvent('initialized', {});
     }
 
-    _onLaunch(req) {
-        // Start the bridge asynchronously; respond immediately so VS Code
-        // can send configurationDone while compilation is in progress.
-        this._sendResponse(req, {});
+    async _onLaunch(req) {
+        // Start the bridge — wait for instrumentation + compilation to finish.
+        // If bridge.start() returns without activating (compilation failed, user cancelled, etc.)
+        // we terminate the debug session so VS Code doesn't stay in a phantom "running" state.
+        try {
+            await this._bridge.start(
+                this._sourcePath,
+                this._mql5Root,
+                this._compilePath,
+                this._context,
+                () => {
+                    vscode.commands.executeCommand('mql_tools.openTradingTerminal').then(undefined, () => {});
+                }
+            );
+        } catch (err) {
+            this._sendErrorResponse(req, `MQL Debug launch failed: ${err.message || err}`);
+            this._sendEvent('terminated', {});
+            return;
+        }
 
-        void this._bridge.start(
-            this._sourcePath,
-            this._mql5Root,
-            this._compilePath,
-            this._context,
-            () => {
-                // openPanel callback — open the trading terminal; no webview panel needed
-                vscode.commands.executeCommand('mql_tools.openTradingTerminal').then(undefined, () => {});
-            },
-            this._originalPath
-        );
+        if (!this._bridge.isActive) {
+            // bridge.start() returned normally but didn't activate
+            // (user cancelled, no breakpoints + cancelled, or compilation failed)
+            this._sendResponse(req, {});
+            this._sendEvent('terminated', {});
+            return;
+        }
+
+        this._wasActive = true;
+        this._sendResponse(req, {});
     }
 
     _onConfigurationDone(req) {
@@ -129,18 +147,54 @@ class MqlDebugAdapter extends EventEmitter {
 
     _onStackTrace(req) {
         const stack = this._store.callStack;
-        // callStack is LIFO: last element is the innermost frame. Reverse for DAP (top = index 0).
-        const frames = stack.slice().reverse().map((f, i) => ({
-            id:     i,
-            name:   f.func,
-            source: f.file ? { path: f.file } : undefined,
-            line:   parseInt(f.line, 10) || 0,
-            column: 0,
-        }));
+        let frames;
+        if (stack.length > 0) {
+            // callStack is LIFO: last element is the innermost frame. Reverse for DAP (top = index 0).
+            frames = stack.slice().reverse().map((f, i) => ({
+                id:     i,
+                name:   f.func,
+                source: f.file ? { path: this._mapToOriginalPath(f.file) } : undefined,
+                line:   parseInt(f.line, 10) || 0,
+                column: 0,
+            }));
+        } else {
+            // No enter/exit events — synthesize a frame from the latest hit
+            const hit = this._store.latestHit;
+            frames = hit ? [{
+                id:     0,
+                name:   hit.func || '(unknown)',
+                source: hit.file ? { path: this._mapToOriginalPath(hit.file) } : undefined,
+                line:   parseInt(hit.line, 10) || 0,
+                column: 0,
+            }] : [];
+        }
         this._sendResponse(req, {
             stackFrames: frames,
             totalFrames: frames.length,
         });
+    }
+
+    _onSource(req) {
+        // VS Code asks for file content when it can't find the file on disk.
+        // Read the original source file instead of the temp build file.
+        const sourceRef = req.arguments && req.arguments.source;
+        const filePath = sourceRef && (sourceRef.path || '');
+        const mappedPath = this._mapToOriginalPath(filePath);
+        try {
+            const content = fs.readFileSync(mappedPath, 'utf-8');
+            this._sendResponse(req, { content, mimeType: 'text/plain' });
+        } catch {
+            this._sendErrorResponse(req, `Cannot read source: ${mappedPath}`);
+        }
+    }
+
+    _onSetBreakpoints(req) {
+        const bps = (req.arguments.breakpoints || []).map(b => ({
+            id:       this._seq++,
+            verified: true,
+            line:     b.line,
+        }));
+        this._sendResponse(req, { breakpoints: bps });
     }
 
     _onScopes(req) {
@@ -151,6 +205,11 @@ class MqlDebugAdapter extends EventEmitter {
                     variablesReference: 1,
                     expensive:          false,
                 },
+                {
+                    name:               'Breakpoint Info',
+                    variablesReference: 2,
+                    expensive:          false,
+                },
             ]
         });
     }
@@ -159,32 +218,60 @@ class MqlDebugAdapter extends EventEmitter {
         const ref = req.arguments && req.arguments.variablesReference;
         let variables = [];
         if (ref === 1) {
-            variables = this._store.latestWatchList.map(w => ({
-                name:               w.varName,
-                value:              String(w.value),
-                type:               w.varType,
-                variablesReference: 0,
-            }));
+            // Watches scope — latest watch values from the most recent hit
+            const hit = this._store.latestHit;
+            if (hit && hit.watches && hit.watches.length) {
+                variables = hit.watches.map(w => ({
+                    name:               w.varName,
+                    value:              String(w.value),
+                    type:               w.varType,
+                    variablesReference: 0,
+                }));
+            } else {
+                variables = this._store.latestWatchList.map(w => ({
+                    name:               w.varName,
+                    value:              String(w.value),
+                    type:               w.varType,
+                    variablesReference: 0,
+                }));
+            }
+        } else if (ref === 2) {
+            // Breakpoint Info scope — metadata about the current hit
+            const hit = this._store.latestHit;
+            if (hit) {
+                variables = [
+                    { name: 'Label',          value: hit.label || '(none)',                              variablesReference: 0 },
+                    { name: 'Function',       value: hit.func || '(unknown)',                            variablesReference: 0 },
+                    { name: 'File',           value: hit.file || '(unknown)',                            variablesReference: 0 },
+                    { name: 'Line',           value: String(hit.line || 0),     type: 'int',            variablesReference: 0 },
+                    { name: 'Timestamp',      value: hit.timestamp || '',                                variablesReference: 0 },
+                    { name: 'BP Hit Count',   value: String(hit.hitCount || 0), type: 'int',            variablesReference: 0 },
+                    { name: 'Total Hits',     value: String(this._store.hits.length), type: 'int',      variablesReference: 0 },
+                ];
+            }
         }
         this._sendResponse(req, { variables });
     }
 
     _onContinue(req) {
+        this._sendContinueCommand();
         this._sendResponse(req, { allThreadsContinued: true });
         this._sendEvent('continued', { threadId: THREAD_ID, allThreadsContinued: true });
     }
 
     _onPause(req) {
-        // No-op — we cannot pause the MT5 EA
+        // Cannot pause at an arbitrary point — only breakpoints pause the EA
         this._sendResponse(req, {});
     }
 
     _onTerminate(req) {
+        this._sendContinueCommand();  // unblock EA if paused
         this._sendResponse(req, {});
         this._bridge.stop();
     }
 
     _onDisconnect(req) {
+        this._sendContinueCommand();  // unblock EA if paused
         this._sendResponse(req, {});
         this._bridge.stop();
         this._sendEvent('exited', { exitCode: 0 });
@@ -196,18 +283,41 @@ class MqlDebugAdapter extends EventEmitter {
     // -------------------------------------------------------------------------
 
     _onStoreChange() {
+        if (this._disposed) return;
+
         const hits = this._store.hits;
+        console.log(`[MqlDebugAdapter] _onStoreChange: hits=${hits.length}, lastHitCount=${this._lastHitCount}, sessionActive=${this._store.sessionActive}`);
+
+        // Reset hit counter if the store was cleared (new session)
+        if (hits.length < this._lastHitCount) {
+            this._lastHitCount = 0;
+        }
 
         // Emit stopped + console output for each new hit
         if (hits.length > this._lastHitCount) {
             for (let i = this._lastHitCount; i < hits.length; i++) {
                 const h = hits[i];
+                // Output to Debug Console so user sees hit history
                 this._sendEvent('output', {
                     category: 'console',
                     output:   `[MQL Break] ${h.label}  ${h.func}:${h.line}  (${h.file})  ${h.timestamp}\n`,
                 });
+                // Output watch values for this hit
+                if (h.watches && h.watches.length) {
+                    for (const w of h.watches) {
+                        this._sendEvent('output', {
+                            category: 'console',
+                            output:   `  ${w.varName} (${w.varType}) = ${w.value}\n`,
+                        });
+                    }
+                }
             }
             this._lastHitCount = hits.length;
+
+            // Fire stopped event — VS Code will pause the UI and request
+            // stackTrace/scopes/variables, populating the native panels.
+            // VS Code handles repeated stopped events while already paused
+            // by simply refreshing the panels — no continued event needed.
             this._sendEvent('stopped', {
                 reason:            'breakpoint',
                 description:       `Hit: ${hits[hits.length - 1].label}`,
@@ -225,6 +335,44 @@ class MqlDebugAdapter extends EventEmitter {
     }
 
     // -------------------------------------------------------------------------
+    // EA command channel
+    // -------------------------------------------------------------------------
+
+    /**
+     * Write CONTINUE to the command file so the paused EA resumes.
+     * Safe to call even if no EA is paused (the file is just ignored).
+     */
+    _sendContinueCommand() {
+        if (!this._mql5Root) return;
+        const cmdPath = path.join(this._mql5Root, 'Files', 'MqlDebugCmd.txt');
+        try {
+            fs.writeFileSync(cmdPath, 'CONTINUE\n', 'utf-8');
+        } catch (err) {
+            console.warn('[MqlDebugAdapter] Failed to write continue command:', err.message);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Path mapping
+    // -------------------------------------------------------------------------
+
+    /**
+     * Map instrumented temp file names back to original source paths.
+     * e.g. "SMC.mql_dbg_build.mq5" → original source path for "SMC.mq5"
+     * The temp file name pattern is: <basename>.mql_dbg_build.<ext>
+     */
+    _mapToOriginalPath(filePath) {
+        if (!filePath) return filePath;
+        // Replace .mql_dbg_build.mq5 → .mq5 (and .mq4)
+        const mapped = filePath.replace(/\.mql_dbg_build\.(mq[45])/i, '.$1');
+        if (mapped !== filePath && this._originalPath) {
+            // If we have the original path, use it directly (handles full path)
+            return this._originalPath;
+        }
+        return mapped;
+    }
+
+    // -------------------------------------------------------------------------
     // DAP message helpers
     // -------------------------------------------------------------------------
 
@@ -237,7 +385,7 @@ class MqlDebugAdapter extends EventEmitter {
             command:     req.command,
             body:        body || {},
         };
-        this.onDidSendMessage.fire(msg);
+        this._sendMessageEmitter.fire(msg);
     }
 
     _sendErrorResponse(req, message) {
@@ -250,7 +398,7 @@ class MqlDebugAdapter extends EventEmitter {
             message,
             body:        {},
         };
-        this.onDidSendMessage.fire(msg);
+        this._sendMessageEmitter.fire(msg);
     }
 
     _sendEvent(event, body) {
@@ -260,7 +408,7 @@ class MqlDebugAdapter extends EventEmitter {
             event,
             body:  body || {},
         };
-        this.onDidSendMessage.fire(msg);
+        this._sendMessageEmitter.fire(msg);
     }
 }
 

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const MQLDEBUG_FILENAME = 'MqlDebug.txt';
-const POLL_INTERVAL_MS  = 5000;
+const POLL_INTERVAL_MS  = 500;
 
 /**
  * Reads MqlDebug.txt written by MqlDebug.mqh and emits parsed debug events.
@@ -40,6 +40,13 @@ class MqlDebugLogReader {
         this.onEvent     = null;
         /** @type {((err: Error) => void) | null} */
         this.onError     = null;
+        /** @type {((msg: string) => void) | null} */
+        this.onLog       = null;
+    }
+
+    _log(msg) {
+        if (this.onLog) this.onLog(msg);
+        console.log(`[MqlDebugLogReader] ${msg}`);
     }
 
     /** Start watching the debug log file. Clears the file first for a clean session. */
@@ -48,12 +55,22 @@ class MqlDebugLogReader {
         this.isRunning = true;
         this.lastSize  = 0;
 
-        // Clear the log file for this session (same pattern as logTailer)
+        this._log(`start() — watching: ${this.filePath}`);
+
+        // Ensure directory and file exist so the fs.watch watcher can be set up
+        // immediately (avoids relying on slow poll fallback).
+        // If file already has content from a prior session, skip it rather than
+        // truncating — truncating while MT5 may still hold the handle is unsafe.
         try {
             const dir = path.dirname(this.filePath);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             if (fs.existsSync(this.filePath)) {
-                fs.writeFileSync(this.filePath, '');
+                const stats = fs.statSync(this.filePath);
+                this.lastSize = stats.size; // skip existing content
+                this._log(`File exists, skipping ${stats.size} bytes`);
+            } else {
+                fs.writeFileSync(this.filePath, ''); // touch so watcher can attach
+                this._log(`File created (touched)`);
             }
         } catch (err) {
             this._emitError(err);
@@ -126,52 +143,69 @@ class MqlDebugLogReader {
         this.timer = setTimeout(() => this._poll(), POLL_INTERVAL_MS);
     }
 
+    /**
+     * Try to read new data from lastSize position.
+     * Bypasses stat entirely — just attempts to read.  If there is data
+     * past lastSize, we get it; if not, readSync returns 0.
+     * This avoids Windows NTFS directory-entry cache staleness issues.
+     */
     _checkForNewContent() {
         if (!this.isRunning) return;
+        let fd = -1;
         try {
             if (!fs.existsSync(this.filePath)) return;
-            const stats = fs.statSync(this.filePath);
-            if (stats.size > this.lastSize) {
-                this._readNewLines(stats.size);
-            } else if (stats.size < this.lastSize) {
-                // File was cleared/rotated
-                this.lastSize = 0;
-            }
-        } catch (err) {
-            this._emitError(err);
-        }
-    }
+            fd = fs.openSync(this.filePath, 'r');
 
-    _readNewLines(newSize) {
-        try {
-            const fd     = fs.openSync(this.filePath, 'r');
-            const length = newSize - this.lastSize;
-            const buf    = Buffer.alloc(length);
-            try {
-                fs.readSync(fd, buf, 0, length, this.lastSize);
-            } finally {
-                fs.closeSync(fd);
-            }
-            this.lastSize = newSize;
+            const BUF_SIZE = 65536;
+            const buf = Buffer.alloc(BUF_SIZE);
+            const chunks = [];
+            let totalRead = 0;
 
-            // MqlDebug.mqh writes UTF-8 bytes despite using the FILE_ANSI flag (which normally implies ANSI/CP1252).
-            const text   = buf.toString('utf8');
-            const lines  = text.split(/\r?\n/);
-            const events = [];
-            for (const line of lines) {
-                if (line.startsWith('DBG|')) {
-                    const evt = this._parseLine(line);
-                    if (evt) events.push(evt);
+            // Read all available new data from lastSize onward
+            while (true) {
+                const n = fs.readSync(fd, buf, 0, BUF_SIZE, this.lastSize + totalRead);
+                if (n === 0) break;
+                chunks.push(Buffer.from(buf.subarray(0, n)));
+                totalRead += n;
+            }
+
+            // Detect log rotation (file truncated / smaller than expected)
+            if (totalRead === 0) {
+                const stats = fs.fstatSync(fd);
+                if (stats.size < this.lastSize) {
+                    this._log(`File truncated (${this.lastSize} → ${stats.size}), resetting`);
+                    this.lastSize = 0;
                 }
             }
-            // Deliver all events in this chunk as one batch so the store
-            // notifies listeners only once instead of once per line.
-            if (events.length > 0 && this.onBatch) {
-                this.onBatch(events);
-            } else if (events.length > 0 && this.onEvent) {
-                for (const evt of events) this.onEvent(evt);
+
+            fs.closeSync(fd);
+            fd = -1;
+
+            if (totalRead > 0) {
+                this.lastSize += totalRead;
+                const text = Buffer.concat(chunks).toString('utf8');
+                const lines = text.split(/\r?\n/);
+                const events = [];
+                for (const line of lines) {
+                    if (line.startsWith('DBG|')) {
+                        const evt = this._parseLine(line);
+                        if (evt) events.push(evt);
+                    }
+                }
+                this._log(`Read +${totalRead} bytes, ${lines.length} lines, ${events.length} events`);
+                if (events.length > 0) {
+                    for (const e of events) this._log(`  event: ${e.type} ${e.label || e.varName || e.func || ''}`);
+                }
+                // Deliver all events in this chunk as one batch so the store
+                // notifies listeners only once instead of once per line.
+                if (events.length > 0 && this.onBatch) {
+                    this.onBatch(events);
+                } else if (events.length > 0 && this.onEvent) {
+                    for (const evt of events) this.onEvent(evt);
+                }
             }
         } catch (err) {
+            if (fd >= 0) try { fs.closeSync(fd); } catch { /* ignore */ }
             this._emitError(err);
         }
     }

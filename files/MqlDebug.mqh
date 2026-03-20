@@ -214,10 +214,10 @@ string MqlDebugEscape(string val) {
 //+------------------------------------------------------------------+
 //| ENTER / EXIT - call stack tracking                               |
 //+------------------------------------------------------------------+
-#define MQL_DBG_ENTER() \
+#define MQL_DBG_ENTER \
     MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|ENTER")
 
-#define MQL_DBG_EXIT() \
+#define MQL_DBG_EXIT \
     MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|EXIT")
 
 //+------------------------------------------------------------------+
@@ -248,3 +248,94 @@ string MqlDebugEscape(string val) {
 //| For MQL4 or ambiguous cases, prefer the typed macros above.      |
 //+------------------------------------------------------------------+
 #define MQL_DBG_WATCH(varName, val) MQL_DBG_WATCH_DBL(varName, val)
+
+//+------------------------------------------------------------------+
+//| ARRAY watch macros — emit each element as a separate WATCH line  |
+//| with varName[index] naming.  Capped at MQLDEBUG_MAX_ARRAY_ELEMS |
+//| to prevent flooding the log file on large arrays.                |
+//+------------------------------------------------------------------+
+#define MQLDEBUG_MAX_ARRAY_ELEMS 50
+
+#define MQL_DBG_WATCH_ARRAY_INT(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_WATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_WATCH_INT(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+#define MQL_DBG_WATCH_ARRAY_DBL(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_WATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_WATCH_DBL(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+#define MQL_DBG_WATCH_ARRAY_LONG(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_WATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_WATCH_LONG(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+#define MQL_DBG_WATCH_ARRAY_STR(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_WATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_WATCH_STR(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+//+------------------------------------------------------------------+
+//| PAUSE — spin-wait at breakpoint until VS Code sends CONTINUE     |
+//|                                                                  |
+//| WARNING: The EA thread is fully blocked while paused.            |
+//|          No OnTick / OnTimer / OnChartEvent will fire.           |
+//|          Use ONLY on demo accounts or in the Strategy Tester.    |
+//|                                                                  |
+//| Safety:                                                          |
+//|   - Auto-resumes after MQLDEBUG_PAUSE_TIMEOUT_SEC (default 120s)|
+//|   - Auto-resumes if EA is removed from chart (IsStopped())       |
+//|   - Stale command file is cleared before each pause              |
+//+------------------------------------------------------------------+
+#define MQLDEBUG_CMD_FILENAME    "MqlDebugCmd.txt"
+#define MQLDEBUG_PAUSE_TIMEOUT_SEC 120
+
+//+------------------------------------------------------------------+
+//| Check if a command is present in the command file                |
+//+------------------------------------------------------------------+
+bool MqlDebugCheckCmd(string cmd) {
+    int handle = FileOpen(MQLDEBUG_CMD_FILENAME,
+                          FILE_READ | FILE_TXT | FILE_ANSI |
+                          FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if (handle == INVALID_HANDLE)
+        return false;
+    string line = FileReadString(handle);
+    FileClose(handle);
+    return (StringFind(line, cmd) >= 0);
+}
+
+//+------------------------------------------------------------------+
+//| Pause execution until CONTINUE command or timeout                |
+//+------------------------------------------------------------------+
+void MqlDebugPause() {
+    if (!__dbgState.IsDebugInitialized())
+        return;
+
+    // Clear any stale command left over from a previous breakpoint
+    FileDelete(MQLDEBUG_CMD_FILENAME);
+
+    uint startTick = GetTickCount();
+    uint timeoutMs = MQLDEBUG_PAUSE_TIMEOUT_SEC * 1000;
+
+    while (!IsStopped()) {
+        // Timeout failsafe — resume so the EA isn't stuck forever
+        if ((GetTickCount() - startTick) > timeoutMs) {
+            MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|PAUSE_TIMEOUT");
+            break;
+        }
+
+        // VS Code wrote CONTINUE → resume
+        if (MqlDebugCheckCmd("CONTINUE")) {
+            break;
+        }
+
+        Sleep(100);
+    }
+}
+
+#define MQL_DBG_PAUSE MqlDebugPause()

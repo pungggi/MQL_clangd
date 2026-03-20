@@ -46,6 +46,8 @@ class DebugStateStore {
         this.callStack = [];
         /** Most recent watch values, keyed by varName */
         this.latestWatches = new Map(); // varName -> WatchEntry
+        /** Per-breakpoint hit counts, keyed by label */
+        this.hitCounts = new Map(); // label -> number
         this.sessionActive = false;
     }
 
@@ -89,6 +91,8 @@ class DebugStateStore {
     _applyOne(event) {
         switch (event.type) {
             case 'break': {
+                const count = (this.hitCounts.get(event.label) || 0) + 1;
+                this.hitCounts.set(event.label, count);
                 const hit = {
                     label:     event.label,
                     file:      event.file,
@@ -96,6 +100,7 @@ class DebugStateStore {
                     line:      event.line,
                     timestamp: event.timestamp,
                     watches:   [],
+                    hitCount:  count,
                 };
                 this.hits.push(hit);
                 if (this.hits.length > MAX_HITS) this.hits.shift();

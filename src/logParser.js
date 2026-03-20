@@ -297,6 +297,12 @@ function parseLogFile(logPath, options = {}) {
         }
     }
 
+    // Push any incomplete trade remaining after the loop
+    if (currentTrade) {
+        incompleteTrades.push(currentTrade);
+        currentTrade = null;
+    }
+
     // ---- Compute summary from parsed trades ---------------------------------
     const wins = trades.filter(t => t.netPnl > 0).length;
     const losses = trades.filter(t => t.netPnl < 0).length;
