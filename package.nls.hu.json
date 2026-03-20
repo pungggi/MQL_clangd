@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" elérési útja: MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" elérési útja: MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" elérési útja: MQL5",
-    "mql_tools.configuration.Include4Dir.description": "\"Include\" mappa elérési útja: MQL4 (opcionális)",
-    "mql_tools.configuration.Include5Dir.description": "\"Include\" mappa elérési útja: MQL5 (opcionális)",
+    "mql_tools.configuration.Include4Dir.description": "MQL4 adatmappa útvonala (tartalmazza az Include, Logs stb. mappákat). Elengedhetetlen a könyvtári fejlécekhez és az élő futásidejű naplókhoz. Automatikusan felismerve, ha üresen marad.",
+    "mql_tools.configuration.Include5Dir.description": "MQL5 adatmappa útvonala (tartalmazza az Include, Logs stb. mappákat). Elengedhetetlen a könyvtári fejlécekhez és az élő futásidejű naplókhoz. Automatikusan felismerve, ha üresen marad.",
     "mql_tools.configuration.ShowButtonCompile.description": "Fordítás gomb megjelenítése",
     "mql_tools.configuration.ShowButtonCheck.description": "Szintaxis ellenőrző gomb megjelenítése",
     "mql_tools.configuration.ShowButtonScript.description": "Szkripttel történő fordítás gomb megjelenítése",
@@ -33,5 +33,6 @@
     "mql_tools.commands.openInME.title": "Megnyitás a 'MetaEditor'-ban",
     "mql_tools.commands.openTradingTerminal.title": "Kereskedési terminál megnyitása",
     "mql_tools.commands.createCommentary.title": "Függvény megjegyzés létrehozása",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Zajos clangd diagnosztika jelentése"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Zajos clangd diagnosztika jelentése",
+    "mql_tools.commands.runBacktest.title": "Visszateszt futtatása"
 }

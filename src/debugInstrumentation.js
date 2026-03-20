@@ -1,0 +1,1359 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+let vscode;
+try {
+    vscode = require('vscode');
+} catch (e) {
+    vscode = null;
+}
+
+// Injected at the top of every instrumented file (after #property directives)
+const INCLUDE_LINE = '#include <MqlDebug.mqh>';
+
+/**
+ * A simple line-classification state machine for MQL5 source.
+ * Determines whether a given line is safe to inject a macro after.
+ */
+class MqlLineClassifier {
+    constructor() {
+        this._inBlockComment = false;
+    }
+
+    /**
+     * Classify a source line.
+     * @param {string} line
+     * @returns {'preprocessor'|'comment'|'blank'|'open_brace'|'code'}
+     */
+    classify(line) {
+        let trimmed = line.trimStart();
+
+        // Update block-comment state first
+        if (this._inBlockComment) {
+            const endIdx = trimmed.indexOf('*/');
+            if (endIdx !== -1) {
+                this._inBlockComment = false;
+                const remaining = trimmed.substring(endIdx + 2).trimStart();
+                if (remaining === '') return 'comment';
+                return this.classify(remaining);
+            }
+            return 'comment';
+        }
+
+        if (trimmed === '') return 'blank';
+        if (trimmed.startsWith('//')) return 'comment';
+        if (trimmed.startsWith('/*')) {
+            const endIdx = trimmed.indexOf('*/', 2);
+            if (endIdx !== -1) {
+                const remaining = trimmed.substring(endIdx + 2).trimStart();
+                if (remaining === '') return 'comment';
+                return this.classify(remaining);
+            }
+            this._inBlockComment = true;
+            return 'comment';
+        }
+        if (trimmed.startsWith('#')) return 'preprocessor';
+        if (trimmed.endsWith('\\')) return 'preprocessor'; // multi-line macro continuation
+
+        // Line that opens a block without closing it — injecting after this is risky
+        const openBraces = (trimmed.match(/\{/g) || []).length;
+        const closeBraces = (trimmed.match(/\}/g) || []).length;
+        if (openBraces > closeBraces) return 'open_brace';
+
+        return 'code';
+    }
+
+    reset() { this._inBlockComment = false; }
+}
+
+/**
+ * Validate that a condition string has balanced delimiters and quotes.
+ * @param {string} condition
+ * @returns {boolean}
+ */
+function isConditionSafe(condition) {
+    if (!condition || !condition.trim()) return false;
+    const stack = [];
+    const pairs = { '(': ')', '[': ']', '{': '}' };
+    let inQuote = null;
+
+    for (let i = 0; i < condition.length; i++) {
+        const char = condition[i];
+        if (inQuote) {
+            if (char === inQuote) {
+                let backslashCount = 0;
+                for (let j = i - 1; j >= 0 && condition[j] === '\\'; j--) {
+                    backslashCount++;
+                }
+                if (backslashCount % 2 === 0) {
+                    inQuote = null;
+                }
+            }
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            inQuote = char;
+            continue;
+        }
+        if (pairs[char]) {
+            stack.push(pairs[char]);
+        } else if (char === ')' || char === ']' || char === '}') {
+            if (stack.pop() !== char) return false;
+        }
+    }
+    return stack.length === 0 && !inQuote;
+}
+
+/**
+ * Find the first line at or after `targetLine` (1-based) that ends a complete
+ * statement (ends with `;` or `}`) and is not a comment/preprocessor.
+ *
+ * @param {string[]} lines  Array of source lines (0-based index)
+ * @param {number}   targetLine  1-based line number from VS Code breakpoint
+ * @returns {number|null}  0-based index of the injection point (line AFTER which to insert),
+ *                         or null if no safe point found within the search window.
+ */
+function findInjectionPoint(lines, targetLine) {
+    const classifier = new MqlLineClassifier();
+
+    // Pre-scan to build correct block-comment state up to the target line
+    for (let i = 0; i < Math.min(targetLine - 1, lines.length); i++) {
+        classifier.classify(lines[i]);
+    }
+
+    // Search forward from the target line (up to 10 lines) for a safe injection point
+    const searchLimit = Math.min(targetLine - 1 + 10, lines.length);
+    for (let i = targetLine - 1; i < searchLimit; i++) {
+        const line = lines[i];
+        const kind = classifier.classify(line);
+        if (kind === 'comment' || kind === 'blank' || kind === 'preprocessor') continue;
+
+        const trimmed = line.trimEnd();
+        if (trimmed.endsWith(';') || trimmed.endsWith('}')) {
+            return i; // Inject AFTER this line (i is 0-based)
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Parse `// @watch varName [varName2 ...]` annotations from lines around the breakpoint.
+ * Searches up to 5 lines before and 2 lines after the breakpoint line.
+ * Supports multiple variable names on a single annotation line.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based breakpoint line
+ * @returns {string[]}  Variable names to watch
+ */
+function parseWatchAnnotations(lines, bpLine) {
+    const RE_WATCH = /\/\/\s*@watch\s+([\w\s]+)/;
+    const vars = [];
+    const from = Math.max(0, bpLine - 6);
+    const to = Math.min(lines.length - 1, bpLine + 1);
+
+    for (let i = from; i <= to; i++) {
+        const m = lines[i].match(RE_WATCH);
+        if (m) {
+            const names = m[1].trim().split(/\s+/);
+            for (const n of names) {
+                if (n && !vars.includes(n)) vars.push(n);
+            }
+        }
+    }
+    return vars;
+}
+
+// -------------------------------------------------------------------------
+// MQL5 type → watch macro mapping
+// -------------------------------------------------------------------------
+
+const MQL_TYPE_MACROS = {
+    'int':      'MQL_DBG_WATCH_INT',
+    'uint':     'MQL_DBG_WATCH_INT',
+    'short':    'MQL_DBG_WATCH_INT',
+    'ushort':   'MQL_DBG_WATCH_INT',
+    'char':     'MQL_DBG_WATCH_INT',
+    'uchar':    'MQL_DBG_WATCH_INT',
+    'long':     'MQL_DBG_WATCH_LONG',
+    'ulong':    'MQL_DBG_WATCH_LONG',
+    'double':   'MQL_DBG_WATCH_DBL',
+    'float':    'MQL_DBG_WATCH_DBL',
+    'string':   'MQL_DBG_WATCH_STR',
+    'bool':     'MQL_DBG_WATCH_BOOL',
+    'datetime': 'MQL_DBG_WATCH_DATETIME',
+    'color':    'MQL_DBG_WATCH_INT',
+    'ENUM_TIMEFRAMES':       'MQL_DBG_WATCH_INT',
+    'ENUM_ORDER_TYPE':       'MQL_DBG_WATCH_INT',
+    'ENUM_POSITION_TYPE':    'MQL_DBG_WATCH_INT',
+    'ENUM_DEAL_TYPE':        'MQL_DBG_WATCH_INT',
+    'ENUM_TRADE_REQUEST_ACTIONS': 'MQL_DBG_WATCH_INT',
+};
+
+const MQL_ARRAY_MACROS = {
+    'int':      'MQL_DBG_WATCH_ARRAY_INT',
+    'uint':     'MQL_DBG_WATCH_ARRAY_INT',
+    'short':    'MQL_DBG_WATCH_ARRAY_INT',
+    'ushort':   'MQL_DBG_WATCH_ARRAY_INT',
+    'char':     'MQL_DBG_WATCH_ARRAY_INT',
+    'uchar':    'MQL_DBG_WATCH_ARRAY_INT',
+    'long':     'MQL_DBG_WATCH_ARRAY_LONG',
+    'ulong':    'MQL_DBG_WATCH_ARRAY_LONG',
+    'double':   'MQL_DBG_WATCH_ARRAY_DBL',
+    'float':    'MQL_DBG_WATCH_ARRAY_DBL',
+    'string':   'MQL_DBG_WATCH_ARRAY_STR',
+};
+
+/**
+ * Pick the typed macro for a given MQL5 type string.
+ * Falls back to MQL_DBG_WATCH (double) for unknown types.
+ * @param {string} mqlType
+ * @param {boolean} [isArray=false]
+ */
+function macroForType(mqlType, isArray) {
+    if (!mqlType) return 'MQL_DBG_WATCH';
+    const key = mqlType.replace(/\b(const|static|input)\b/g, '').trim().toLowerCase();
+    if (isArray) {
+        return MQL_ARRAY_MACROS[key] || null; // null = skip unsupported array type
+    }
+    if (key.startsWith('enum_')) return 'MQL_DBG_WATCH_INT';
+    return MQL_TYPE_MACROS[key] || 'MQL_DBG_WATCH';
+}
+
+// -------------------------------------------------------------------------
+// Local variable discovery
+// -------------------------------------------------------------------------
+
+/**
+ * Find the enclosing function body for a given line and extract local variable
+ * declarations visible at that line.
+ *
+ * Strategy: walk backwards from bpLine to find the function opening brace,
+ * then scan forward through the function body up to bpLine collecting
+ * variable declarations.
+ *
+ * @param {string[]} lines   Source lines (0-based array)
+ * @param {number}   bpLine  1-based breakpoint line
+ * @returns {{ name: string, type: string }[]}
+ */
+function parseLocalsInScope(lines, bpLine) {
+    const idx = bpLine - 1; // convert to 0-based
+    if (idx < 0 || idx >= lines.length) return [];
+
+    // Walk backwards to find the function start (opening brace at depth 0)
+    let braceDepth = 0;
+    let funcBodyStart = -1;
+    for (let i = idx; i >= 0; i--) {
+        const line = lines[i];
+        // Count braces (simplified — ignores braces in strings/comments)
+        for (let c = line.length - 1; c >= 0; c--) {
+            if (line[c] === '}') braceDepth++;
+            else if (line[c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) {
+                    funcBodyStart = i;
+                    break;
+                }
+            }
+        }
+        if (funcBodyStart >= 0) break;
+    }
+
+    if (funcBodyStart < 0) return [];
+
+    // Also grab function parameters from the line(s) before the opening brace
+    const params = parseFunctionParams(lines, funcBodyStart);
+
+    // Scan from funcBodyStart+1 to bpLine collecting local declarations
+    const locals = [];
+    const seen = new Set();
+
+    // Add params first
+    for (const p of params) {
+        if (!seen.has(p.name)) {
+            seen.add(p.name);
+            locals.push(p);
+        }
+    }
+
+    // MQL5 declaration pattern: type [modifiers] name [= ...][, name2 [= ...]];
+    // Matches: int x;  double y = 1.0;  string a, b;  const int z = 5;
+    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_VARNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
+
+    // Skip types that are clearly not variable declarations
+    const NON_TYPE_KEYWORDS = new Set([
+        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
+        'new', 'virtual', 'override', 'public', 'private', 'protected',
+        'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
+    ]);
+
+    for (let i = funcBodyStart + 1; i <= idx && i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trimStart();
+
+        // Skip comments, preprocessor, blank
+        if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('#') || trimmed.startsWith('*')) continue;
+
+        const m = trimmed.match(RE_DECL);
+        if (!m) continue;
+
+        const typeName = m[1];
+        if (NON_TYPE_KEYWORDS.has(typeName)) continue;
+
+        const varsPart = m[2];
+        let vm;
+        RE_VARNAME.lastIndex = 0;
+        while ((vm = RE_VARNAME.exec(varsPart)) !== null) {
+            const vName = vm[1];
+            const isArray = vm[0].includes('[');
+            if (!seen.has(vName) && !NON_TYPE_KEYWORDS.has(vName)) {
+                seen.add(vName);
+                locals.push({ name: vName, type: typeName, isArray });
+            }
+        }
+    }
+
+    return locals;
+}
+
+/**
+ * Parse function parameters from the signature above the opening brace.
+ * Looks at the lines leading up to funcBodyStart for a parenthesized param list.
+ *
+ * @param {string[]} lines
+ * @param {number}   braceLineIdx  0-based index of the line with '{'
+ * @returns {{ name: string, type: string }[]}
+ */
+function parseFunctionParams(lines, braceLineIdx) {
+    // Collect up to 10 lines before the brace to handle multi-line signatures
+    const from = Math.max(0, braceLineIdx - 10);
+    let sigText = '';
+    for (let i = from; i <= braceLineIdx; i++) {
+        sigText += ' ' + lines[i];
+    }
+
+    // Find the last parenthesized group before '{'
+    const bracePos = sigText.lastIndexOf('{');
+    const parenClose = sigText.lastIndexOf(')', bracePos);
+    if (parenClose < 0) return [];
+    let depth = 1;
+    let parenOpen = parenClose - 1;
+    while (parenOpen >= 0 && depth > 0) {
+        if (sigText[parenOpen] === ')') depth++;
+        else if (sigText[parenOpen] === '(') depth--;
+        if (depth === 0) break;
+        parenOpen--;
+    }
+    if (depth !== 0) return [];
+
+    const paramStr = sigText.substring(parenOpen + 1, parenClose);
+    if (!paramStr.trim()) return [];
+
+    const params = [];
+    // Split by comma (simplified — doesn't handle template params with commas)
+    for (const chunk of paramStr.split(',')) {
+        const trimmed = chunk.trim();
+        if (!trimmed) continue;
+        // Pattern: [const] [&] type [&] name [= default]
+        const pm = trimmed.match(/(?:(?:const|static|input)\s+)*([A-Za-z_]\w*)(?:\s*&)?\s+(?:&\s*)?([A-Za-z_]\w*)/);
+        if (pm) {
+            params.push({ name: pm[2], type: pm[1], isArray: trimmed.includes('[') });
+        }
+    }
+    return params;
+}
+
+// -------------------------------------------------------------------------
+// Class and global type resolution for member access debugging
+// -------------------------------------------------------------------------
+
+/**
+ * Parse class/struct definitions from source lines.
+ * Extracts class name, parent class, and member declarations.
+ *
+ * @param {string[]} lines
+ * @returns {{ name: string, parent: string|null, members: { name: string, type: string, isArray: boolean }[] }[]}
+ */
+function parseClassDefinitions(lines) {
+    const classes = [];
+    const RE_CLASS = /^\s*(?:class|struct)\s+([A-Za-z_]\w*)(?:\s*:\s*(?:(?:public|private|protected)\s+)?([A-Za-z_]\w*))?/;
+    const RE_DECL = /^\s*(?:(?:static|const)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
+    const SKIP = new Set([
+        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
+        'new', 'virtual', 'override', 'public', 'private', 'protected',
+        'template', 'typedef', 'namespace',
+    ]);
+
+    for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(RE_CLASS);
+        if (!m) continue;
+        if (lines[i].trimEnd().endsWith(';')) continue; // forward declaration
+
+        const className = m[1];
+        const parent = m[2] || null;
+
+        // Find opening brace
+        let braceIdx = -1;
+        for (let j = i; j < Math.min(i + 5, lines.length); j++) {
+            if (lines[j].includes('{')) { braceIdx = j; break; }
+        }
+        if (braceIdx < 0) continue;
+
+        // Find matching closing brace
+        let depth = 0, endIdx = -1;
+        for (let j = braceIdx; j < lines.length; j++) {
+            for (const ch of lines[j]) {
+                if (ch === '{') depth++;
+                else if (ch === '}') { depth--; if (depth === 0) { endIdx = j; break; } }
+            }
+            if (endIdx >= 0) break;
+        }
+        if (endIdx < 0) continue;
+
+        // Scan member declarations at class body depth (depth 1)
+        const members = [];
+        let bodyDepth = 0;
+        for (let j = braceIdx; j <= endIdx; j++) {
+            const prevDepth = bodyDepth;
+            for (const ch of lines[j]) {
+                if (ch === '{') bodyDepth++;
+                else if (ch === '}') bodyDepth--;
+            }
+            if (prevDepth !== 1) continue;
+
+            const trimmed = lines[j].trimStart();
+            if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+                trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+
+            const dm = trimmed.match(RE_DECL);
+            if (!dm) continue;
+            if (SKIP.has(dm[1])) continue;
+
+            RE_VNAME.lastIndex = 0;
+            let vm;
+            while ((vm = RE_VNAME.exec(dm[2])) !== null) {
+                if (!SKIP.has(vm[1])) {
+                    members.push({ name: vm[1], type: dm[1], isArray: vm[0].includes('[') });
+                }
+            }
+        }
+
+        classes.push({ name: className, parent, members });
+        i = endIdx;
+    }
+    return classes;
+}
+
+/**
+ * Parse global (file-scope) variable declarations.
+ * Skips class/struct/function bodies by tracking brace depth.
+ *
+ * @param {string[]} lines
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function parseGlobalDeclarations(lines) {
+    const globals = [];
+    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
+    const SKIP = new Set([
+        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
+        'new', 'virtual', 'override', 'public', 'private', 'protected',
+        'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
+    ]);
+
+    let depth = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const prevDepth = depth;
+        for (const ch of lines[i]) {
+            if (ch === '{') depth++;
+            else if (ch === '}') depth--;
+        }
+        if (prevDepth !== 0) continue;
+
+        const trimmed = lines[i].trimStart();
+        if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+            trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+
+        const m = trimmed.match(RE_DECL);
+        if (!m) continue;
+        if (SKIP.has(m[1])) continue;
+
+        const isInput = /\binput\b/.test(lines[i]);
+        RE_VNAME.lastIndex = 0;
+        let vm;
+        while ((vm = RE_VNAME.exec(m[2])) !== null) {
+            if (!SKIP.has(vm[1])) {
+                globals.push({ name: vm[1], type: m[1], isArray: vm[0].includes('['), isInput });
+            }
+        }
+    }
+    return globals;
+}
+
+/**
+ * Build a type database from all files in the include graph.
+ *
+ * @param {Map} graph  The include graph built by instrumentWorkspace
+ * @returns {{ classMap: Map<string, { parent: string|null, members: Map<string, { type: string, isArray: boolean }> }>, globalMap: Map<string, { type: string, isArray: boolean }> }}
+ */
+function buildTypeDatabase(graph) {
+    const classMap = new Map();
+    const globalMap = new Map();
+
+    for (const node of graph.values()) {
+        if (!node.lines) continue;
+
+        for (const cls of parseClassDefinitions(node.lines)) {
+            if (!classMap.has(cls.name)) {
+                const memberMap = new Map();
+                for (const m of cls.members) {
+                    memberMap.set(m.name, { type: m.type, isArray: m.isArray });
+                }
+                classMap.set(cls.name, { parent: cls.parent, members: memberMap });
+            }
+        }
+
+        for (const g of parseGlobalDeclarations(node.lines)) {
+            if (!globalMap.has(g.name)) {
+                globalMap.set(g.name, { type: g.type, isArray: g.isArray, isInput: g.isInput });
+            }
+        }
+    }
+
+    return { classMap, globalMap };
+}
+
+/**
+ * Find member access expressions (obj.member, this.field, a.b.c) used in the
+ * function body up to the breakpoint line.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based breakpoint line
+ * @returns {string[]}  Unique member access expressions
+ */
+function findMemberAccessExpressions(lines, bpLine) {
+    const idx = bpLine - 1;
+    if (idx < 0 || idx >= lines.length) return [];
+
+    // Find function body start (walk backwards to opening brace)
+    let braceDepth = 0, funcStart = -1;
+    for (let i = idx; i >= 0; i--) {
+        for (let c = lines[i].length - 1; c >= 0; c--) {
+            if (lines[i][c] === '}') braceDepth++;
+            else if (lines[i][c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) { funcStart = i; break; }
+            }
+        }
+        if (funcStart >= 0) break;
+    }
+    if (funcStart < 0) return [];
+
+    const RE = /\b((?:this|[a-zA-Z_]\w*)(?:\.[a-zA-Z_]\w*)+)/g;
+    const exprs = new Set();
+
+    for (let i = funcStart; i <= idx && i < lines.length; i++) {
+        const trimmed = lines[i].trimStart();
+        if (trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+            trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+
+        RE.lastIndex = 0;
+        let m;
+        while ((m = RE.exec(lines[i])) !== null) {
+            const expr = m[1];
+            const afterIdx = m.index + m[0].length;
+            const afterChar = afterIdx < lines[i].length ? lines[i][afterIdx] : '';
+
+            if (afterChar === '(') {
+                // Last segment is a method call — trim it and keep the object part
+                const lastDot = expr.lastIndexOf('.');
+                if (lastDot > 0) {
+                    const objPart = expr.substring(0, lastDot);
+                    if (objPart.includes('.')) exprs.add(objPart);
+                }
+            } else {
+                exprs.add(expr);
+            }
+        }
+    }
+
+    return Array.from(exprs);
+}
+
+/**
+ * Determine the enclosing class name for the function containing a breakpoint.
+ * Checks for ClassName::MethodName in the signature, or whether the function
+ * is lexically inside a class body (inline method).
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based
+ * @returns {string|null}
+ */
+function findEnclosingClassName(lines, bpLine) {
+    const idx = bpLine - 1;
+    if (idx < 0 || idx >= lines.length) return null;
+
+    // Find function body start
+    let braceDepth = 0, funcStart = -1;
+    for (let i = idx; i >= 0; i--) {
+        for (let c = lines[i].length - 1; c >= 0; c--) {
+            if (lines[i][c] === '}') braceDepth++;
+            else if (lines[i][c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) { funcStart = i; break; }
+            }
+        }
+        if (funcStart >= 0) break;
+    }
+    if (funcStart < 0) return null;
+
+    // Check for ClassName::MethodName pattern in the signature
+    let sigText = '';
+    for (let i = Math.max(0, funcStart - 5); i <= funcStart; i++) {
+        sigText += ' ' + lines[i];
+    }
+    const cm = sigText.match(/([A-Za-z_]\w*)\s*::\s*[A-Za-z_~]\w*\s*\(/);
+    if (cm) return cm[1];
+
+    // Check if the function is lexically inside a class body (inline method)
+    braceDepth = 0;
+    for (let i = funcStart - 1; i >= 0; i--) {
+        for (let c = lines[i].length - 1; c >= 0; c--) {
+            if (lines[i][c] === '}') braceDepth++;
+            else if (lines[i][c] === '{') {
+                braceDepth--;
+                if (braceDepth < 0) {
+                    // We exited a scope — check if it's a class/struct
+                    for (let k = i; k >= Math.max(0, i - 5); k--) {
+                        const km = lines[k].match(/(?:class|struct)\s+([A-Za-z_]\w*)/);
+                        if (km) return km[1];
+                    }
+                    return null;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Look up a member in a class, following the inheritance chain.
+ *
+ * @param {Map} classMap
+ * @param {string} className
+ * @param {string} memberName
+ * @returns {{ type: string, isArray: boolean }|null}
+ */
+function lookupClassMember(classMap, className, memberName) {
+    const visited = new Set();
+    let current = className;
+    while (current && !visited.has(current)) {
+        visited.add(current);
+        const def = classMap.get(current);
+        if (!def) return null;
+        if (def.members.has(memberName)) return def.members.get(memberName);
+        current = def.parent;
+    }
+    return null;
+}
+
+/**
+ * Resolve the type of a member access expression by walking the class map.
+ * Handles chains (a.b.c) and inheritance.
+ *
+ * @param {string} expr  e.g. 'g_timers.lastTime' or 'this.count'
+ * @param {{ name: string, type: string }[]} locals
+ * @param {Map} globalMap
+ * @param {Map} classMap
+ * @param {string|null} enclosingClass
+ * @returns {{ type: string, isArray: boolean }|null}
+ */
+function resolveMemberType(expr, locals, globalMap, classMap, enclosingClass) {
+    const parts = expr.split('.');
+    if (parts.length < 2) return null;
+
+    // Resolve the root object's type
+    let currentType = null;
+    const root = parts[0];
+
+    if (root === 'this') {
+        currentType = enclosingClass;
+    } else {
+        const local = locals.find(l => l.name === root);
+        if (local) {
+            currentType = local.type;
+        } else if (globalMap.has(root)) {
+            currentType = globalMap.get(root).type;
+        }
+    }
+
+    if (!currentType) return null;
+
+    // Walk the member chain
+    for (let i = 1; i < parts.length; i++) {
+        const member = lookupClassMember(classMap, currentType, parts[i]);
+        if (!member) return null;
+        if (i === parts.length - 1) return member;
+        // Intermediate segment — its type should be another class
+        currentType = member.type;
+    }
+
+    return null;
+}
+
+/**
+ * Check if a type is watchable (primitive or enum) rather than a class/struct.
+ *
+ * @param {string} typeName
+ * @param {Map} classMap
+ * @returns {boolean}
+ */
+function isWatchableType(typeName, classMap) {
+    const key = typeName.replace(/\b(const|static|input)\b/g, '').trim();
+    const lower = key.toLowerCase();
+    if (MQL_TYPE_MACROS.hasOwnProperty(lower)) return true;
+    if (lower.startsWith('enum_')) return true;
+    if (classMap.has(key)) return false;
+    return false; // unknown type — skip to avoid compile errors
+}
+
+/**
+ * Find implicit class members (accessed without this.) used near a breakpoint.
+ * Only returns members with watchable (primitive/enum) types.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based
+ * @param {{ name: string, type: string }[]} locals
+ * @param {Map} classMap
+ * @param {string|null} enclosingClass
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function findImplicitClassMembers(lines, bpLine, locals, classMap, enclosingClass) {
+    if (!enclosingClass) return [];
+
+    // Collect all members from the class and its ancestors
+    const allMembers = new Map();
+    const visited = new Set();
+    let current = enclosingClass;
+    while (current && !visited.has(current) && classMap.has(current)) {
+        visited.add(current);
+        const cd = classMap.get(current);
+        for (const [name, info] of cd.members) {
+            if (!allMembers.has(name)) allMembers.set(name, info);
+        }
+        current = cd.parent;
+    }
+    if (allMembers.size === 0) return [];
+
+    const localNames = new Set(locals.map(l => l.name));
+    const idx = bpLine - 1;
+    const from = Math.max(0, idx - 10);
+    const results = [];
+
+    for (const [memberName, memberInfo] of allMembers) {
+        if (localNames.has(memberName)) continue; // shadowed by local
+        if (!isWatchableType(memberInfo.type, classMap)) continue;
+
+        const re = new RegExp('\\b' + memberName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+        for (let i = from; i <= idx && i < lines.length; i++) {
+            const trimmed = lines[i].trimStart();
+            if (trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+                trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+            if (re.test(lines[i])) {
+                results.push({ name: memberName, type: memberInfo.type, isArray: memberInfo.isArray });
+                break;
+            }
+        }
+    }
+
+    return results;
+}
+
+/**
+ * Find global primitive variables referenced near a breakpoint.
+ * Scans ±15 lines around bpLine for identifiers matching globalMap entries.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine    1-based
+ * @param {Map}      globalMap
+ * @param {Map}      classMap
+ * @param {Set}      seen      Already-seen variable names (locals, params, members)
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function findGlobalVarsNearBreakpoint(lines, bpLine, globalMap, classMap, seen) {
+    const results = [];
+    const idx = bpLine - 1;
+    const from = Math.max(0, idx - 15);
+    const to = Math.min(lines.length - 1, idx + 5);
+
+    for (const [varName, info] of globalMap) {
+        if (seen.has(varName)) continue;
+        if (!isWatchableType(info.type, classMap)) continue;
+
+        const re = new RegExp('\\b' + varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+        for (let i = from; i <= to; i++) {
+            const trimmed = lines[i].trimStart();
+            if (trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+                trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+            if (re.test(lines[i])) {
+                results.push({ name: varName, type: info.type, isArray: info.isArray });
+                break;
+            }
+        }
+    }
+    return results;
+}
+
+/**
+ * Expand local variables of class type into their watchable primitive fields.
+ * Returns watch entries of the form { name: 'local.field', type, isArray }.
+ *
+ * @param {{ name: string, type: string }[]} locals
+ * @param {Map} classMap
+ * @returns {{ name: string, type: string, isArray: boolean }[]}
+ */
+function findClassFieldExpansions(locals, classMap) {
+    const results = [];
+    for (const local of locals) {
+        if (!classMap.has(local.type)) continue;
+        const visited = new Set();
+        let current = local.type;
+        while (current && !visited.has(current) && classMap.has(current)) {
+            visited.add(current);
+            const cd = classMap.get(current);
+            for (const [memberName, memberInfo] of cd.members) {
+                if (isWatchableType(memberInfo.type, classMap)) {
+                    results.push({
+                        name: `${local.name}.${memberName}`,
+                        type: memberInfo.type,
+                        isArray: memberInfo.isArray,
+                    });
+                }
+            }
+            current = cd.parent;
+        }
+    }
+    return results;
+}
+
+/**
+ * Sanitize a string for use as a label in MQL macros.
+ * Strips or replaces anything except letters, numbers, underscore, and dash.
+ * @param {string} label
+ * @returns {string}
+ */
+function sanitizeLabel(label) {
+    if (!label) return "";
+    return label.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+/**
+ * Sanitize a condition string for safe embedding into a single-line comment.
+ * @param {string} condition
+ * @returns {string}
+ */
+function sanitizeCondition(condition) {
+    if (!condition) return "";
+    // If it contains newlines or comment delimiters, use JSON encoding as a safe fallback
+    const isUnsafe = /[\r\n]|\/\/|\/\*|\*\//.test(condition);
+    if (!isUnsafe) return condition;
+
+    return JSON.stringify(condition).slice(1, -1)
+        .replace(/\/\//g, '/\\/')
+        .replace(/\/\*/g, '/\\*')
+        .replace(/\*\//g, '*\\/');
+}
+
+/**
+ * Generate the macro injection lines for one breakpoint.
+ *
+ * @param {string}   label     Breakpoint label (e.g. "bp_42")
+ * @param {{ name: string, type?: string }[]} watchVars  Variables to watch with optional type info
+ * @param {string}   condition Optional condition string (may be empty)
+ * @returns {string[]}  Lines to insert
+ */
+function buildInjectionLines(label, watchVars, condition) {
+    const breakLine = `MQL_DBG_BREAK("${label}");`;
+    const watchLines = [];
+    for (const v of watchVars) {
+        if (v.isArray) {
+            const arrMacro = macroForType(v.type, true);
+            if (arrMacro) {
+                watchLines.push(`${arrMacro}("${v.name}", ${v.name});`);
+            }
+            // Skip unsupported array types (bool[], datetime[], etc.)
+        } else {
+            const macro = macroForType(v.type);
+            watchLines.push(`${macro}("${v.name}", ${v.name});`);
+        }
+    }
+    const pauseLine = `MQL_DBG_PAUSE;`;
+
+    if (condition && condition.trim()) {
+        if (isConditionSafe(condition)) {
+            const bodyLines = [breakLine, ...watchLines, pauseLine];
+            return [`if (${condition}) {`, ...bodyLines.map(l => `  ${l}`), `}`];
+        } else {
+            return [
+                `// Invalid breakpoint condition: ${sanitizeCondition(condition)}`,
+                breakLine,
+                ...watchLines,
+                pauseLine
+            ];
+        }
+    }
+    return [breakLine, ...watchLines, pauseLine];
+}
+
+/**
+ * Get the leading whitespace from a line.
+ */
+function getIndent(line) {
+    const m = line.match(/^(\s*)/);
+    return m ? m[1] : '';
+}
+
+/**
+ * Find function boundaries in MQL5 source.
+ * Returns array of { bodyStart, bodyEnd } (0-based line indices).
+ *
+ * Looks for patterns like:
+ *   type FuncName(...) {       or
+ *   void OnTick() {
+ *
+ * @param {string[]} lines
+ * @returns {{ bodyStart: number, bodyEnd: number }[]}
+ */
+function findFunctionBoundaries(lines) {
+    const functions = [];
+    // Regex to detect a function signature line (type + name + parens)
+    // Handles: void OnTick(), int Calculate(int x, double y), etc.
+    const RE_FUNC_SIG = /^\s*(?:(?:static|virtual|override|const|inline)\s+)*[A-Za-z_]\w*(?:\s*[*&])?\s+[A-Za-z_]\w*\s*\(/;
+
+    // Also match class method definitions: void CMyClass::Method(...)
+    const RE_METHOD_SIG = /^\s*(?:(?:static|virtual|override|const|inline)\s+)*[A-Za-z_]\w*(?:\s*[*&])?\s+[A-Za-z_]\w*\s*::\s*[A-Za-z_~]\w*\s*\(/;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!RE_FUNC_SIG.test(line) && !RE_METHOD_SIG.test(line)) continue;
+
+        // Skip if it looks like a forward declaration (ends with ;)
+        // Scan forward to find '{' (might be on next line)
+        let braceIdx = -1;
+        for (let j = i; j < Math.min(i + 5, lines.length); j++) {
+            const trimmed = lines[j].trimEnd();
+            if (trimmed.endsWith(';')) break; // forward declaration or prototype
+            const bracePos = lines[j].indexOf('{');
+            if (bracePos >= 0) {
+                braceIdx = j;
+                break;
+            }
+        }
+
+        if (braceIdx < 0) continue;
+
+        // Find the matching closing brace
+        let depth = 0;
+        let endIdx = -1;
+        for (let j = braceIdx; j < lines.length; j++) {
+            for (const ch of lines[j]) {
+                if (ch === '{') depth++;
+                else if (ch === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        endIdx = j;
+                        break;
+                    }
+                }
+            }
+            if (endIdx >= 0) break;
+        }
+
+        if (endIdx > braceIdx) {
+            functions.push({ bodyStart: braceIdx, bodyEnd: endIdx });
+            i = endIdx; // skip past this function
+        }
+    }
+
+    return functions;
+}
+
+/**
+ * Insert the MqlDebug.mqh include into the source lines (after the last
+ * #property directive block, or at the very top if none found).
+ *
+ * @param {string[]} lines  Source lines (mutated in place)
+ */
+function ensureInclude(lines) {
+    // Already included?
+    if (lines.some(l => l.includes('MqlDebug.mqh'))) return;
+
+    // Find insertion point: after last consecutive #property or // comment at top
+    let insertAt = 0;
+    for (let i = 0; i < Math.min(30, lines.length); i++) {
+        const t = lines[i].trimStart();
+        if (t.startsWith('#property') || t.startsWith('//') || t === '') {
+            insertAt = i + 1;
+        } else if (t.startsWith('#include') || t.startsWith('#define')) {
+            // Insert before other includes/defines if no properties found
+            break;
+        } else {
+            break;
+        }
+    }
+
+    lines.splice(insertAt, 0, INCLUDE_LINE);
+}
+
+/**
+ * Resolves an include path to its absolute filesystem path.
+ *
+ * @param {string} incPath      Path as written in the #include directive
+ * @param {string} includeBase  Absolute path to the directory doing the include
+ * @param {string} mql5Root     MQL5 root directory
+ * @returns {string|null}       Absolute path, or null if not found
+ */
+function resolveIncludePath(incPath, includeBase, mql5Root) {
+    const relPath = path.join(includeBase, ...incPath.split(/[\\/]/));
+    if (fs.existsSync(relPath)) return relPath;
+
+    // Additionally check the user's custom /inc: VS Code settings
+    if (vscode) {
+        const config = vscode.workspace.getConfiguration('mql_tools');
+        const isMql5 = (mql5Root && mql5Root.toLowerCase().includes('mql5')) || relPath.toLowerCase().includes('mql5');
+        const customIncDir = isMql5 ? config.get('Metaeditor.Include5Dir') : config.get('Metaeditor.Include4Dir');
+        
+        if (customIncDir && fs.existsSync(customIncDir)) {
+            const customPath = path.join(customIncDir, ...incPath.split(/[\\/]/));
+            if (fs.existsSync(customPath)) return customPath;
+        }
+    }
+
+    if (mql5Root) {
+        const extPath = path.join(mql5Root, 'Include', ...incPath.split(/[\\/]/));
+        if (fs.existsSync(extPath)) return extPath;
+    }
+    return null;
+}
+
+/**
+ * Instrument a source file and its included dependencies for debugging.
+ *
+ * @param {string}   entryPointPath Absolute path to the main .mq5/.mq4 file
+ * @param {Map<string, Array<{line: number, condition?: string}>>} breakpointMap
+ *   Map of normalized path -> array of VS Code breakpoints
+ * @param {string}   mql5Root       MQL5 root directory (for resolving includes)
+ * @returns {{ tempPath: string, restore: () => void, skipped: string[] }|null}
+ */
+function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
+    const graph = new Map();
+
+    // Read debug detail level from VS Code settings
+    const _config = vscode ? vscode.workspace.getConfiguration('mql_tools') : null;
+    const deepAnalysis = _config ? _config.get('Debug.DetailLevel') === 'deepAnalysis' : false;
+
+    function buildNode(filePath) {
+        const normPath = filePath.toLowerCase().replace(/\\/g, '/');
+        if (graph.has(normPath)) return graph.get(normPath);
+
+        const node = {
+            normPath,
+            filePath,
+            lines: null,
+            eol: '\n',
+            bps: breakpointMap.get(normPath) || [],
+            includes: [], // { lineIdx, incPath, prefix, suffix, absPath }
+            needsCopy: false
+        };
+        graph.set(normPath, node);
+
+        if (node.bps.length > 0) {
+            node.needsCopy = true;
+        }
+
+        let raw;
+        try {
+            raw = fs.readFileSync(filePath);
+        } catch (err) {
+            console.warn(`[debugInstrumentation] Failed to read file: ${filePath}`, err);
+            node.lines = []; // Ensure node.lines is an array to prevent downstream crashes
+            return node;
+        }
+
+        let content;
+        if (raw[0] === 0xFF && raw[1] === 0xFE) {
+            content = raw.toString('utf16le');
+        } else {
+            content = raw.toString('utf8').replace(/^\uFEFF/, '');
+        }
+
+        node.eol = content.includes('\r\n') ? '\r\n' : '\n';
+        node.lines = content.split(/\r?\n/);
+
+        // Find includes
+        for (let i = 0; i < node.lines.length; i++) {
+            const m = node.lines[i].match(/^(\s*#include\s+["<])([^">]+)([">])/);
+            if (m) {
+                const incPath = m[2];
+                const absPath = resolveIncludePath(incPath, path.dirname(filePath), mql5Root);
+                if (absPath) {
+                    node.includes.push({
+                        lineIdx: i,
+                        incPath,
+                        prefix: m[1],
+                        suffix: m[3],
+                        absPath
+                    });
+                    buildNode(absPath);
+                }
+            }
+        }
+        return node;
+    }
+
+    // 1. Build DAG of includes
+    buildNode(entryPointPath);
+
+    // 2. Propagate needsCopy = true upstream
+    let changed;
+    do {
+        changed = false;
+        for (const node of graph.values()) {
+            if (!node.needsCopy) {
+                for (const inc of node.includes) {
+                    const childNode = graph.get(inc.absPath.toLowerCase().replace(/\\/g, '/'));
+                    if (childNode && childNode.needsCopy) {
+                        node.needsCopy = true;
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+        }
+    } while (changed);
+
+    // Entry point MUST always be copied (so we can compile it without destroying the user's .ex5)
+    const entryNode = graph.get(entryPointPath.toLowerCase().replace(/\\/g, '/'));
+    if (entryNode) entryNode.needsCopy = true;
+
+    // 2b. Build type database from the include graph for member access resolution
+    const typeDB = buildTypeDatabase(graph);
+
+    // 3. Perform copies and rewrites
+    const tempFiles = [];
+    const skippedArr = [];
+    let entryTempPath = '';
+    const cleanedDirs = new Set();
+
+    for (const node of graph.values()) {
+        if (!node.needsCopy) continue;
+
+        const dir = path.dirname(node.filePath);
+
+        // Clean stale files in this directory before we write new ones,
+        // but only do it once per directory per debug session!
+        if (!cleanedDirs.has(dir)) {
+            cleanedDirs.add(dir);
+            try {
+                const files = fs.readdirSync(dir);
+                for (const f of files) {
+                    if (f.includes('.mql_dbg_build.')) {
+                        try { fs.unlinkSync(path.join(dir, f)); } catch {}
+                    }
+                }
+            } catch {}
+        }
+
+        // Rewrite includes that point to copied children
+        for (const inc of node.includes) {
+            const childNode = graph.get(inc.absPath.toLowerCase().replace(/\\/g, '/'));
+            if (childNode && childNode.needsCopy) {
+                const childExt = path.extname(inc.incPath);
+                const childBase = inc.incPath.slice(0, -childExt.length);
+                const newIncPath = `${childBase}.mql_dbg_build${childExt}`;
+                
+                // Preserve original delimiter style (quotes vs angle brackets)
+                if (inc.prefix && inc.suffix) {
+                    node.lines[inc.lineIdx] = `${inc.prefix}${newIncPath}${inc.suffix}`;
+                } else {
+                    // Fallback to quotes if delimiter style cannot be determined
+                    node.lines[inc.lineIdx] = `#include "${newIncPath}" /* fallback */`;
+                }
+            }
+        }
+
+        // Inject debug instrumentation
+        if (node.bps.length > 0) {
+            // 1. Identify which function names need ENTER/EXIT from ORIGINAL lines
+            const bpLineSet = new Set(node.bps.map(b => b.line));
+            const origFuncs = findFunctionBoundaries(node.lines);
+            const funcNamesToInstrument = new Set();
+            for (const fn of origFuncs) {
+                for (let i = fn.bodyStart; i <= fn.bodyEnd; i++) {
+                    if (bpLineSet.has(i + 1)) {
+                        // Tag this function by its bodyStart line content for re-identification
+                        funcNamesToInstrument.add(fn.bodyStart);
+                        break;
+                    }
+                }
+            }
+            // Store the function signature lines so we can re-find them after injection
+            const funcSigLines = new Set();
+            for (const fn of origFuncs) {
+                if (funcNamesToInstrument.has(fn.bodyStart)) {
+                    // Record the text of the line containing the opening brace
+                    funcSigLines.add(node.lines[fn.bodyStart]);
+                }
+            }
+
+            // 2. Inject breakpoint macros (on original line numbers)
+            const injections = [];
+            for (const bp of node.bps) {
+                const injPoint = findInjectionPoint(node.lines, bp.line);
+                if (injPoint === null) {
+                    const base = path.basename(node.filePath);
+                    skippedArr.push(`${base}:${bp.line}`);
+                    continue;
+                }
+                const annotatedVars = parseWatchAnnotations(node.lines, bp.line);
+                const localVars = parseLocalsInScope(node.lines, bp.line);
+
+                const seen = new Set();
+                const watchVars = [];
+                for (const name of annotatedVars) {
+                    seen.add(name);
+                    const local = localVars.find(l => l.name === name);
+                    watchVars.push({ name, type: local ? local.type : '', isArray: local ? local.isArray : false });
+                }
+                for (const local of localVars) {
+                    if (!seen.has(local.name)) {
+                        seen.add(local.name);
+                        watchVars.push(local);
+                    }
+                }
+
+                // Resolve member access expressions (obj.member, this.field, a.b.c)
+                const enclosingClass = findEnclosingClassName(node.lines, bp.line);
+                for (const expr of findMemberAccessExpressions(node.lines, bp.line)) {
+                    if (seen.has(expr)) continue;
+                    const resolved = resolveMemberType(expr, localVars, typeDB.globalMap, typeDB.classMap, enclosingClass);
+                    if (resolved && isWatchableType(resolved.type, typeDB.classMap)) {
+                        seen.add(expr);
+                        watchVars.push({ name: expr, type: resolved.type, isArray: resolved.isArray });
+                    }
+                }
+
+                // Watch implicit class members (accessed without this. prefix)
+                for (const member of findImplicitClassMembers(node.lines, bp.line, localVars, typeDB.classMap, enclosingClass)) {
+                    if (!seen.has(member.name)) {
+                        seen.add(member.name);
+                        watchVars.push(member);
+                    }
+                }
+
+                // Deep analysis: global primitives near breakpoint + class field expansion + input vars
+                if (deepAnalysis) {
+                    for (const g of findGlobalVarsNearBreakpoint(node.lines, bp.line, typeDB.globalMap, typeDB.classMap, seen)) {
+                        seen.add(g.name);
+                        watchVars.push(g);
+                    }
+                    for (const field of findClassFieldExpansions(localVars, typeDB.classMap)) {
+                        if (!seen.has(field.name)) {
+                            seen.add(field.name);
+                            watchVars.push(field);
+                        }
+                    }
+                    // Watch all input variables unconditionally (always relevant context)
+                    for (const [varName, info] of typeDB.globalMap) {
+                        if (!info.isInput || seen.has(varName)) continue;
+                        if (!isWatchableType(info.type, typeDB.classMap)) continue;
+                        seen.add(varName);
+                        watchVars.push({ name: varName, type: info.type, isArray: info.isArray });
+                    }
+                }
+
+                const sanitizedBase = sanitizeLabel(path.basename(node.filePath));
+                const label = `bp_${sanitizedBase}_${bp.line}`;
+                const macroLines = buildInjectionLines(label, watchVars, bp.condition || '');
+                injections.push({ afterLine: injPoint, macroLines });
+            }
+            injections.sort((a, b) => b.afterLine - a.afterLine);
+            for (const { afterLine, macroLines } of injections) {
+                node.lines.splice(afterLine + 1, 0, ...macroLines);
+            }
+
+            ensureInclude(node.lines);
+
+            // 3. Inject ENTER/EXIT on the modified source
+            //    Re-find function boundaries, then filter to only the functions
+            //    we identified in step 1 (matched by signature line text)
+            if (funcSigLines.size > 0) {
+                const modifiedFuncs = findFunctionBoundaries(node.lines);
+                const relevantFuncs = modifiedFuncs.filter(fn =>
+                    funcSigLines.has(node.lines[fn.bodyStart])
+                );
+                // Process in reverse to preserve indices
+                relevantFuncs.sort((a, b) => b.bodyStart - a.bodyStart);
+                for (const fn of relevantFuncs) {
+                    const indent = getIndent(node.lines[fn.bodyStart]) + '    ';
+
+                    // EXIT before closing brace
+                    node.lines.splice(fn.bodyEnd, 0, `${indent}MQL_DBG_EXIT;`);
+
+                    // EXIT before each return (backwards)
+                    // Wrap in braces to avoid breaking braceless if/for/while blocks.
+                    // e.g. `if (x) return;` → `if (x) { MQL_DBG_EXIT; return; }`
+                    for (let i = fn.bodyEnd - 1; i > fn.bodyStart; i--) {
+                        if (/^return\b[\s\S]*;\s*$/.test(node.lines[i].trim())) {
+                            const retIndent = getIndent(node.lines[i]);
+                            node.lines[i] = `${retIndent}{ MQL_DBG_EXIT; ${node.lines[i].trim()} }`;
+                        }
+                    }
+
+                    // ENTER after opening brace
+                    node.lines.splice(fn.bodyStart + 1, 0, `${indent}MQL_DBG_ENTER;`);
+                }
+            }
+        }
+
+        // Save
+        const ext = path.extname(node.filePath);
+        const base = path.basename(node.filePath, ext);
+        const tempPath = path.join(dir, `${base}.mql_dbg_build${ext}`);
+
+        if (node.filePath === entryPointPath) {
+            entryTempPath = tempPath;
+        }
+
+        try {
+            fs.writeFileSync(tempPath, node.lines.join(node.eol), 'utf8');
+            tempFiles.push(tempPath);
+        } catch (err) {
+            skippedArr.push(`[Write Error: ${base}${ext}] ${err.message}`);
+        }
+    }
+
+    const restore = () => {
+        for (const tf of tempFiles) {
+            try { fs.unlinkSync(tf); } catch {}
+        }
+        if (entryTempPath) {
+            const ext = path.extname(entryPointPath);
+            const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
+            try { fs.unlinkSync(binaryPath); } catch {}
+        }
+    };
+
+    if (!entryTempPath) return null;
+
+    return { tempPath: entryTempPath, restore, skipped: skippedArr };
+}
+
+module.exports = { instrumentWorkspace };

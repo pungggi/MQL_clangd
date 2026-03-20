@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "Path to \"metaeditor.exe\": MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "Path to \"terminal.exe\": MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "Path to \"terminal64.exe\": MQL5",
-    "mql_tools.configuration.Include4Dir.description": "Path to the \"Include\" folder: MQL4 (not necessarily)",
-    "mql_tools.configuration.Include5Dir.description": "Path to the \"Include\" folder: MQL5 (not necessarily)",
+    "mql_tools.configuration.Include4Dir.description": "Path to MQL4 Data Folder (containing Include, Logs, etc.). Essential for library headers and Live Runtime Logs. Automatically inferred if left blank.",
+    "mql_tools.configuration.Include5Dir.description": "Path to MQL5 Data Folder (containing Include, Logs, etc.). Essential for library headers and Live Runtime Logs. Automatically inferred if left blank.",
     "mql_tools.configuration.Portable4.description": "Enable portable mode for MetaTrader 4 (uses /portable switch)",
     "mql_tools.configuration.Portable5.description": "Enable portable mode for MetaTrader 5 (uses /portable switch)",
     "mql_tools.configuration.ShowButtonCompile.description": "Show compilation button",
@@ -14,7 +14,7 @@
     "mql_tools.configuration.ShowButtonCompileAndOpenTerminal.description": "Show compile & open terminal button",
     "mql_tools.configuration.Wine.Enabled.description": "Enable Wine wrapper for running MetaEditor on macOS/Linux. When enabled, MetaEditor is executed via Wine and paths are converted using winepath.",
     "mql_tools.configuration.Wine.Binary.description": "Path to the Wine binary (e.g., 'wine64', 'wine', or full path like '/usr/local/bin/wine64').",
-    "mql_tools.configuration.context": "Do not disable!",
+    "mql_tools.configuration.context": "obsolete",
     "mql_tools.commands.compileFile.title": "Compile MQL file",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "Compile MQL file and open MetaTrader terminal",
     "mql_tools.commands.checkFile.title": "Check MQL syntax",
@@ -33,5 +33,8 @@
     "mql_tools.commands.openInME.title": "Open in 'MetaEditor'",
     "mql_tools.commands.openTradingTerminal.title": "Open Trading Terminal",
     "mql_tools.commands.createCommentary.title": "Create a function comment",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Report noisy clangd diagnostic"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Report noisy clangd diagnostic",
+    "mql_tools.commands.runBacktest.title": "Run Backtest",
+    "mql_tools.commands.startDebugging.title": "Start MQL Debug Session",
+    "mql_tools.commands.stopDebugging.title": "Stop MQL Debug Session"
 }

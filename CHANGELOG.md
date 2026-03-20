@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.32 (pre-release)
+
+### Features
+- **MQL Debugger (Real-Time Variable Inspection)**: Debug MetaTrader Expert Advisors and Scripts directly from VS Code. Instruments source by creating temporary `.mql_dbg_build.*` files (originals unchanged) with telemetry macros at breakpoints, then streams variable states to a specialized dashboard. Temp files and compiled binaries auto-delete when the session ends. Supports `.mq5`, `.mq4`, and `.mqh` files (with automatic target resolution for headers).
+
 ## 1.1.31
 
 ### Features

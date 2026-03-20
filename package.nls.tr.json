@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" yolu: MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" yolu: MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" yolu: MQL5",
-    "mql_tools.configuration.Include4Dir.description": "\"Include\" klasör yolu: MQL4 (isteğe bağlı)",
-    "mql_tools.configuration.Include5Dir.description": "\"Include\" klasör yolu: MQL5 (isteğe bağlı)",
+    "mql_tools.configuration.Include4Dir.description": "MQL4 Veri Klasörü yolu (Include, Logs vb. içerir). Kitaplık başlıkları ve Live Runtime Logs için gereklidir. Boş bırakılırsa otomatik olarak belirlenir.",
+    "mql_tools.configuration.Include5Dir.description": "MQL5 Veri Klasörü yolu (Include, Logs vb. içerir). Kitaplık başlıkları ve Live Runtime Logs için gereklidir. Boş bırakılırsa otomatik olarak belirlenir.",
     "mql_tools.configuration.Portable4.description": "MetaTrader 4 için taşınabilir modu etkinleştir (/portable anahtarını kullanır)",
     "mql_tools.configuration.Portable5.description": "MetaTrader 5 için taşınabilir modu etkinleştir (/portable anahtarını kullanır)",
     "mql_tools.configuration.ShowButtonCompile.description": "Derleme düğmesini göster",
@@ -30,10 +30,11 @@
     "mql_tools.commands.InsNameMQH.title": "MQH'yi #include olarak ekle",
     "mql_tools.commands.InsResource.title": "BMP/WAV'ı #resource olarak ekle",
     "mql_tools.commands.InsImport.title": "DLL/EX5'i #import olarak ekle",
-    "mql_tools.commands.InsTime.title": "Tarih ve saati YYYY.AA.GG ss:dd:ss formatında ekle",
+    "mql_tools.commands.InsTime.title": "Tarih ve saati YYYY.AA.GG ss:dd:sn formatında ekle",
     "mql_tools.commands.InsIcon.title": "Simgeyi #property olarak ekle",
     "mql_tools.commands.openInME.title": "'MetaEditor'de aç",
     "mql_tools.commands.openTradingTerminal.title": "Ticaret terminalini aç",
     "mql_tools.commands.createCommentary.title": "Fonksiyon yorumu oluştur",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Gürültülü clangd tanılamasını bildir"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Gürültülü clangd tanılamasını bildir",
+    "mql_tools.commands.runBacktest.title": "Geriye Dönük Testi Çalıştır"
 }

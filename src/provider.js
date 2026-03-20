@@ -5,7 +5,11 @@ const fs = require('fs');
 const lg = require('./language');
 const { resolvePathRelativeToWorkspace } = require('./createProperties');
 const err_codes = require('../data/error-codes.json');
-const obj_items = require('../data/items.json');
+let _obj_items = null;
+function getObjItems() {
+    if (!_obj_items) _obj_items = require('../data/items.json');
+    return _obj_items;
+}
 const colorW = require('../data/color.json');
 
 // Lazy-initialized VS Code-dependent values (must not access vscode at module load time)
@@ -29,12 +33,21 @@ function getMiniIconPath() {
 // DOCUMENT SYMBOL EXTRACTION - For document-aware completion
 // =============================================================================
 
+// Cache: uri -> { version, symbols }
+const _symbolCache = new Map();
+
 /**
  * Extract symbols (variables, functions, defines, classes, structs) from document
  * @param {vscode.TextDocument} document
  * @returns {{ variables: Array, functions: Array, defines: Array, classes: Array, inputs: Array }}
  */
 function extractDocumentSymbols(document) {
+    const key = document.uri.toString();
+    const cached = _symbolCache.get(key);
+    if (cached && cached.version === document.version) {
+        return cached.symbols;
+    }
+
     const text = document.getText();
     const symbols = {
         variables: [],
@@ -107,8 +120,25 @@ function extractDocumentSymbols(document) {
         });
     }
 
+    _symbolCache.set(key, { version: document.version, symbols });
     return symbols;
 }
+
+/**
+ * Clear symbol cache for a specific document
+ * @param {string} uri
+ */
+function clearSymbolCache(uri) {
+    _symbolCache.delete(uri);
+}
+
+/**
+ * Clear all document symbol caches
+ */
+function clearAllSymbolCache() {
+    _symbolCache.clear();
+}
+
 
 /**
  * Get include directory path based on file extension and workspace
@@ -190,9 +220,14 @@ function getIncludeEntries(baseDir, currentPath = '') {
     if (pathModule.isAbsolute(currentPath) || currentPath.includes('..') || (process.platform !== 'win32' && currentPath.includes('\\'))) {
         return [];
     }
-    const resolvedBaseDir = fs.realpathSync(pathModule.resolve(baseDir));
-    const targetDir = fs.realpathSync(pathModule.resolve(baseDir, currentPath));
-    if (!(targetDir.startsWith(resolvedBaseDir + pathModule.sep) || targetDir === resolvedBaseDir)) {
+    let resolvedBaseDir, targetDir;
+    try {
+        resolvedBaseDir = fs.realpathSync(pathModule.resolve(baseDir));
+        targetDir = fs.realpathSync(pathModule.resolve(baseDir, currentPath));
+        if (!(targetDir.startsWith(resolvedBaseDir + pathModule.sep) || targetDir === resolvedBaseDir)) {
+            return [];
+        }
+    } catch (e) {
         return [];
     }
 
@@ -275,11 +310,26 @@ function DefinitionProvider() {
             const link = (typeof obj_hover[word].link == 'undefined') ? '' : obj_hover[word].link;
 
             if (!link) return undefined;
-            const fileLink = link.match(/.+(?=#)/g) !== null ? link.match(/.+(?=#)/g)[0] : link,
-                fragment1 = link.match(/.+(?=#)/g) !== null ? link.match(/(?<=#)(?:\d+,\d+)$/gm)[0].match(/(?:\w+)/g)[0] : 0,
-                fragment2 = link.match(/.+(?=#)/g) !== null ? link.match(/(?<=#)(?:\d+,\d+)$/gm)[0].match(/(?:\w+)/g)[1] : 0,
-                uri = vscode.Uri.file(fileLink.match(/(?<=file:\/\/\/).+/g)[0].replace(/%20/g, ' ')),
-                pos = new vscode.Position(+fragment1 <= 0 ? 0 : +fragment1 - 1, +fragment2 <= 0 ? 0 : +fragment2 - 1);
+
+            const baseMatch = link.match(/.+(?=#)/g);
+            const fileLink = baseMatch ? baseMatch[0] : link;
+
+            let fragment1 = 0;
+            let fragment2 = 0;
+            if (baseMatch) {
+                const fragmentMatch = link.match(/(?<=#)(\d+),(\d+)$/m);
+                if (fragmentMatch) {
+                    fragment1 = parseInt(fragmentMatch[1], 10);
+                    fragment2 = parseInt(fragmentMatch[2], 10);
+                }
+            }
+
+            const fileUriMatch = fileLink.match(/(?<=file:\/\/\/).+/);
+            const uri = fileUriMatch
+                ? vscode.Uri.file(fileUriMatch[0].replace(/%20/g, ' '))
+                : vscode.Uri.parse(fileLink);
+
+            const pos = new vscode.Position(+fragment1 <= 0 ? 0 : +fragment1 - 1, +fragment2 <= 0 ? 0 : +fragment2 - 1);
 
             return new vscode.Location(uri, pos);
         }
@@ -338,9 +388,9 @@ function Hover_MQL() {
             // =================================================================
             // PRIORITY 2: Check MQL library items
             // =================================================================
-            if (!(word in obj_items)) return undefined;
+            if (!(word in getObjItems())) return undefined;
 
-            const item = obj_items[word];
+            const item = getObjItems()[word];
             const contents = new vscode.MarkdownString();
             contents.supportHtml = true;
 
@@ -524,7 +574,7 @@ function ItemProvider() {
             }
 
             // =================================================================
-            // MQL LIBRARY COMPLETION - From obj_items (standard MQL functions, constants, etc.)
+            // MQL LIBRARY COMPLETION - From getObjItems() (standard MQL functions, constants, etc.)
             // =================================================================
             const docSymbolNames = new Set([
                 ...docSymbols.inputs.map(i => i.name),
@@ -534,7 +584,7 @@ function ItemProvider() {
                 ...docSymbols.classes.map(c => c.name)
             ]);
 
-            const mqlItems = Object.values(obj_items)
+            const mqlItems = Object.values(getObjItems())
                 .filter(item => item.label.toLowerCase().startsWith(prefix))
                 .filter(item => !docSymbolNames.has(item.label)) // Avoid duplicates with local symbols
                 .map(match => {
@@ -591,20 +641,22 @@ function HelpProvider() {
             if (!nf)
                 return undefined;
             const FunctionName = nf[0];
+            const objItems = getObjItems();
+            const fnItem = objItems[FunctionName];
 
-            if (!(FunctionName in obj_items))
+            if (!fnItem)
                 return undefined;
-            if (obj_items[FunctionName].group !== 2)
+            if (fnItem.group !== 2)
                 return undefined;
 
             const sig = new vscode.SignatureHelp();
 
-            sig.signatures = obj_items[FunctionName].code.map((str) => {
+            sig.signatures = fnItem.code.map((str) => {
                 if (/(?<=\().+(?=\))/.exec(str.label))
                     var jh = /(?<=\().+(?=\))/.exec(str.label)[0].split(',');
                 else jh = [str.label];
                 const arrParam = jh,
-                    paramDescription = obj_items[FunctionName].parameters[loclang] ? obj_items[FunctionName].parameters[loclang] : obj_items[FunctionName].parameters.en,
+                    paramDescription = fnItem.parameters[loclang] ? fnItem.parameters[loclang] : fnItem.parameters.en,
                     mdSig = new vscode.MarkdownString(`<span style="color:#d19a66;"><i> ${str.description[loclang] ? str.description[loclang] : str.description.en ? str.description.en : ''} </i></span>`);
 
                 mdSig.supportHtml = true;
@@ -633,7 +685,7 @@ function HelpProvider() {
 
             sig.activeSignature = context.triggerKind === 1 || (context.triggerKind === 2 && context.isRetrigger === false) ? 0 : context.activeSignatureHelp.activeSignature;
             let ui = (line.substring(i + 1).match(/(?:\w+|'\w+')(?:,|\s+,)/g) || []).length,
-                pr = obj_items[FunctionName].pr;
+                pr = fnItem.pr;
 
             if (pr > 0)
                 if (ui > pr - 1)
@@ -683,7 +735,7 @@ function ColorProvider() {
                             document.positionAt(match.index),
                             document.positionAt(match.index + match[0].length)
                         ),
-                        new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
+                            new vscode.Color(clrRGB[0] / 255, clrRGB[1] / 255, clrRGB[2] / 255, round(clrRGB[3] / 255))));
                     }
                 });
 
@@ -696,7 +748,7 @@ function ColorProvider() {
                         document.positionAt(item.index),
                         document.positionAt(item.index + item[0].length)
                     ),
-                    new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
+                        new vscode.Color(rgbCol[0] / 255, rgbCol[1] / 255, rgbCol[2] / 255, 1)));
                 }
             }
 
@@ -748,8 +800,23 @@ function hexToRgbA(hexColor) {
     ];
 }
 
+/**
+ * Converts RGBA values to a hex string for MQL.
+ * MQL colors are packed as 32-bit integers (ARGB).
+ * slice offsets handle different alpha transparency levels:
+ * - alpha == 255: slice(2) to drop the leading '1' and 'ff' alpha for a 6-digit hex color.
+ * - alpha == 0: slice(3) to drop '100' for a fully transparent hex color.
+ * - alpha < 128: slice(1) to drop the '1' added for padding.
+ * - alpha >= 128: slice(0) as the value is already 8 hex digits (due to sign bit).
+ * @param {number} red 
+ * @param {number} green 
+ * @param {number} blue 
+ * @param {number} alpha 
+ */
 function rgbaToHex(red, green, blue, alpha = 255) {
+    // Pack into 32-bit: Alpha (24-31), Red (16-23), Green (8-15), Blue (0-7)
     const rgb = (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
+    // Use 0x100000000 to ensure positive result and consistent string length for slicing
     return (0x100000000 + rgb).toString(16).slice(alpha == 255 ? 2 : alpha == 0 ? 3 : (alpha < 128 ? 1 : 0));
 }
 
@@ -761,7 +828,8 @@ function dToHex(r, g, b) {
 }
 
 function round(num, precision = 2) {
-    return +(Math.round(num + 'e' + precision) + 'e' + -precision);
+    // Rounding with explicit Number conversion for exponent string to avoid implicit coercion
+    return Number(Math.round(Number(String(num) + 'e' + precision)) + 'e' + -precision);
 }
 
 
@@ -1038,6 +1106,8 @@ module.exports = {
     HelpProvider,
     ColorProvider,
     MQLDocumentSymbolProvider,
-    obj_items,
-    extractDocumentSymbols
+    getObjItems,
+    extractDocumentSymbols,
+    clearSymbolCache,
+    clearAllSymbolCache
 };

@@ -6,7 +6,7 @@
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
-        "node": ">22.0.0"
+        "node": ">=22.0.0"
     },
     "categories": [
         "Programming Languages",
@@ -39,6 +39,16 @@
     "main": "./src/extension.js",
     "activationEvents": [],
     "contributes": {
+        "debuggers": [
+            {
+                "type": "mql5",
+                "label": "MQL5 Debug"
+            }
+        ],
+        "breakpoints": [
+            { "language": "mql5" },
+            { "language": "mql4" }
+        ],
         "configuration": {
             "title": "MQL Clangd",
             "properties": {
@@ -70,12 +80,12 @@
                 "mql_tools.Metaeditor.Include4Dir": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "Path to the **MQL4 Data Folder** (the one containing `Include`, `Logs`, `Experts`, etc.). This is critical for finding library headers and for the **Live Runtime Log** feature to locate your terminal logs. Supports `${workspaceFolder}`."
+                    "markdownDescription": "Path to **MQL4 Data Folder** (containing `Include`, `Logs`, etc.). Essential for library headers and **Live Runtime Logs**. Automatically inferred if left blank. Supports `${workspaceFolder}`."
                 },
                 "mql_tools.Metaeditor.Include5Dir": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "Path to the **MQL5 Data Folder** (the one containing `Include`, `Logs`, `Experts`, etc.). This is critical for finding library headers and for the **Live Runtime Log** feature to locate your terminal logs. Supports `${workspaceFolder}`."
+                    "markdownDescription": "Path to **MQL5 Data Folder** (containing `Include`, `Logs`, etc.). Essential for library headers and **Live Runtime Logs**. Automatically inferred if left blank. Supports `${workspaceFolder}`."
                 },
                 "mql_tools.Metaeditor.Portable4": {
                     "type": "boolean",
@@ -151,10 +161,6 @@
                     "maximum": 300000,
                     "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
-                "mql_tools.context": {
-                    "type": "boolean",
-                    "default": false
-                },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
                     "enum": [
@@ -193,6 +199,41 @@
                         }
                     }
                 },
+                "mql_tools.TradeReport.SnapshotSources": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "When opening a Trade Report, copy all referenced MQL source files into a `snapshot/` folder next to the log file. This preserves the exact source code that produced the log, so **click-to-source** navigation remains accurate even after the EA is modified.\n\n**Warning:** Enabling this increases disk usage since a full copy of the source files is stored per run."
+                },
+                "mql_tools.ShowButton.RunBacktest": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the Run Backtest button in the editor title bar for MQL files."
+                },
+                "mql_tools.ShowButton.StartDebugging": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the Start Debugging (bug) button in the editor title bar for MQL files."
+                },
+                "mql_tools.Backtest.ServerPort": {
+                    "type": "number",
+                    "default": 3002,
+                    "description": "Port number for the TradeReportServer."
+                },
+                "mql_tools.Backtest.AutoStartServer": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically start TradeReportServer if it is not running when a backtest is requested."
+                },
+                "mql_tools.Backtest.PromptForParameters": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Show parameter prompts (symbol, date range) before running a backtest. When `false`, uses defaults from the EA's `tester.ini`."
+                },
+                "mql_tools.Backtest.AutoOpenReport": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically open the Trade Report Dashboard when a backtest completes."
+                },
                 "mql_tools.Clangd.PreserveSuppressions": {
                     "type": "string",
                     "enum": [
@@ -206,6 +247,19 @@
                         "Ask whether to merge suppressions each time",
                         "Automatically merge existing suppressions",
                         "Always overwrite the .clangd file"
+                    ]
+                },
+                "mql_tools.Debug.DetailLevel": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "deepAnalysis"
+                    ],
+                    "default": "default",
+                    "description": "Debug watch detail level. 'default': watches locals, parameters, and class members accessed near the breakpoint. 'deepAnalysis': additionally watches global primitive variables referenced near the breakpoint and expands local class-typed variables into their primitive fields.",
+                    "enumDescriptions": [
+                        "Watch local variables, function parameters, and class members accessed near the breakpoint.",
+                        "Also watch global primitive variables referenced near the breakpoint, and expand local class-typed variables into their primitive fields."
                     ]
                 }
             }
@@ -386,6 +440,28 @@
                 "command": "mql_tools.switchLogMode",
                 "title": "Switch Log Tail Mode (Live/Standard)",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.openTradeReport",
+                "title": "Open Trade Report Dashboard",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.runBacktest",
+                "title": "%mql_tools.commands.runBacktest.title%",
+                "category": "MQL",
+                "icon": "$(beaker)"
+            },
+            {
+                "command": "mql_tools.startDebugging",
+                "title": "%mql_tools.commands.startDebugging.title%",
+                "category": "MQL",
+                "icon": "$(bug)"
+            },
+            {
+                "command": "mql_tools.stopDebugging",
+                "title": "%mql_tools.commands.stopDebugging.title%",
+                "category": "MQL"
             }
         ],
         "menus": {
@@ -413,14 +489,23 @@
                     "group": "navigation"
                 },
                 {
-                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Check == true|| resourceExtname == .mq5 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Check == true",
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.Check == true || resourceExtname == .mqh && config.mql_tools.ShowButton.Check == true",
                     "command": "mql_tools.checkFile",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceExtname == .mq4 && config.mql_tools.ShowButton.RunBacktest == true || resourceExtname == .mq5 && config.mql_tools.ShowButton.RunBacktest == true || resourceExtname == .mqh && config.mql_tools.ShowButton.RunBacktest == true",
+                    "command": "mql_tools.runBacktest",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceExtname == .mq5 && config.mql_tools.ShowButton.StartDebugging == true || resourceExtname == .mq4 && config.mql_tools.ShowButton.StartDebugging == true || resourceExtname == .mqh && config.mql_tools.ShowButton.StartDebugging == true",
+                    "command": "mql_tools.startDebugging",
                     "group": "navigation"
                 }
             ],
             "explorer/context": [
                 {
-                    "when": "config.mql_tools.context == true",
                     "command": "mql_tools.Showfiles",
                     "group": "z_commands"
                 },
@@ -523,6 +608,16 @@
                 "command": "mql_tools.openTradingTerminal",
                 "key": "F4",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.runBacktest",
+                "key": "ctrl+shift+t",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
+            },
+            {
+                "command": "mql_tools.startDebugging",
+                "key": "ctrl+shift+d",
+                "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             }
         ]
     },
@@ -546,10 +641,11 @@
         "@types/mocha": "^10.0.10",
         "@types/node": "22.x",
         "@types/vscode": "^1.90.0",
-        "eslint": "^8.57.1",
+        "eslint": "^10.0.3",
+        "glob": "^13.0.6",
         "mocha": "^11.7.5",
-        "webpack": "^5.104.1",
+        "webpack": "^5.105.4",
         "webpack-cli": "^6.0.1"
     },
-    "license": "MIT"
+    "license": "SEE LICENSE IN LICENSE"
 }

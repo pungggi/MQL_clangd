@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" へのパス：MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" へのパス：MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" へのパス：MQL5",
-    "mql_tools.configuration.Include4Dir.description": "\"Include\" フォルダへのパス：MQL4（任意）",
-    "mql_tools.configuration.Include5Dir.description": "\"Include\" フォルダへのパス：MQL5（任意）",
+    "mql_tools.configuration.Include4Dir.description": "MQL4 データフォルダーのパス (Include、Logs などを含む)。ライブラリヘッダーとライブランタイムログに必須です。空白のままにすると自動的に推論されます。",
+    "mql_tools.configuration.Include5Dir.description": "MQL5 データフォルダーのパス (Include、Logs などを含む)。ライブラリヘッダーとライブランタイムログに必須です。空白のままにすると自動的に推論されます。",
     "mql_tools.configuration.Portable4.description": "MetaTrader 4 のポータブルモードを有効にする（/portable スイッチを使用）",
     "mql_tools.configuration.Portable5.description": "MetaTrader 5 のポータブルモードを有効にする（/portable スイッチを使用）",
     "mql_tools.configuration.ShowButtonCompile.description": "コンパイルボタンを表示",
@@ -35,5 +35,6 @@
     "mql_tools.commands.openInME.title": "'MetaEditor' で開く",
     "mql_tools.commands.openTradingTerminal.title": "トレーディングターミナルを開く",
     "mql_tools.commands.createCommentary.title": "関数コメントを作成",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "ノイズの多い clangd 診断を報告"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "ノイズの多い clangd 診断を報告",
+    "mql_tools.commands.runBacktest.title": "バックテストを実行"
 }

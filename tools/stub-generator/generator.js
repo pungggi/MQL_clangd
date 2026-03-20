@@ -5,6 +5,11 @@
 
 'use strict';
 
+/**
+ * Built-in MQL5 base classes that are always forward-declared as classes
+ */
+const BUILTIN_BASE_CLASSES = Object.freeze(['CObject', 'CArray', 'CList', 'CTreeNode']);
+
 class StubGenerator {
     constructor(options = {}) {
         this.indent = options.indent || '    ';
@@ -77,9 +82,59 @@ class StubGenerator {
     static TEMPLATE_PARAMS = new Set([
         'T', 'K', 'V', 'U', 'R', 'E', 'N', 'M',
         'T1', 'T2', 'T3', 'T4', 'T5',
-        'TKey', 'TValue', 'TResult', 'TInput', 'TOutput',
+        'TKey', 'TItem', 'TValue', 'TResult', 'TInput', 'TOutput',
         'PURGER', 'FUNCTOR', 'COMPARATOR', 'ALLOCATOR'
     ]);
+
+    /**
+     * C++ keywords that should be escaped if used as parameter names
+     */
+    static CXX_KEYWORDS = new Set([
+        'alignas', 'alignof', 'and', 'and_eq', 'asm', 'auto', 'bitand', 'bitor', 'bool', 'break', 'case',
+        'catch', 'char', 'char8_t', 'char16_t', 'char32_t', 'class', 'compl', 'concept', 'const', 'consteval',
+        'constexpr', 'constinit', 'const_cast', 'continue', 'co_await', 'co_return', 'co_yield', 'decltype',
+        'default', 'delete', 'do', 'double', 'dynamic_cast', 'else', 'enum', 'explicit', 'export', 'extern',
+        'false', 'float', 'for', 'friend', 'goto', 'if', 'inline', 'int', 'long', 'mutable', 'namespace',
+        'new', 'noexcept', 'not', 'not_eq', 'nullptr', 'operator', 'or', 'or_eq', 'private', 'protected',
+        'public', 'reflexpr', 'register', 'reinterpret_cast', 'requires', 'return', 'short', 'signed', 'sizeof',
+        'static', 'static_assert', 'static_cast', 'struct', 'switch', 'template', 'this', 'thread_local',
+        'throw', 'true', 'try', 'typedef', 'typeid', 'typename', 'union', 'unsigned', 'using', 'virtual',
+        'void', 'volatile', 'wchar_t', 'while', 'xor', 'xor_eq'
+    ]);
+
+    /**
+     * Manual fixes for specific MQL5 classes to handle parser limitations
+     */
+    static MANUAL_FIXES = {
+        'CArrayObj': (generator, publicMethods, lines) => {
+            if (!publicMethods.some(m => m.name === 'At')) {
+                lines.push(generator.indent + 'CObject *At(const int index) const;');
+            }
+        },
+        'CDictionary_String_Obj': (generator, publicMethods, lines) => {
+            // Check if getter exists, if not add it (parser often skips overloads with same name)
+            if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
+                lines.push(generator.indent + 'CObject *Value();');
+            }
+        },
+        'CDictionary_Obj_Obj': (generator, publicMethods, lines) => {
+            if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
+                lines.push(generator.indent + 'CObject *Value();');
+            }
+            if (!publicMethods.some(m => m.name === 'Key' && (!m.params || m.params.length === 0))) {
+                lines.push(generator.indent + 'CObject *Key();');
+            }
+        },
+        'CFileBin': (generator, _publicMethods, lines) => {
+            // Template methods are not currently parsed correctly
+            lines.push(generator.indent + 'template<typename T> uint WriteStruct(T &data);');
+            lines.push(generator.indent + 'template<typename T> uint WriteArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
+            lines.push(generator.indent + 'template<typename T> uint WriteEnum(const T value);');
+            lines.push(generator.indent + 'template<typename T> uint ReadArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
+            lines.push(generator.indent + 'template<typename T> bool ReadStruct(T &data);');
+            lines.push(generator.indent + 'template<typename T> bool ReadEnum(T &value);');
+        }
+    };
 
     /**
      * Detect template parameters used in a class
@@ -158,34 +213,7 @@ class StubGenerator {
             }
 
             // Manual fixes for methods that might be missed by parser or require templates
-            if (classObj.name === 'CArrayObj') {
-                if (!publicMethods.some(m => m.name === 'At')) {
-                    lines.push(this.indent + 'CObject *At(const int index) const;');
-                }
-            }
-            if (classObj.name === 'CDictionary_String_Obj') {
-                // Check if getter exists, if not add it (parser often skips overloads with same name)
-                if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
-                    lines.push(this.indent + 'CObject *Value();');
-                }
-            }
-            if (classObj.name === 'CDictionary_Obj_Obj') {
-                if (!publicMethods.some(m => m.name === 'Value' && (!m.params || m.params.length === 0))) {
-                    lines.push(this.indent + 'CObject *Value();');
-                }
-                if (!publicMethods.some(m => m.name === 'Key' && (!m.params || m.params.length === 0))) {
-                    lines.push(this.indent + 'CObject *Key();');
-                }
-            }
-            if (classObj.name === 'CFileBin') {
-                // Template methods are not currently parsed correctly
-                lines.push(this.indent + 'template<typename T> uint WriteStruct(T &data);');
-                lines.push(this.indent + 'template<typename T> uint WriteArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
-                lines.push(this.indent + 'template<typename T> uint WriteEnum(const T value);');
-                lines.push(this.indent + 'template<typename T> uint ReadArray(T &array, const int start_item = 0, const int items_count = WHOLE_ARRAY);');
-                lines.push(this.indent + 'template<typename T> bool ReadStruct(T &data);');
-                lines.push(this.indent + 'template<typename T> bool ReadEnum(T &value);');
-            }
+            this.applyManualFixes(classObj.name, publicMethods, lines);
         }
 
         // Protected section
@@ -216,6 +244,16 @@ class StubGenerator {
     }
 
     /**
+     * Apply manual fixes for specific classes
+     */
+    applyManualFixes(className, publicMethods, lines) {
+        const fix = StubGenerator.MANUAL_FIXES[className];
+        if (fix) {
+            fix(this, publicMethods, lines);
+        }
+    }
+
+    /**
      * Generate method declaration
      */
     generateMethod(method) {
@@ -223,7 +261,10 @@ class StubGenerator {
 
         if (method.isVirtual) decl += 'virtual ';
         if (method.isStatic) decl += 'static ';
-        if (method.returnType) decl += method.returnType + ' ';
+
+        let safeReturnType = method.returnType;
+        if (safeReturnType === 'INPUT_TYPE') safeReturnType = 'int';
+        if (safeReturnType) decl += safeReturnType + ' ';
 
         decl += method.name + '(';
         decl += this.generateParams(method.params);
@@ -239,12 +280,27 @@ class StubGenerator {
      * Generate parameter list
      */
     generateParams(params) {
+        const CXX_KEYWORDS = StubGenerator.CXX_KEYWORDS;
+
         return params.map(p => {
             let param = '';
             if (p.isConst) param += 'const ';
-            param += p.type;
-            if (p.name) param += ' ' + p.name;
-            if (p.defaultValue !== undefined && p.defaultValue !== null) param += ' = ' + p.defaultValue;
+            let safeType = p.type;
+            if (safeType === 'INPUT_TYPE') safeType = 'int';
+            param += safeType;
+
+            if (p.name) {
+                let safeName = p.name;
+                if (CXX_KEYWORDS.has(safeName)) {
+                    safeName = safeName + '_';
+                }
+                param += ' ' + safeName;
+            }
+            if (p.defaultValue !== undefined && p.defaultValue !== null) {
+                let val = p.defaultValue;
+                if (val === 'NULL') val = 'nullptr';
+                param += ' = ' + val;
+            }
             return param;
         }).join(', ');
     }
@@ -256,12 +312,16 @@ class StubGenerator {
         let decl = this.indent;
         if (member.isStatic) decl += 'static ';
         if (member.isConst) decl += 'const ';
-        decl += member.type + ' ' + member.name + ';';
+
+        let safeType = member.type;
+        if (safeType === 'INPUT_TYPE') safeType = 'int';
+
+        decl += safeType + ' ' + member.name + ';';
         return decl;
     }
 
     /**
-     * Sort classes by dependency (base classes first)
+     * Sort classes by dependency (base classes and value member types first)
      */
     sortByDependency(classes) {
         const classMap = new Map(classes.map(c => [c.name, c]));
@@ -277,6 +337,15 @@ class StubGenerator {
                 visit(classMap.get(classObj.baseClass));
             }
 
+            // Visit value member types (non-pointer, non-reference) first
+            for (const member of classObj.members) {
+                const typeName = member.type.replace(/[\s*&]+/g, ' ').trim().split(/\s+/)[0];
+                // Only visit if it's a value type (no * or &) to avoid circular deps from pointers
+                if (!member.type.includes('*') && !member.type.includes('&') && classMap.has(typeName)) {
+                    visit(classMap.get(typeName));
+                }
+            }
+
             sorted.push(classObj);
         };
 
@@ -289,8 +358,10 @@ class StubGenerator {
 
     /**
      * Generate a complete header file
-     */
-    generateHeader(parsedDataArray, headerName = 'generated_stubs') {
+     * @param {Array} parsedDataArray - Array of parsed structures (not mutated; structural sharing used internally)
+     * @param {string} headerName - Name for the header comment
+     * @returns {string} The complete header file content
+     */    generateHeader(parsedDataArray, headerName = 'generated_stubs') {
         const lines = [];
 
         // File header
@@ -304,49 +375,46 @@ class StubGenerator {
         lines.push('');
         lines.push('#pragma once');
         lines.push('');
+        lines.push('#include "mql_clangd_compat.h"');
+        lines.push('');
         lines.push('#ifdef __clang__');
         lines.push('');
 
-        // Forward declarations for all classes and their base classes
-        const allClasses = [];
-        const baseClasses = new Set();
+        // classesPerData holds the (possibly type-reference-updated) classes for each data entry.
+        // Starts as a direct reference to d.classes; replaced with a new array only on enum collision.
+        const classesPerData = parsedDataArray.map(d => d.classes);
 
-        for (const data of parsedDataArray) {
-            for (const cls of data.classes) {
-                if (!allClasses.find(c => c.name === cls.name)) {
-                    allClasses.push(cls);
-                }
-                if (cls.baseClass) {
-                    baseClasses.add(cls.baseClass);
-                }
-            }
-        }
-
-        lines.push('// Forward declarations');
-        // First, forward declare everything we have definitions for
-        for (const cls of allClasses) {
-            const keyword = cls.isStruct ? 'struct' : 'class';
-            lines.push(`${keyword} ${cls.name};`);
-            baseClasses.delete(cls.name); // Remove if we already declared it
-        }
-
-        // Then, forward declare base classes that weren't in our definitions
-        // (Assuming they are classes unless we know otherwise)
-        if (baseClasses.size > 0) {
-            lines.push('// Base classes from other headers');
-            for (const base of baseClasses) {
-                // Skip common built-in types that might be used as base but aren't classes
-                if (['CObject', 'CArray', 'CList', 'CTreeNode'].includes(base)) {
-                    lines.push(`class ${base};`);
-                } else {
-                    // MQL5 uses struct for many built-ins like MqlTradeRequest
-                    const keyword = base.startsWith('Mql') ? 'struct' : 'class';
-                    lines.push(`${keyword} ${base};`);
-                }
-            }
-        }
+        // Manual extras: constants, typedefs, and types not captured by the parser
+        // (MQL5 macros, Windows API types, function pointer typedefs)
+        lines.push('// Constants defined as macros in MQL5 headers');
+        lines.push('const long CONTROLS_INVALID_ID = -1;');
+        lines.push('const int CL_USE_ANY = -1;');
+        lines.push('const int OBJ_ALL_PERIODS = -1;');
         lines.push('');
+        lines.push('// Windows API types used in Win32 stubs');
+        lines.push('typedef void* PVOID;');
+        lines.push('typedef void* HANDLE;');
+        lines.push('struct DISPLAYCONFIG_MODE { unsigned int modeInfoIdx; };');
+        lines.push('struct RAWFORMAT { unsigned char data[16]; };');
+        lines.push('struct FILETIME { unsigned int dwLowDateTime; unsigned int dwHighDateTime; };');
+        lines.push('struct LUID { unsigned int LowPart; int HighPart; };');
+        lines.push('struct FILE_ID_128 { unsigned char Identifier[16]; };');
         lines.push('');
+        lines.push('// Function pointer typedefs used by CAxis/CCurve');
+        lines.push('typedef double (*DoubleToStringFunction)(double value, void* cbdata);');
+        lines.push('typedef double (*CurveFunction)(double x, void* cbdata);');
+        lines.push('typedef void (*PlotFunction)(void* cbdata);');
+        lines.push('');
+        lines.push('// OpenCL execution status (not in MQL5 public headers)');
+        lines.push('enum ENUM_OPENCL_EXECUTION_STATUS {');
+        lines.push('    OPENCL_EXECUTION_STATUS_SUBMITTED = 0,');
+        lines.push('    OPENCL_EXECUTION_STATUS_RUNNING = 1,');
+        lines.push('    OPENCL_EXECUTION_STATUS_COMPLETE = 2,');
+        lines.push('    OPENCL_EXECUTION_STATUS_ERROR = -1');
+        lines.push('};');
+        lines.push('');
+        lines.push('// Template forward declaration needed by CLinkedListNode');
+        lines.push('template<typename T> class CLinkedList;');
         lines.push('');
 
         // Helper to check if two enums are identical
@@ -359,38 +427,53 @@ class StubGenerator {
             return true;
         };
 
-        // Helper to update type references in classes when an enum is renamed
+        // Helper to update type references in classes when an enum is renamed.
+        // Returns a new classes array with only the affected objects shallow-copied;
+        // unaffected classes/members/params are reused as-is (no full deep clone).
         const updateTypeReferences = (classes, oldName, newName) => {
-            // Regex to match whole word type name
             const regex = new RegExp(`\\b${oldName}\\b`, 'g');
             const update = (s) => s ? s.replace(regex, newName) : s;
 
-            for (const cls of classes) {
-                for (const m of cls.members) {
-                    m.type = update(m.type);
-                }
-                for (const m of cls.methods) {
-                    m.returnType = update(m.returnType);
-                    for (const p of m.params) {
-                        p.type = update(p.type);
+            return classes.map(cls => {
+                const newMembers = cls.members.map(m => {
+                    const t = update(m.type);
+                    return t !== m.type ? { ...m, type: t } : m;
+                });
+                const newMethods = cls.methods.map(m => {
+                    const rt = update(m.returnType);
+                    const newParams = m.params.map(p => {
+                        const t = update(p.type);
+                        return t !== p.type ? { ...p, type: t } : p;
+                    });
+                    const paramsChanged = newParams.some((p, i) => p !== m.params[i]);
+                    if (rt !== m.returnType || paramsChanged) {
+                        return { ...m, returnType: rt, params: newParams };
                     }
+                    return m;
+                });
+                const membersChanged = newMembers.some((m, i) => m !== cls.members[i]);
+                const methodsChanged = newMethods.some((m, i) => m !== cls.methods[i]);
+                if (membersChanged || methodsChanged) {
+                    return { ...cls, members: newMembers, methods: newMethods };
                 }
-            }
+                return cls;
+            });
         };
 
         // Process enums: deduplicate and handle collisions (unless skipEnums is enabled)
         const finalEnums = [];
         if (!this.skipEnums) {
-            const processedEnums = new Map(); // name -> enumObj
+            const processedEnums = new Map(); // name -> { name, values }
 
-            for (const data of parsedDataArray) {
+            for (let i = 0; i < parsedDataArray.length; i++) {
+                const data = parsedDataArray[i];
                 for (const enumObj of data.enums) {
                     if (processedEnums.has(enumObj.name)) {
                         const existing = processedEnums.get(enumObj.name);
                         if (areEnumsEqual(existing, enumObj)) {
                             continue; // Exact duplicate, skip
                         } else {
-                            // Collision! Rename current enum
+                            // Collision! Use a renamed copy to avoid mutating input
                             const oldName = enumObj.name;
                             let counter = 2;
                             let newName = `${oldName}_${counter}`;
@@ -399,12 +482,12 @@ class StubGenerator {
                                 newName = `${oldName}_${counter}`;
                             }
 
-                            enumObj.name = newName;
-                            processedEnums.set(newName, enumObj);
-                            finalEnums.push(enumObj);
+                            const renamedEnum = { ...enumObj, name: newName };
+                            processedEnums.set(newName, renamedEnum);
+                            finalEnums.push(renamedEnum);
 
-                            // Update references in this file's classes
-                            updateTypeReferences(data.classes, oldName, newName);
+                            // Update type references — returns new array, no mutation of input
+                            classesPerData[i] = updateTypeReferences(classesPerData[i], oldName, newName);
                         }
                     } else {
                         processedEnums.set(enumObj.name, enumObj);
@@ -420,6 +503,66 @@ class StubGenerator {
                 lines.push('');
             }
         }
+
+        // Build allClasses from (possibly updated) classesPerData — after enum processing
+        const allClasses = [];
+        const allClassNamesSet = new Set();
+        const baseClasses = new Set();
+
+        for (const classes of classesPerData) {
+            for (const cls of classes) {
+                if (!allClassNamesSet.has(cls.name)) {
+                    allClassNamesSet.add(cls.name);
+                    allClasses.push(cls);
+                }
+                if (cls.baseClass) {
+                    baseClasses.add(cls.baseClass);
+                }
+            }
+        }
+
+        lines.push('// Forward declarations');
+        // First, forward declare everything we have definitions for
+        for (const cls of allClasses) {
+            // Template classes cannot be forward-declared without template params
+            const templateParams = this.detectTemplateParams(cls);
+            if (templateParams.length > 0) {
+                baseClasses.delete(cls.name);
+                continue; // Skip — template definition itself serves as declaration
+            }
+            const keyword = cls.isStruct ? 'struct' : 'class';
+            lines.push(`${keyword} ${cls.name};`);
+            baseClasses.delete(cls.name); // Remove if we already declared it
+        }
+
+        // Collect value member types that aren't in allClasses (need forward decls too)
+        for (const cls of allClasses) {
+            for (const member of cls.members) {
+                if (!member.type.includes('*') && !member.type.includes('&')) {
+                    const typeName = member.type.replace(/[\s*&]+/g, ' ').trim().split(/\s+/)[0];
+                    if (typeName && /^[A-Z]/.test(typeName) && !allClassNamesSet.has(typeName)) {
+                        baseClasses.add(typeName);
+                    }
+                }
+            }
+        }
+
+        // Then, forward declare base classes that weren't in our definitions
+        // (Assuming they are classes unless we know otherwise)
+        if (baseClasses.size > 0) {
+            lines.push('// Base classes from other headers');
+            for (const base of baseClasses) {
+                // Skip common built-in types that might be used as base but aren't classes
+                if (BUILTIN_BASE_CLASSES.includes(base)) {
+                    lines.push(`class ${base};`);
+                } else {
+                    // MQL5 uses struct for many built-ins like MqlTradeRequest
+                    const keyword = base.startsWith('Mql') ? 'struct' : 'class';
+                    lines.push(`${keyword} ${base};`);
+                }
+            }
+        }
+        lines.push('');
 
         // Generate class definitions (unless forwardDeclOnly mode)
         if (!this.forwardDeclOnly) {
@@ -442,5 +585,5 @@ class StubGenerator {
     }
 }
 
-module.exports = { StubGenerator };
+module.exports = { StubGenerator, BUILTIN_BASE_CLASSES };
 
