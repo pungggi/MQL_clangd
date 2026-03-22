@@ -32,11 +32,13 @@ class MqlDebugBridge {
     constructor() {
         /** @type {MqlDebugLogReader|null} */
         this._reader = null;
-        /** @type {(() => void)|null} */
+        /** @type {(() => string|null)|null} */
         this._restore = null;
         this._active = false;
         /** @type {string|null} */
         this._mql5Root = null;
+        /** @type {ReturnType<typeof setInterval>|null} */
+        this._retryTimer = null;
     }
 
     get isActive() { return this._active; }
@@ -61,6 +63,12 @@ class MqlDebugBridge {
         }
 
         this._mql5Root = mql5Root;
+
+        // Cancel any pending binary-delete retry from a previous session
+        if (this._retryTimer) {
+            clearInterval(this._retryTimer);
+            this._retryTimer = null;
+        }
 
         // 0. Clean up stale command file from a previous session
         this._cleanCmdFile();
@@ -144,7 +152,6 @@ class MqlDebugBridge {
             vscode.window.showErrorMessage(`MQL Debug: Log reader error — ${err.message || String(err)}`);
             this.stop();
         };
-        this._reader.onLog = (msg) => this._log(msg);
         this._reader.start();
 
         // 6. Invoke optional post-start callback (e.g. open trading terminal)
@@ -163,19 +170,21 @@ class MqlDebugBridge {
 
     /** Stop the current debug session and clean up. */
     stop() {
+        // Always send STOP so a paused EA self-unloads even if bridge is already inactive
+        // (e.g. adapter disconnect after session ended but EA still on chart)
+        this._sendStopCommand();
+
         if (!this._active) return;
         this._active = false;
-
-        // Unblock the EA if it's paused at a breakpoint
-        this._sendContinueCommand();
 
         if (this._reader) {
             this._reader.stop();
             this._reader = null;
         }
         if (this._restore) {
-            this._restore();
+            const lockedBinary = this._restore();
             this._restore = null;
+            if (lockedBinary) this._startDeleteRetry(lockedBinary);
         }
 
         // Clean up command file
@@ -205,15 +214,39 @@ class MqlDebugBridge {
         return this._outputChannel;
     }
 
-    /** Write CONTINUE to the command file so a paused EA resumes. */
-    _sendContinueCommand() {
+    /** Write STOP to the command file so a paused EA self-unloads via ExpertRemove(). */
+    _sendStopCommand() {
         if (!this._mql5Root) return;
         const cmdPath = path.join(this._mql5Root, 'Files', 'MqlDebugCmd.txt');
         try {
-            fs.writeFileSync(cmdPath, 'CONTINUE\n', 'utf-8');
+            fs.writeFileSync(cmdPath, 'STOP\n', 'utf-8');
         } catch (err) {
-            console.warn('[MqlDebugBridge] Failed to write continue command:', err.message);
+            console.warn('[MqlDebugBridge] Failed to write stop command:', err.message);
         }
+    }
+
+    /**
+     * Retry deleting a locked binary every 5 s for up to 60 s.
+     * Cancelled automatically when a new session starts.
+     * @param {string} binaryPath
+     */
+    _startDeleteRetry(binaryPath) {
+        const MAX_ATTEMPTS = 12; // 12 × 5 s = 60 s
+        let attempts = 0;
+        this._retryTimer = setInterval(() => {
+            attempts++;
+            try {
+                fs.unlinkSync(binaryPath);
+                clearInterval(this._retryTimer);
+                this._retryTimer = null;
+                this._log(`Cleaned up debug binary: ${path.basename(binaryPath)}`);
+            } catch {
+                if (attempts >= MAX_ATTEMPTS) {
+                    clearInterval(this._retryTimer);
+                    this._retryTimer = null;
+                }
+            }
+        }, 5000);
     }
 
     /** Delete the command file (cleanup). */

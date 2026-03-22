@@ -33,6 +33,7 @@ class MqlDebugLogReader {
         this.watcher      = null;
         this.timer        = null;
         this.renameTimer  = null;
+        this._buf         = Buffer.allocUnsafe(65536);
 
         /** Preferred: called with all events in a file chunk at once. @type {((events: DebugEvent[]) => void) | null} */
         this.onBatch     = null;
@@ -139,7 +140,11 @@ class MqlDebugLogReader {
         if (!this.watcher && fs.existsSync(this.filePath)) {
             this._setupWatcher();
         }
-        this._checkForNewContent();
+        // Only read here when the watcher is absent — otherwise the watcher
+        // handles real-time reads and polling would double-open the file every 500 ms.
+        if (!this.watcher) {
+            this._checkForNewContent();
+        }
         this.timer = setTimeout(() => this._poll(), POLL_INTERVAL_MS);
     }
 
@@ -157,7 +162,7 @@ class MqlDebugLogReader {
             fd = fs.openSync(this.filePath, 'r');
 
             const BUF_SIZE = 65536;
-            const buf = Buffer.alloc(BUF_SIZE);
+            const buf = this._buf;
             const chunks = [];
             let totalRead = 0;
 
@@ -191,10 +196,6 @@ class MqlDebugLogReader {
                         const evt = this._parseLine(line);
                         if (evt) events.push(evt);
                     }
-                }
-                this._log(`Read +${totalRead} bytes, ${lines.length} lines, ${events.length} events`);
-                if (events.length > 0) {
-                    for (const e of events) this._log(`  event: ${e.type} ${e.label || e.varName || e.func || ''}`);
                 }
                 // Deliver all events in this chunk as one batch so the store
                 // notifies listeners only once instead of once per line.
@@ -253,6 +254,9 @@ class MqlDebugLogReader {
             }
             case 'EXIT': {
                 return { type: 'exit', ...base };
+            }
+            case 'SESSION_END': {
+                return { type: 'session_end', ...base };
             }
             default:
                 return null;

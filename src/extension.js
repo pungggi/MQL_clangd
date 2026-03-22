@@ -67,6 +67,7 @@ const {
 } = require('./debugBridge');
 const { MqlDebugAdapter } = require('./debugAdapter');
 const { store: debugStore } = require('./debugStateStore');
+const { showStartupPage } = require('./startupPage');
 
 
 // =============================================================================
@@ -2397,6 +2398,10 @@ function activate(context) {
     // Initialize VS Code API-dependent variables (must be inside activate, not at module level)
     diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
     outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
+
+    // Show Startup Page PoC
+    showStartupPage(context);
+
 
     // Clear symbol cache when a document is closed
     context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((document) => {

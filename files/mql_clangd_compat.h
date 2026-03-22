@@ -739,6 +739,7 @@ ulong GetTickCount64();
 ulong GetMicrosecondCount();
 void Sleep(int milliseconds);
 bool IsStopped();
+void ExpertRemove();
 int UninitializeReason();
 bool MQLInfoInteger(int property_id);
 string MQLInfoString(int property_id);

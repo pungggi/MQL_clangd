@@ -144,21 +144,28 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
         try {
             const pid = parseInt(fs.readFileSync(pidPath, 'utf8'), 10);
             if (!isNaN(pid) && pid > 0 && pid < 4294967295) {
-                // Check if process is still running
-                try {
-                    process.kill(pid, 0); // throws if not running
-
-                    // If running, see if it responds on our port
+                if (process.platform === 'win32') {
+                    // On Windows, process.kill(pid, 0) is unreliable — it can succeed for
+                    // zombie/reaped processes. Use pingServer as the primary liveness check.
                     if (await pingServer(port)) {
                         return true;
                     }
-
-                    // If not responding, verify it's ours before killing
+                    // Not responding — kill if it's ours
                     if (await isProcessOurServer(pid, serverDir)) {
-                        process.kill(pid, 'SIGTERM'); // Windows ignores signals; used here for cross-platform consistency
+                        try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
                     }
-                    // If not ours, we just proceed (stale PID from another process)
-                } catch { /* process not running — proceed */ }
+                } else {
+                    // On Unix, signal 0 reliably tests process existence
+                    try {
+                        process.kill(pid, 0); // throws if not running
+                        if (await pingServer(port)) {
+                            return true;
+                        }
+                        if (await isProcessOurServer(pid, serverDir)) {
+                            process.kill(pid, 'SIGTERM');
+                        }
+                    } catch { /* process not running — proceed */ }
+                }
             }
             fs.unlinkSync(pidPath);
         } catch { /* ignore read errors — proceed */ }

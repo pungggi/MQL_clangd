@@ -50,7 +50,6 @@ const RE_EA_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(IN
 const RE_LIVELOG_LINE = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[(INFO|DEBUG|TRADE|ERROR|WARN)\\]\\s+(?:\\{([^:}]+):([^:}]+):(\\d+)\\}:\\s*)?(.+)$`);
 
 const RE_EXTRACT_TIMESTAMP = new RegExp(`(${RE_TIMESTAMP_PATTERN})`);
-const RE_EA_NAME_DETECT = new RegExp(`^\\s*${RE_TIMESTAMP_PREFIX}\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s`);
 const RE_DETECT_EA = new RegExp('(?:\\[([^\\]]+)\\]\\s+(?:INFO|DEBUG|TRADE|ERROR|WARN)\\s)');
 
 function parseLine(text) {
@@ -58,11 +57,10 @@ function parseLine(text) {
     const parts = text.split('\t');
     // Typical: hash, 0, wallclock, source, payload
     // EA lines have 5+ parts; system lines have 4-5 parts with "Tester", "Network", etc.
-    const wallclock = parts.length >= 3 ? parts[2].trim() : '';
     const source = parts.length >= 5 ? parts[3].trim() : '';
     const payload = parts.length >= 5 ? parts.slice(4).join('\t').trim() : (parts.length >= 4 ? parts[3].trim() : text);
 
-    return { wallclock, source, payload };
+    return { source, payload };
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +124,7 @@ function parseLogFile(logPath, options = {}) {
         const raw = rawLines[i];
         if (!raw.trim()) continue;
 
-        const { wallclock: _wallclock, source, payload } = parseLine(raw);
+        const { source, payload } = parseLine(raw);
 
         // ---- Extract test config from system (Tester) lines -----------------
         if (source === 'Tester' || source.startsWith('Tester')) {
@@ -479,7 +477,7 @@ function parseLogSummary(logPath) {
 
         // EA name (skip level-only brackets from LiveLog format)
         if (!eaName) {
-            const m = payload.match(RE_EA_NAME_DETECT);
+            const m = payload.match(RE_DETECT_EA);
             if (m && !['INFO', 'DEBUG', 'TRADE', 'ERROR', 'WARN'].includes(m[1])) eaName = m[1];
         }
         if (!eaName && (source === 'Tester' || source.startsWith('Tester'))) {

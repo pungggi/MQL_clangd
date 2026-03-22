@@ -265,15 +265,13 @@ class MqlDebugAdapter extends EventEmitter {
     }
 
     _onTerminate(req) {
-        this._sendContinueCommand();  // unblock EA if paused
         this._sendResponse(req, {});
-        this._bridge.stop();
+        this._bridge.stop();  // sends STOP command — EA will self-unload
     }
 
     _onDisconnect(req) {
-        this._sendContinueCommand();  // unblock EA if paused
         this._sendResponse(req, {});
-        this._bridge.stop();
+        this._bridge.stop();  // sends STOP command — EA will self-unload
     }
 
     // -------------------------------------------------------------------------
@@ -284,7 +282,6 @@ class MqlDebugAdapter extends EventEmitter {
         if (this._disposed) return;
 
         const hits = this._store.hits;
-        console.log(`[MqlDebugAdapter] _onStoreChange: hits=${hits.length}, lastHitCount=${this._lastHitCount}, sessionActive=${this._store.sessionActive}`);
 
         // Reset hit counter if the store was cleared (new session)
         if (hits.length < this._lastHitCount) {

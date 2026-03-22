@@ -50,11 +50,9 @@ class TradeReportPanel {
         this._snapshotDir = null;
 
         this._buildSourceMapPromise = this._buildSourceMap();
-        this._buildSourceMapPromise.then(() => {
-            this._ensureSnapshot(parsedData);
-        }).catch(err => {
-            console.error('Failed to initialize source map or snapshot', err);
-        });
+        this._buildSourceMapPromise
+            .then(() => this._ensureSnapshot(parsedData))
+            .catch(err => { console.error('Failed to initialize source map or snapshot', err); });
         this._panel.webview.html = this._getHtml(parsedData);
 
         this._panel.webview.onDidReceiveMessage(async msg => {
@@ -76,7 +74,9 @@ class TradeReportPanel {
                     await this._buildSourceMapPromise;
                     try {
                         const fresh = parseLogFile(this._logFilePath);
-                        this._ensureSnapshot(fresh);
+                        this._ensureSnapshot(fresh).catch(err => {
+                            console.error('Failed to create source snapshot', err);
+                        });
                         this._panel.webview.postMessage({
                             type: 'fullUpdate',
                             trades: fresh.trades,
@@ -102,12 +102,20 @@ class TradeReportPanel {
     }
 
     async _setData(parsedData, logFilePath) {
-        await this._buildSourceMapPromise;
         this._logFilePath = logFilePath;
+        const eaChanged = parsedData.eaName !== this._eaName;
         this._eaName = parsedData.eaName;
         this._eaFile = parsedData.testConfig ? parsedData.testConfig.eaFile : null;
         this._snapshotDir = null;
-        this._ensureSnapshot(parsedData);
+        // Only rebuild the source map when the EA changes or the cache is empty.
+        // Re-using the existing cache on plain Refresh avoids a full workspace scan.
+        if (eaChanged || this._fileCache.size === 0) {
+            this._buildSourceMapPromise = this._buildSourceMap();
+        }
+        await this._buildSourceMapPromise;
+        this._ensureSnapshot(parsedData).catch(err => {
+            console.error('Failed to create source snapshot', err);
+        });
         this._panel.webview.postMessage({
             type: 'fullUpdate',
             trades: parsedData.trades,
@@ -194,16 +202,16 @@ class TradeReportPanel {
      * referenced source files into the snapshot directory.
      * If a snapshot already exists (from a previous open), just record its path.
      */
-    _ensureSnapshot(parsedData) {
+    async _ensureSnapshot(parsedData) {
         const snapDir = this._snapshotDirForLog(this._logFilePath);
 
         // If snapshot already exists, just record it
-        if (fs.existsSync(snapDir)) {
+        try {
+            await fs.promises.access(snapDir);
             this._snapshotDir = snapDir;
-            // Notify webview that snapshot is available
             this._panel.webview.postMessage({ type: 'snapshotStatus', hasSnapshot: true });
             return;
-        }
+        } catch { /* doesn't exist yet */ }
 
         // Check setting
         const config = vscode.workspace.getConfiguration('mql_tools');
@@ -222,30 +230,31 @@ class TradeReportPanel {
 
         // Resolve each filename to its workspace path and copy
         try {
-            fs.mkdirSync(snapDir, { recursive: true });
+            await fs.promises.mkdir(snapDir, { recursive: true });
             let copied = 0;
             for (const filename of sourceFiles) {
                 const uri = this._resolveUri(filename);
-                if (uri && fs.existsSync(uri.fsPath)) {
-                    // Sanitize to retain folder structure without path traversal
-                    const sanitized = this._sanitizeRelativePath(filename);
-                    const destPath = path.join(snapDir, sanitized);
+                if (!uri) continue;
+                try { await fs.promises.access(uri.fsPath); } catch { continue; }
 
-                    // Final validation: ensure the path did not escape snapDir
-                    const relative = path.relative(snapDir, destPath);
-                    if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
+                // Sanitize to retain folder structure without path traversal
+                const sanitized = this._sanitizeRelativePath(filename);
+                const destPath = path.join(snapDir, sanitized);
 
-                    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-                    fs.copyFileSync(uri.fsPath, destPath);
-                    copied++;
-                }
+                // Final validation: ensure the path did not escape snapDir
+                const relative = path.relative(snapDir, destPath);
+                if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
+
+                await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+                await fs.promises.copyFile(uri.fsPath, destPath);
+                copied++;
             }
             if (copied > 0) {
                 this._snapshotDir = snapDir;
                 this._panel.webview.postMessage({ type: 'snapshotStatus', hasSnapshot: true });
             } else {
                 // Clean up empty dir
-                try { fs.rmdirSync(snapDir); } catch { /* ignore */ }
+                try { await fs.promises.rmdir(snapDir); } catch { /* ignore */ }
             }
         } catch (e) {
             console.error('Failed to create source snapshot', e);
@@ -836,7 +845,9 @@ tr:hover td { background: var(--surface); }
         }
         if (msg.type === 'snapshotStatus') {
             hasSnapshot = msg.hasSnapshot;
-            renderAll();
+            // Only re-render the sections that contain source links
+            renderTable();
+            renderLog();
         }
     });
 

@@ -1,0 +1,645 @@
+const vscode = require('vscode');
+
+function showStartupPage(context) {
+    const currentVersion = context.extension.packageJSON.version || '1.0.0';
+
+    // Check if dismissed for current version
+    const dismissedVersion = context.globalState.get('mql-tools.startupPageDismissedVersion');
+    if (dismissedVersion === currentVersion) {
+        return; // Already dismissed for this version, don't show
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+        'mqlStartup',
+        `MQL Extension Welcome (v${currentVersion})`,
+        vscode.ViewColumn.One,
+        {
+            enableScripts: true,
+            retainContextWhenHidden: true
+        }
+    );
+
+    panel.webview.html = getWebviewContent(currentVersion);
+
+    // Handle messages from the webview
+    panel.webview.onDidReceiveMessage(
+        message => {
+            switch (message.command) {
+                case 'dismiss':
+                    context.globalState.update('mql-tools.startupPageDismissedVersion', currentVersion);
+                    vscode.window.showInformationMessage(`Welcome page dismissed for version ${currentVersion}.`);
+                    panel.dispose(); // Optional: close the panel when dismissed
+                    return;
+            }
+        },
+        undefined,
+        context.subscriptions
+    );
+}
+
+function getWebviewContent(version) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to MQL Extension</title>
+    <style>
+        :root {
+            --primary-color: var(--vscode-button-background);
+            --primary-hover: var(--vscode-button-hoverBackground);
+            --text-color: var(--vscode-editor-foreground);
+            --bg-color: var(--vscode-editor-background);
+            --card-bg: var(--vscode-editorWidget-background);
+            --border-color: var(--vscode-widget-border);
+            --accent-color: var(--vscode-textLink-foreground);
+        }
+
+        body {
+            font-family: var(--vscode-font-family), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            font-weight: 300;
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 0;
+        }
+
+        .badge {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: var(--vscode-button-foreground);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        /* Tab navigation */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border-color);
+            margin-bottom: 30px;
+            gap: 4px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            padding: 10px 20px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            color: var(--vscode-descriptionForeground);
+            border-radius: 4px 4px 0 0;
+            transition: color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-color);
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .tab-btn.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+            background: none;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--accent-color);
+            font-size: 1.8em;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        h3 {
+            font-size: 1.3em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+
+        .step-list {
+            list-style-type: none;
+            padding-left: 0;
+            counter-reset: step-counter;
+        }
+
+        .step-list li {
+            position: relative;
+            padding-left: 45px;
+            margin-bottom: 25px;
+        }
+
+        .step-list li::before {
+            content: counter(step-counter);
+            counter-increment: step-counter;
+            position: absolute;
+            left: 0;
+            top: -2px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: var(--vscode-button-foreground);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .code-inline {
+            background-color: var(--vscode-textCodeBlock-background);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: var(--vscode-editor-font-family), monospace;
+            font-size: 0.9em;
+        }
+
+        .highlight-box {
+            background-color: rgba(var(--vscode-textLink-foreground), 0.1);
+            border-left: 4px solid var(--accent-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .warn-box {
+            border-left: 4px solid var(--vscode-editorWarning-foreground);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+            background-color: rgba(0,0,0,0.08);
+        }
+
+        .actions {
+            margin-top: 40px;
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 0.9em;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 0.95em;
+        }
+
+        th {
+            background-color: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            text-align: left;
+            padding: 8px 12px;
+        }
+
+        td {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>MQL Clangd <span class="badge">v${version}</span></h1>
+            <p class="subtitle">Bringing modern development tools to MetaTrader</p>
+        </header>
+
+        <!-- Tab buttons -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="debugger">MQL Debugger</button>
+            <button class="tab-btn" data-tab="tradereport">Trade Report</button>
+            <button class="tab-btn" data-tab="backtest">Run Backtest</button>
+            <button class="tab-btn" data-tab="livelog">Live Log</button>
+        </nav>
+
+        <!-- ─── Tab 1: MQL Debugger ─── -->
+        <div id="tab-debugger" class="tab-panel active">
+
+            <div class="card">
+                <h2>Introducing MQL Debugging <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
+
+                <p>We are thrilled to introduce a highly requested feature: <strong>Integrated Debugging for MQL</strong>!</p>
+
+                <div class="highlight-box">
+                    <strong>Why Pre-Release?</strong> This is released early to gather your feedback. It is fully functional but undergoing active testing. If it proves valuable and stable, we'll integrate it permanently. Try it out and let us know what you think!
+                </div>
+
+                <h3>How it Works</h3>
+                <p>Unlike traditional debuggers, this solution uses a custom <strong>Debug Bridge</strong>. When you start debugging, the extension automatically instruments your MQL code with lightweight diagnostic macros, compiles it, and launches it in MetaTrader. It then communicates with VS Code via lightning-fast file I/O to simulate a real debugging session!</p>
+
+                <h3>Step-by-Step Guide</h3>
+                <ul class="step-list">
+                    <li>
+                        <strong>Set Breakpoints</strong><br>
+                        Open any <span class="code-inline">.mq4</span>, <span class="code-inline">.mq5</span>, or <span class="code-inline">.mqh</span> file and set breakpoints by clicking in the editor's left gutter.
+                    </li>
+                    <li>
+                        <strong>Start Debugging</strong><br>
+                        Click the <strong>Start Debugging</strong> (bug icon) button in the editor's top title bar, or press <span class="code-inline">Ctrl+Shift+D</span>. The extension will instrument and compile your code into a special debug build (named <span class="code-inline">*.mql_dbg_build</span>).
+                    </li>
+                    <li>
+                        <strong>Attach to Chart</strong><br>
+                        MetaTrader will launch automatically. Find your compiled debug Expert Advisor or Script in the Navigator panel and <strong>drag it onto a chart</strong> to begin execution.
+                    </li>
+                    <li>
+                        <strong>Inspect the State</strong><br>
+                        When a breakpoint is hit, VS Code will pause. Explore your variables in the <em>Run and Debug</em> panel and view your <em>Call Stack</em>.
+                    </li>
+                    <li>
+                        <strong>Resume Execution</strong><br>
+                        Use the VS Code debug toolbar to click <strong>Continue</strong> and let your code run until the next breakpoint.
+                    </li>
+                    <li>
+                        <strong>Stop Debugging</strong><br>
+                        When you are finished, click Stop in VS Code. <em>Remember to manually remove the debug EA/Script from your MetaTrader chart so it stops running!</em>
+                    </li>
+                </ul>
+
+                <h3>What Variables are Tracked?</h3>
+                <p>To keep performance extremely high, the debugger smartly tracks variables based on your settings:</p>
+                <ul>
+                    <li><strong>Locals & Parameters:</strong> Tracks local variables and function parameters accessed near your breakpoints.</li>
+                    <li><strong>Class Members:</strong> Monitors fields belonging to the current class instance (<span class="code-inline">this</span>).</li>
+                    <li><strong>Deep Analysis (Optional):</strong> Want more details? Enable <span class="code-inline">mql_tools.Debug.DetailLevel = "deepAnalysis"</span> in your VS Code settings. This will additionally track global primitives and recursively expand object fields.</li>
+                    <li><strong>Breakpoint Info:</strong> Provides metadata such as hit counts, source file names, line numbers, and timestamps.</li>
+                </ul>
+
+                <h3>Advanced Features</h3>
+                <ul>
+                    <li><strong>Conditional Breakpoints:</strong> Right-click a breakpoint and add a condition — telemetry only fires when the condition is true.</li>
+                    <li><strong>Manual <span class="code-inline">// @watch</span> annotations:</strong> Add a <span class="code-inline">// @watch myVar otherVar</span> comment near a breakpoint to explicitly name variables the auto-detector might miss.</li>
+                    <li><strong>Call Stack Tracking:</strong> Functions containing breakpoints automatically report <span class="code-inline">ENTER</span>/<span class="code-inline">EXIT</span> events so the dashboard shows a live call stack.</li>
+                </ul>
+
+                <div class="warn-box">
+                    <strong>⚠ Pause / Continue:</strong> Each breakpoint injects a blocking spin-wait. The EA thread is fully paused — no <span class="code-inline">OnTick</span>/<span class="code-inline">OnTimer</span> events fire. Use only on demo accounts or in the Strategy Tester. The EA auto-resumes after 120 seconds as a safety failsafe.
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>This feature is in its early stages and your input is critical. Encountered a bug, have a feature request, or just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BDebugger%5D%20" style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open an Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button class="dismiss-btn">Got it! Dismiss for version ${version}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+
+        <!-- ─── Tab 2: Trade Report Dashboard ─── -->
+        <div id="tab-tradereport" class="tab-panel">
+
+            <div class="card">
+                <h2>Trade Report Dashboard <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
+
+                <p>Analyze your Strategy Tester results <strong>directly in VS Code</strong> — no more digging through MetaTrader's UI or raw log files.</p>
+
+                <div class="highlight-box">
+                    The Trade Report Dashboard parses MT5 tester log files and presents trades, P&amp;L statistics, and log entries in a rich interactive webview — with <strong>click-to-source</strong> navigation back to your MQL code.
+                </div>
+
+                <h3>Opening a Report</h3>
+                <p>Run <span class="code-inline">MQL: Open Trade Report Dashboard</span> from the Command Palette. The dashboard auto-discovers EAs that have tester log files under your <span class="code-inline">MQL5/Experts/</span> folder.</p>
+
+                <h3>What the Dashboard Shows</h3>
+                <table>
+                    <tr><th>Section</th><th>Details</th></tr>
+                    <tr><td>Trade Summary</td><td>Total trades, net P&amp;L, win rate, gross profit &amp; loss, commissions</td></tr>
+                    <tr><td>Trade Table</td><td>Entry/exit prices, SL, TP, lot size, exit reason per trade</td></tr>
+                    <tr><td>Log Viewer</td><td>Filterable by level: ALL / TRADE / INFO / WARN / DEBUG / ERROR</td></tr>
+                </table>
+
+                <h3>Click-to-Source Navigation</h3>
+                <p>When your EA uses <strong>LiveLog</strong>'s level-prefixed logging macros, each log entry and trade automatically carries a source location. In the dashboard these appear as clickable badges that jump straight to the originating line in your MQL file.</p>
+                <p>Just add to your EA:</p>
+                <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">#include &lt;LiveLog.mqh&gt;
+
+void OnTick()
+{
+    LogInfo("Checking for entry signal");
+    if (buySignal)
+        LogTrade("SIMULATED BUY MARKET");
+}</pre>
+                <p>The <span class="code-inline">LogDebug</span>, <span class="code-inline">LogInfo</span>, <span class="code-inline">LogWarn</span>, <span class="code-inline">LogError</span>, and <span class="code-inline">LogTrade</span> macros embed <span class="code-inline">{File:Function:Line}</span> tags automatically — no extra setup needed.</p>
+
+                <h3>Source Snapshots</h3>
+                <p>Because source tags reference specific line numbers, editing your EA after a test run can make links point to the wrong lines. Enable <strong>Source Snapshots</strong> to freeze a copy of all referenced files alongside each log:</p>
+                <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">"mql_tools.TradeReport.SnapshotSources": true</pre>
+                <p>When a snapshot exists, each source badge shows two links: a <span style="color:#6a9955;font-weight:600;">green</span> one for the frozen snapshot and a <span style="color:#d7ba7d;font-weight:600;">yellow</span> one for the current live file.</p>
+
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>This feature is in its early stages and your input is critical. Encountered a bug, have a feature request, or just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BTrade%20Report%5D%20" style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open an Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button id="dismissBtn2">Got it! Dismiss for version ${version}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+
+        <!-- ─── Tab 3: Run Backtest ─── -->
+        <div id="tab-backtest" class="tab-panel">
+
+            <div class="card">
+                <h2>Run Backtest <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
+
+                <p>Trigger an MT5 Strategy Tester run for your EA <strong>directly from VS Code</strong> — without touching the MetaTrader UI.</p>
+
+                <div class="highlight-box">
+                    Press <span class="code-inline">Ctrl+Shift+T</span>, click the <strong>⚗ Run Backtest</strong> toolbar button, or run <span class="code-inline">MQL: Run Backtest</span> from the Command Palette. When the test finishes, the <strong>Trade Report Dashboard</strong> opens automatically.
+                </div>
+
+                <h3>Prerequisites</h3>
+                <ul>
+                    <li>A <span class="code-inline">tester.ini</span> file must exist in your EA's folder (e.g. <span class="code-inline">Experts/MyEA/tester.ini</span>). MetaTrader generates this when you save Strategy Tester settings.</li>
+                    <li><strong>TradeReportServer</strong> must be running. By default the extension auto-starts it — see <span class="code-inline">mql_tools.Backtest.AutoStartServer</span>.</li>
+                </ul>
+
+                <h3>Step-by-Step Guide</h3>
+                <ul class="step-list">
+                    <li>
+                        <strong>Open your EA file</strong><br>
+                        Open any <span class="code-inline">.mq5</span>, <span class="code-inline">.mq4</span>, or <span class="code-inline">.mqh</span> file that belongs to your Expert Advisor.
+                    </li>
+                    <li>
+                        <strong>Start the backtest</strong><br>
+                        Press <span class="code-inline">Ctrl+Shift+T</span> or click the <strong>⚗</strong> button in the editor title bar. The extension auto-detects your EA from the active file. If multiple EAs are found, a picker appears.
+                    </li>
+                    <li>
+                        <strong>Choose parameters</strong><br>
+                        A prompt pre-filled from <span class="code-inline">tester.ini</span> lets you confirm or override the <strong>symbol</strong> and <strong>date range</strong>. Disable prompts entirely with <span class="code-inline">mql_tools.Backtest.PromptForParameters: false</span>.
+                    </li>
+                    <li>
+                        <strong>Monitor progress</strong><br>
+                        A VS Code notification tracks elapsed time while MT5 runs the Strategy Tester in the background. Cancelling the notification stops monitoring but does <em>not</em> cancel the MT5 test itself.
+                    </li>
+                    <li>
+                        <strong>View results</strong><br>
+                        When the test finishes, the <strong>Trade Report Dashboard</strong> opens automatically with the new results (disable with <span class="code-inline">mql_tools.Backtest.AutoOpenReport: false</span>).
+                    </li>
+                </ul>
+
+                <h3>Settings Reference</h3>
+                <table>
+                    <tr><th>Setting</th><th>Default</th><th>Description</th></tr>
+                    <tr><td><span class="code-inline">mql_tools.Backtest.PromptForParameters</span></td><td><span class="code-inline">true</span></td><td>Show symbol / date prompts before running. Set <span class="code-inline">false</span> to use <span class="code-inline">tester.ini</span> defaults silently.</td></tr>
+                    <tr><td><span class="code-inline">mql_tools.Backtest.AutoOpenReport</span></td><td><span class="code-inline">true</span></td><td>Open the Trade Report Dashboard when the test completes.</td></tr>
+                    <tr><td><span class="code-inline">mql_tools.Backtest.AutoStartServer</span></td><td><span class="code-inline">true</span></td><td>Auto-start TradeReportServer if it is not already running.</td></tr>
+                    <tr><td><span class="code-inline">mql_tools.Backtest.ServerPort</span></td><td><span class="code-inline">3002</span></td><td>Port used by TradeReportServer.</td></tr>
+                    <tr><td><span class="code-inline">mql_tools.ShowButton.RunBacktest</span></td><td><span class="code-inline">true</span></td><td>Show / hide the ⚗ toolbar button on MQL files.</td></tr>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>This feature is in its early stages and your input is critical. Encountered a bug, have a feature request, or just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BBacktest%5D%20" style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open an Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button id="dismissBtn3">Got it! Dismiss for version ${version}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+
+        <!-- ─── Tab 4: Live Log ─── -->
+        <div id="tab-livelog" class="tab-panel">
+
+            <div class="card">
+                <h2>Live Runtime Log <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
+
+                <p>Monitor your MQL4/MQL5 terminal logs <strong>in real-time directly within VS Code</strong> — no need to switch to MetaTrader or open external log files.</p>
+
+                <div class="highlight-box">
+                    The Live Log feature tails your MetaTrader log files and streams new entries into a dedicated VS Code output channel as they appear. Toggle it from the status bar or with <span class="code-inline">MQL: Toggle Live Runtime Log</span>.
+                </div>
+
+                <h3>Two Tailing Modes</h3>
+                <table>
+                    <tr><th>Mode</th><th>How it works</th><th>Latency</th></tr>
+                    <tr>
+                        <td><strong>LiveLog (Real-time)</strong></td>
+                        <td>Tails <span class="code-inline">MQL5/Files/LiveLog.txt</span>. Your EA writes to this file with an immediate flush using <span class="code-inline">PrintLive()</span> or the <span class="code-inline">Log*()</span> macros from <span class="code-inline">LiveLog.mqh</span>.</td>
+                        <td>⚡ Instant</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Standard Journal</strong></td>
+                        <td>Tails the daily <span class="code-inline">MQL5/Logs/YYYYMMDD.log</span> file produced by MetaTrader's built-in <span class="code-inline">Print()</span>.</td>
+                        <td>Delayed (MT5 buffers output)</td>
+                    </tr>
+                </table>
+                <p>Switch between modes at any time with <span class="code-inline">MQL: Switch Log Tail Mode (Live/Standard)</span>.</p>
+
+                <h3>Setting Up LiveLog (Real-Time Mode)</h3>
+                <ul class="step-list">
+                    <li>
+                        <strong>Install the library</strong><br>
+                        Run <span class="code-inline">MQL: Install LiveLog Library</span> from the Command Palette. This deploys <span class="code-inline">LiveLog.mqh</span> into your MetaTrader <span class="code-inline">Include/</span> folder.
+                    </li>
+                    <li>
+                        <strong>Include it in your EA</strong><br>
+                        <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">#include &lt;LiveLog.mqh&gt;</pre>
+                    </li>
+                    <li>
+                        <strong>Log messages with instant flush</strong><br>
+                        Use <span class="code-inline">PrintLive()</span> anywhere you would use <span class="code-inline">Print()</span>:
+                        <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">PrintLive("OnTick fired — bid: " + DoubleToString(bid, 5));
+PrintFormatLive("Signal: %d | Spread: %.1f pts", signal, spread);</pre>
+                    </li>
+                    <li>
+                        <strong>Use level-prefixed macros for Trade Report integration</strong><br>
+                        The <span class="code-inline">Log*()</span> macros embed a <span class="code-inline">{File:Function:Line}</span> source location tag automatically, enabling <strong>click-to-source</strong> navigation in the Trade Report Dashboard:
+                        <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">LogDebug("Checking entry conditions");
+LogInfo("Order placed — lots: 0.10, SL: 1.2050");
+LogWarn("Spread too wide, skipping");
+LogError("OrderSend failed: " + IntegerToString(GetLastError()));
+LogTrade("SIMULATED BUY MARKET");</pre>
+                    </li>
+                    <li>
+                        <strong>(Optional) Redirect all Print() calls automatically</strong><br>
+                        Add <span class="code-inline">#define LIVELOG_REDIRECT</span> before the include to make every <span class="code-inline">Print()</span> and <span class="code-inline">PrintFormat()</span> go to LiveLog automatically — no code changes needed:
+                        <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">#define LIVELOG_REDIRECT
+#include &lt;LiveLog.mqh&gt;
+
+// All Print() calls now flush immediately to LiveLog.txt
+Print("This appears in VS Code in real-time!");</pre>
+                    </li>
+                    <li>
+                        <strong>(Optional) Clean session end marker</strong><br>
+                        Call <span class="code-inline">LiveLogClose()</span> from your <span class="code-inline">OnDeinit</span> to write a "Session Ended" marker in the log:
+                        <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">void OnDeinit(const int reason)
+{
+    LiveLogClose();
+}</pre>
+                    </li>
+                </ul>
+
+                <h3>Commands</h3>
+                <ul>
+                    <li><span class="code-inline">MQL: Toggle Live Runtime Log</span> — Start / stop log tailing (also available in the status bar)</li>
+                    <li><span class="code-inline">MQL: Install LiveLog Library</span> — Deploy <span class="code-inline">LiveLog.mqh</span> to your Include folder</li>
+                    <li><span class="code-inline">MQL: Switch Log Tail Mode (Live/Standard)</span> — Switch between real-time and standard modes</li>
+                </ul>
+
+                <h3>Notes</h3>
+                <ul>
+                    <li>Only <em>new</em> log entries are shown — historical entries are not replayed when tailing starts.</li>
+                    <li><span class="code-inline">LiveLog.txt</span> auto-rotates at 10 MB (renamed to <span class="code-inline">LiveLog_YYYY_MM_DD.txt</span>) to prevent disk space issues.</li>
+                    <li>The extension auto-detects your MQL version (4 or 5) and data folder from the active file and workspace structure. Set <span class="code-inline">mql_tools.Metaeditor.Include5Dir</span> or <span class="code-inline">Include4Dir</span> explicitly if auto-detection fails.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>This feature is in its early stages and your input is critical. Encountered a bug, have a feature request, or just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BLive%20Log%5D%20" style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open an Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button id="dismissBtn4">Got it! Dismiss for version ${version}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            });
+        });
+
+        // Dismiss buttons (all tabs)
+        document.querySelectorAll('.dismiss-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                vscode.postMessage({ command: 'dismiss' });
+            });
+        });
+    </script>
+</body>
+</html>`;
+}
+
+module.exports = {
+    showStartupPage
+};

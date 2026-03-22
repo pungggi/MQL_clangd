@@ -296,17 +296,24 @@ string MqlDebugEscape(string val) {
 #define MQLDEBUG_PAUSE_TIMEOUT_SEC 120
 
 //+------------------------------------------------------------------+
-//| Check if a command is present in the command file                |
+//| Read the command file content (single I/O roundtrip)             |
 //+------------------------------------------------------------------+
-bool MqlDebugCheckCmd(string cmd) {
+string MqlDebugReadCmd() {
     int handle = FileOpen(MQLDEBUG_CMD_FILENAME,
                           FILE_READ | FILE_TXT | FILE_ANSI |
                           FILE_SHARE_READ | FILE_SHARE_WRITE);
     if (handle == INVALID_HANDLE)
-        return false;
+        return "";
     string line = FileReadString(handle);
     FileClose(handle);
-    return (StringFind(line, cmd) >= 0);
+    return line;
+}
+
+//+------------------------------------------------------------------+
+//| Check if a command is present in the command file                |
+//+------------------------------------------------------------------+
+bool MqlDebugCheckCmd(string cmd) {
+    return (StringFind(MqlDebugReadCmd(), cmd) >= 0);
 }
 
 //+------------------------------------------------------------------+
@@ -329,8 +336,19 @@ void MqlDebugPause() {
             break;
         }
 
+        // Single file read per iteration, check both commands
+        string cmd = MqlDebugReadCmd();
+
+        // VS Code wrote STOP → signal end, close log, and self-unload
+        if (StringFind(cmd, "STOP") >= 0) {
+            MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|SESSION_END");
+            MqlDebugClose();
+            ExpertRemove();
+            return;
+        }
+
         // VS Code wrote CONTINUE → resume
-        if (MqlDebugCheckCmd("CONTINUE")) {
+        if (StringFind(cmd, "CONTINUE") >= 0) {
             break;
         }
 

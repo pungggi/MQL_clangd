@@ -222,6 +222,90 @@ function macroForType(mqlType, isArray) {
 }
 
 // -------------------------------------------------------------------------
+// Well-known MQL built-in globals and struct definitions
+// -------------------------------------------------------------------------
+
+/** MQL4 built-in price/market globals + MQL5 predefined variables. */
+const MQL_BUILTIN_GLOBALS = new Map([
+    ['Bid',        { type: 'double', isArray: false, isInput: false }],
+    ['Ask',        { type: 'double', isArray: false, isInput: false }],
+    ['Point',      { type: 'double', isArray: false, isInput: false }],
+    ['Digits',     { type: 'int',    isArray: false, isInput: false }],
+    ['Spread',     { type: 'int',    isArray: false, isInput: false }],
+    ['Bars',       { type: 'int',    isArray: false, isInput: false }],
+    ['_Point',     { type: 'double', isArray: false, isInput: false }],
+    ['_Digits',    { type: 'int',    isArray: false, isInput: false }],
+    ['_Period',    { type: 'int',    isArray: false, isInput: false }],
+    ['_LastError', { type: 'int',    isArray: false, isInput: false }],
+    ['_StopFlag',  { type: 'bool',   isArray: false, isInput: false }],
+]);
+
+/** Well-known MQL struct/built-in type definitions. */
+const MQL_BUILTIN_STRUCTS = new Map([
+    ['MqlTick', { parent: null, members: new Map([
+        ['time',         { type: 'datetime', isArray: false }],
+        ['bid',          { type: 'double',   isArray: false }],
+        ['ask',          { type: 'double',   isArray: false }],
+        ['last',         { type: 'double',   isArray: false }],
+        ['volume',       { type: 'ulong',    isArray: false }],
+        ['time_msc',     { type: 'long',     isArray: false }],
+        ['flags',        { type: 'uint',     isArray: false }],
+        ['volume_real',  { type: 'double',   isArray: false }],
+    ])}],
+    ['MqlRates', { parent: null, members: new Map([
+        ['time',         { type: 'datetime', isArray: false }],
+        ['open',         { type: 'double',   isArray: false }],
+        ['high',         { type: 'double',   isArray: false }],
+        ['low',          { type: 'double',   isArray: false }],
+        ['close',        { type: 'double',   isArray: false }],
+        ['tick_volume',  { type: 'long',     isArray: false }],
+        ['spread',       { type: 'int',      isArray: false }],
+        ['real_volume',  { type: 'long',     isArray: false }],
+    ])}],
+    ['MqlDateTime', { parent: null, members: new Map([
+        ['year',         { type: 'int', isArray: false }],
+        ['mon',          { type: 'int', isArray: false }],
+        ['day',          { type: 'int', isArray: false }],
+        ['hour',         { type: 'int', isArray: false }],
+        ['min',          { type: 'int', isArray: false }],
+        ['sec',          { type: 'int', isArray: false }],
+        ['day_of_week',  { type: 'int', isArray: false }],
+        ['day_of_year',  { type: 'int', isArray: false }],
+    ])}],
+    ['MqlTradeRequest', { parent: null, members: new Map([
+        ['action',       { type: 'int',      isArray: false }],
+        ['magic',        { type: 'ulong',    isArray: false }],
+        ['order',        { type: 'ulong',    isArray: false }],
+        ['symbol',       { type: 'string',   isArray: false }],
+        ['volume',       { type: 'double',   isArray: false }],
+        ['price',        { type: 'double',   isArray: false }],
+        ['stoplimit',    { type: 'double',   isArray: false }],
+        ['sl',           { type: 'double',   isArray: false }],
+        ['tp',           { type: 'double',   isArray: false }],
+        ['deviation',    { type: 'ulong',    isArray: false }],
+        ['type',         { type: 'int',      isArray: false }],
+        ['type_filling', { type: 'int',      isArray: false }],
+        ['type_time',    { type: 'int',      isArray: false }],
+        ['expiration',   { type: 'datetime', isArray: false }],
+        ['comment',      { type: 'string',   isArray: false }],
+        ['position',     { type: 'ulong',    isArray: false }],
+        ['position_by',  { type: 'ulong',    isArray: false }],
+    ])}],
+    ['MqlTradeResult', { parent: null, members: new Map([
+        ['retcode',          { type: 'uint',   isArray: false }],
+        ['deal',             { type: 'ulong',  isArray: false }],
+        ['order',            { type: 'ulong',  isArray: false }],
+        ['volume',           { type: 'double', isArray: false }],
+        ['price',            { type: 'double', isArray: false }],
+        ['bid',              { type: 'double', isArray: false }],
+        ['ask',              { type: 'double', isArray: false }],
+        ['comment',          { type: 'string', isArray: false }],
+        ['request_id',       { type: 'uint',   isArray: false }],
+        ['retcode_external', { type: 'int',    isArray: false }],
+    ])}],
+]);
+
+// -------------------------------------------------------------------------
 // Local variable discovery
 // -------------------------------------------------------------------------
 
@@ -484,7 +568,7 @@ function parseGlobalDeclarations(lines) {
         if (!m) continue;
         if (SKIP.has(m[1])) continue;
 
-        const isInput = /\binput\b/.test(lines[i]);
+        const isInput = /\bs?input\b/.test(lines[i]);
         RE_VNAME.lastIndex = 0;
         let vm;
         while ((vm = RE_VNAME.exec(m[2])) !== null) {
@@ -524,6 +608,15 @@ function buildTypeDatabase(graph) {
                 globalMap.set(g.name, { type: g.type, isArray: g.isArray, isInput: g.isInput });
             }
         }
+    }
+
+    // Inject well-known MQL built-in globals (only if not already declared in user code)
+    for (const [name, info] of MQL_BUILTIN_GLOBALS) {
+        if (!globalMap.has(name)) globalMap.set(name, info);
+    }
+    // Inject well-known MQL struct definitions (only if not already parsed from user code)
+    for (const [name, def] of MQL_BUILTIN_STRUCTS) {
+        if (!classMap.has(name)) classMap.set(name, def);
     }
 
     return { classMap, globalMap };
@@ -841,6 +934,72 @@ function findClassFieldExpansions(locals, classMap) {
         }
     }
     return results;
+}
+
+/**
+ * Find global variables of class/struct type referenced near a breakpoint.
+ * Used in deep analysis to expand those instances into their primitive fields.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based
+ * @param {Map}      globalMap
+ * @param {Map}      classMap
+ * @param {Set}      seen
+ * @returns {{ name: string, type: string }[]}
+ */
+function findGlobalClassInstancesNearBreakpoint(lines, bpLine, globalMap, classMap, seen) {
+    const results = [];
+    const idx = bpLine - 1;
+    const from = Math.max(0, idx - 15);
+    const to = Math.min(lines.length - 1, idx + 5);
+
+    for (const [varName, info] of globalMap) {
+        if (seen.has(varName)) continue;
+        if (!classMap.has(info.type)) continue;
+
+        const re = new RegExp('\\b' + varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+        for (let i = from; i <= to; i++) {
+            const trimmed = lines[i].trimStart();
+            if (trimmed.startsWith('//') || trimmed.startsWith('/*') ||
+                trimmed.startsWith('*') || trimmed.startsWith('#')) continue;
+            if (re.test(lines[i])) {
+                results.push({ name: varName, type: info.type });
+                break;
+            }
+        }
+    }
+    return results;
+}
+
+/**
+ * Extract watchable expressions from a return statement near the breakpoint.
+ * Handles: return ident; return obj.member; skips function calls.
+ *
+ * @param {string[]} lines
+ * @param {number}   bpLine  1-based
+ * @returns {string[]}
+ */
+function extractReturnExpressions(lines, bpLine) {
+    const idx = bpLine - 1;
+    const from = Math.max(0, idx - 1);
+    const to = Math.min(lines.length - 1, idx + 2);
+
+    for (let i = from; i <= to; i++) {
+        const m = lines[i].match(/\breturn\s+(.+?)\s*;/);
+        if (!m) continue;
+        const expr = m[1].trim();
+        const results = [];
+        const RE = /\b([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\b/g;
+        let rm;
+        while ((rm = RE.exec(expr)) !== null) {
+            const e = rm[1];
+            const afterIdx = rm.index + e.length;
+            if (afterIdx < expr.length && expr[afterIdx] === '(') continue; // skip function calls
+            results.push(e);
+        }
+        return [...new Set(results)];
+    }
+    return [];
 }
 
 /**
@@ -1277,6 +1436,35 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                         seen.add(varName);
                         watchVars.push({ name: varName, type: info.type, isArray: info.isArray });
                     }
+                    // Expand global class instances referenced near breakpoint into their fields
+                    const globalClassInstances = findGlobalClassInstancesNearBreakpoint(
+                        node.lines, bp.line, typeDB.globalMap, typeDB.classMap, seen
+                    );
+                    for (const field of findClassFieldExpansions(globalClassInstances, typeDB.classMap)) {
+                        if (!seen.has(field.name)) {
+                            seen.add(field.name);
+                            watchVars.push(field);
+                        }
+                    }
+                }
+
+                // Watch return expression (covers globals returned directly, always active)
+                for (const expr of extractReturnExpressions(node.lines, bp.line)) {
+                    if (seen.has(expr)) continue;
+                    let type = '', isArray = false;
+                    const local = localVars.find(l => l.name === expr);
+                    if (local) {
+                        type = local.type; isArray = local.isArray || false;
+                    } else if (typeDB.globalMap.has(expr)) {
+                        const g = typeDB.globalMap.get(expr);
+                        type = g.type; isArray = g.isArray;
+                    } else if (expr.includes('.')) {
+                        const resolved = resolveMemberType(expr, localVars, typeDB.globalMap, typeDB.classMap, enclosingClass);
+                        if (resolved) { type = resolved.type; isArray = resolved.isArray; }
+                    }
+                    if (!type || !isWatchableType(type, typeDB.classMap)) continue;
+                    seen.add(expr);
+                    watchVars.push({ name: expr, type, isArray });
                 }
 
                 const sanitizedBase = sanitizeLabel(path.basename(node.filePath));
@@ -1344,10 +1532,15 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
         for (const tf of tempFiles) {
             try { fs.unlinkSync(tf); } catch {}
         }
-        if (entryTempPath) {
-            const ext = path.extname(entryPointPath);
-            const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
-            try { fs.unlinkSync(binaryPath); } catch {}
+        if (!entryTempPath) return null;
+        const ext = path.extname(entryPointPath);
+        const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
+        try {
+            fs.unlinkSync(binaryPath);
+            return null;
+        } catch {
+            // File still locked by MT5 — return path so caller can retry
+            return binaryPath;
         }
     };
 
