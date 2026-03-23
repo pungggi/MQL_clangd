@@ -14,6 +14,8 @@ let serverProcess = null;
 const DEFAULT_PORT = 3002;
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000; // 10 minutes
+const PID_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours — stale PID threshold
+const SERVER_IDLE_TIMEOUT_SEC = 30 * 60; // 30 min — server self-terminates if idle
 
 // ---------------------------------------------------------------------------
 // Date helpers
@@ -144,27 +146,42 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
         try {
             const pid = parseInt(fs.readFileSync(pidPath, 'utf8'), 10);
             if (!isNaN(pid) && pid > 0 && pid < 4294967295) {
-                if (process.platform === 'win32') {
-                    // On Windows, process.kill(pid, 0) is unreliable — it can succeed for
-                    // zombie/reaped processes. Use pingServer as the primary liveness check.
-                    if (await pingServer(port)) {
-                        return true;
-                    }
-                    // Not responding — kill if it's ours
-                    if (await isProcessOurServer(pid, serverDir)) {
-                        try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
-                    }
-                } else {
-                    // On Unix, signal 0 reliably tests process existence
-                    try {
-                        process.kill(pid, 0); // throws if not running
+                // Stale PID guard — if the PID file is older than PID_MAX_AGE_MS,
+                // the original VS Code host likely crashed without cleanup.
+                let pidIsStale = false;
+                try {
+                    const pidStat = fs.statSync(pidPath);
+                    pidIsStale = (Date.now() - pidStat.mtimeMs) > PID_MAX_AGE_MS;
+                } catch { /* stat failed — treat as stale */ pidIsStale = true; }
+
+                if (!pidIsStale) {
+                    if (process.platform === 'win32') {
+                        // On Windows, process.kill(pid, 0) is unreliable — it can succeed for
+                        // zombie/reaped processes. Use pingServer as the primary liveness check.
                         if (await pingServer(port)) {
                             return true;
                         }
+                        // Not responding — kill if it's ours
                         if (await isProcessOurServer(pid, serverDir)) {
-                            process.kill(pid, 'SIGTERM');
+                            try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
                         }
-                    } catch { /* process not running — proceed */ }
+                    } else {
+                        // On Unix, signal 0 reliably tests process existence
+                        try {
+                            process.kill(pid, 0); // throws if not running
+                            if (await pingServer(port)) {
+                                return true;
+                            }
+                            if (await isProcessOurServer(pid, serverDir)) {
+                                process.kill(pid, 'SIGTERM');
+                            }
+                        } catch { /* process not running — proceed */ }
+                    }
+                } else {
+                    // PID file is stale — try to kill the orphan if it's ours
+                    if (await isProcessOurServer(pid, serverDir)) {
+                        try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
+                    }
                 }
             }
             fs.unlinkSync(pidPath);
@@ -173,7 +190,7 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
 
     const config = vscode.workspace.getConfiguration('mql_tools');
     const nodeBin = config.get('Backtest.NodePath', 'node');
-    serverProcess = spawn(nodeBin, ['src/index.js', 'serve', '--title=mql-trade-report-server'], {
+    serverProcess = spawn(nodeBin, ['src/index.js', 'serve', '--title=mql-trade-report-server', `--idle-timeout=${SERVER_IDLE_TIMEOUT_SEC}`], {
         cwd: serverDir,
         detached: true,
         stdio: 'ignore',

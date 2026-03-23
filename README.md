@@ -281,7 +281,7 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 **How to use:**
 
 1. Open any `.mq5`, `.mq4`, or `.mqh` file belonging to your EA.
-2. Press `Ctrl+Shift+T`, click the **⚗ Run Backtest** button in the editor title bar, or run `MQL: Run Backtest` from the Command Palette.
+2. Press `Ctrl+Alt+T`, click the **⚗ Run Backtest** button in the editor title bar, or run `MQL: Run Backtest` from the Command Palette.
 3. Select the EA (auto-detected from your current file, or pick from a list).
 4. Choose the symbol and date range (pre-filled from `tester.ini`).
 5. MT5 launches the Strategy Tester in the background. A progress notification tracks elapsed time.
@@ -311,7 +311,7 @@ Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The ext
 
 1. Open the `.mq5`, `.mq4`, or `.mqh` file you want to debug.
 2. Place breakpoints in the editor margin (click to the left of the line numbers) where you want to inspect variables.
-3. Click the **Start Debugging** (bug icon) button in the editor title bar, or press `Ctrl+Shift+D`, or run `MQL: Start Debugging` from the Command Palette.
+3. Click the **Start Debugging** (bug icon) button in the editor title bar, or press `Ctrl+Alt+D`, or run `MQL: Start Debugging` from the Command Palette.
    - *Starting from an `.mqh` file automatically resolves dependencies and asks which main EA to instrument.*
 4. The extension will automatically:
    - Deploy `MqlDebug.mqh` to your MetaTrader `Include/` folder (always up to date).

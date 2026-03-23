@@ -77,6 +77,7 @@ class TradeReportDashboard {
         }
         // Quick-parse summary for each EA's runs (latest 10 per EA for speed)
         return eas.map(ea => {
+            const totalRuns = ea.runs.length;
             const runs = ea.runs.slice(0, 10).map(run => {
                 let data;
                 try {
@@ -92,7 +93,7 @@ class TradeReportDashboard {
                 data.hasSnapshot = fs.existsSync(snapDir);
                 return data;
             });
-            return { name: ea.name, dir: ea.dir, runsDir: ea.runsDir, runs };
+            return { name: ea.name, dir: ea.dir, runsDir: ea.runsDir, runs, totalRuns };
         });
     }
 
@@ -150,18 +151,18 @@ class TradeReportDashboard {
 <title>Trade Report Dashboard</title>
 <style>
 :root {
-    --bg: #1e1e2e;
-    --surface: #282840;
-    --surface2: #313150;
-    --surface3: #3b3b5c;
-    --text: #cdd6f4;
-    --text-dim: #6c7086;
-    --green: #a6e3a1;
-    --red: #f38ba8;
-    --blue: #89b4fa;
-    --yellow: #f9e2af;
-    --border: #45475a;
-    --hover: #363658;
+    --bg: var(--vscode-editor-background, #1e1e2e);
+    --surface: var(--vscode-sideBar-background, #282840);
+    --surface2: var(--vscode-input-background, #313150);
+    --surface3: var(--vscode-list-activeSelectionBackground, #3b3b5c);
+    --text: var(--vscode-editor-foreground, #cdd6f4);
+    --text-dim: var(--vscode-descriptionForeground, #6c7086);
+    --green: var(--vscode-charts-green, #a6e3a1);
+    --red: var(--vscode-charts-red, #f38ba8);
+    --blue: var(--vscode-charts-blue, #89b4fa);
+    --yellow: var(--vscode-charts-yellow, #f9e2af);
+    --border: var(--vscode-panel-border, #45475a);
+    --hover: var(--vscode-list-hoverBackground, #363658);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -327,7 +328,10 @@ body {
             h += '<div class="ea-card">';
             h += '<div class="ea-header">';
             h += '<div class="ea-name">' + esc(ea.name) + '</div>';
-            h += '<div class="ea-meta">' + ea.runs.length + ' run' + (ea.runs.length !== 1 ? 's' : '') + '</div>';
+            var runLabel = ea.totalRuns > ea.runs.length
+                ? 'showing ' + ea.runs.length + ' of ' + ea.totalRuns + ' runs'
+                : ea.runs.length + ' run' + (ea.runs.length !== 1 ? 's' : '');
+            h += '<div class="ea-meta">' + runLabel + '</div>';
             h += '</div>';
 
             h += '<table class="runs-table"><thead><tr>';

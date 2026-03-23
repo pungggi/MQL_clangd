@@ -366,16 +366,16 @@ class TradeReportPanel {
 <title>MQL Trade Report</title>
 <style>
 :root {
-    --bg: #1e1e2e;
-    --surface: #282840;
-    --surface2: #313150;
-    --text: #cdd6f4;
-    --text-dim: #6c7086;
-    --green: #a6e3a1;
-    --red: #f38ba8;
-    --blue: #89b4fa;
-    --yellow: #f9e2af;
-    --border: #45475a;
+    --bg: var(--vscode-editor-background, #1e1e2e);
+    --surface: var(--vscode-sideBar-background, #282840);
+    --surface2: var(--vscode-input-background, #313150);
+    --text: var(--vscode-editor-foreground, #cdd6f4);
+    --text-dim: var(--vscode-descriptionForeground, #6c7086);
+    --green: var(--vscode-charts-green, #a6e3a1);
+    --red: var(--vscode-charts-red, #f38ba8);
+    --blue: var(--vscode-charts-blue, #89b4fa);
+    --yellow: var(--vscode-charts-yellow, #f9e2af);
+    --border: var(--vscode-panel-border, #45475a);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {

@@ -340,7 +340,12 @@ void MqlDebugPause() {
         string cmd = MqlDebugReadCmd();
 
         // VS Code wrote STOP → signal end, close log, and self-unload
-        if (StringFind(cmd, "STOP") >= 0) {
+        // Trim whitespace and require an exact token match to avoid false
+        // positives from substrings like "NOTSTOP" or "STOPPING".
+        string trimmedCmd = cmd;
+        StringTrimLeft(trimmedCmd);
+        StringTrimRight(trimmedCmd);
+        if (trimmedCmd == "STOP") {
             MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|SESSION_END");
             MqlDebugClose();
             ExpertRemove();

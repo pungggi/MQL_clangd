@@ -1528,20 +1528,23 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
         }
     }
 
+    /**
+     * Attempt to delete all temp files (sources + binary).
+     * Returns an array of file paths that could not be deleted (still locked
+     * by MT5). The caller should retry these later.
+     * @returns {string[]}  Paths that could not be deleted yet
+     */
     const restore = () => {
+        const locked = [];
         for (const tf of tempFiles) {
-            try { fs.unlinkSync(tf); } catch {}
+            try { fs.unlinkSync(tf); } catch { locked.push(tf); }
         }
-        if (!entryTempPath) return null;
-        const ext = path.extname(entryPointPath);
-        const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
-        try {
-            fs.unlinkSync(binaryPath);
-            return null;
-        } catch {
-            // File still locked by MT5 — return path so caller can retry
-            return binaryPath;
+        if (entryTempPath) {
+            const ext = path.extname(entryPointPath);
+            const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
+            try { fs.unlinkSync(binaryPath); } catch { locked.push(binaryPath); }
         }
+        return locked;
     };
 
     if (!entryTempPath) return null;
@@ -1549,4 +1552,18 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     return { tempPath: entryTempPath, restore, skipped: skippedArr };
 }
 
-module.exports = { instrumentWorkspace };
+module.exports = {
+    instrumentWorkspace,
+    // Exported for unit testing
+    _test: {
+        MqlLineClassifier,
+        isConditionSafe,
+        findInjectionPoint,
+        parseWatchAnnotations,
+        macroForType,
+        parseLocalsInScope,
+        parseFunctionParams,
+        sanitizeLabel,
+        sanitizeCondition,
+    }
+};

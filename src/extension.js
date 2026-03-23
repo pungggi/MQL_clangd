@@ -2348,14 +2348,12 @@ function findExpertsDir() {
                 } catch (err) {
                     if (outputChannel) {
                         outputChannel.appendLine(`Error checking path for termId ${termId} in ${mqRoot} (${mqlDir}): ${err.message}`);
-                        outputChannel.show(true);
                     }
                 }
             }
         } catch (err) {
             if (outputChannel) {
                 outputChannel.appendLine(`Error reading MetaQuotes root directory ${mqRoot}: ${err.message}`);
-                outputChannel.show(true);
             }
         }
         // Pick the one with the most recently modified Experts subfolder
@@ -2365,7 +2363,6 @@ function findExpertsDir() {
                 try { return fs.statSync(b).mtime - fs.statSync(a).mtime; } catch (err) {
                     if (outputChannel) {
                         outputChannel.appendLine(`Error comparing modification times for candidates ${a} and ${b}: ${err.message}`);
-                        outputChannel.show(true);
                     }
                     return 0;
                 }
@@ -2465,6 +2462,7 @@ function activate(context) {
         }
     });
 
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.showStartupPage', () => showStartupPage(context, true)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(COMPILE_MODE_CHECK, context)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => Compile(COMPILE_MODE_COMPILE, context)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFileAndOpenTerminal', () => Compile(COMPILE_MODE_COMPILE, context, { onSuccess: OpenTradingTerminal })));

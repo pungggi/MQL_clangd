@@ -1,12 +1,14 @@
 const vscode = require('vscode');
 
-function showStartupPage(context) {
+function showStartupPage(context, force = false) {
     const currentVersion = context.extension.packageJSON.version || '1.0.0';
 
     // Check if dismissed for current version
-    const dismissedVersion = context.globalState.get('mql-tools.startupPageDismissedVersion');
-    if (dismissedVersion === currentVersion) {
-        return; // Already dismissed for this version, don't show
+    if (!force) {
+        const dismissedVersion = context.globalState.get('mql-tools.startupPageDismissedVersion');
+        if (dismissedVersion === currentVersion) {
+            return; // Already dismissed for this version, don't show
+        }
     }
 
     const panel = vscode.window.createWebviewPanel(
@@ -21,14 +23,18 @@ function showStartupPage(context) {
 
     panel.webview.html = getWebviewContent(currentVersion);
 
+    // Mark version as seen when the panel is closed (by any means)
+    panel.onDidDispose(() => {
+        context.globalState.update('mql-tools.startupPageDismissedVersion', currentVersion);
+    });
+
     // Handle messages from the webview
     panel.webview.onDidReceiveMessage(
         message => {
             switch (message.command) {
                 case 'dismiss':
                     context.globalState.update('mql-tools.startupPageDismissedVersion', currentVersion);
-                    vscode.window.showInformationMessage(`Welcome page dismissed for version ${currentVersion}.`);
-                    panel.dispose(); // Optional: close the panel when dismissed
+                    panel.dispose();
                     return;
             }
         },
@@ -216,7 +222,7 @@ function getWebviewContent(version) {
         }
 
         .highlight-box {
-            background-color: rgba(var(--vscode-textLink-foreground), 0.1);
+            background-color: color-mix(in srgb, var(--accent-color) 10%, transparent);
             border-left: 4px solid var(--accent-color);
             padding: 15px;
             margin: 20px 0;
@@ -228,7 +234,7 @@ function getWebviewContent(version) {
             padding: 15px;
             margin: 20px 0;
             border-radius: 0 4px 4px 0;
-            background-color: rgba(0,0,0,0.08);
+            background-color: color-mix(in srgb, var(--vscode-editorWarning-foreground) 8%, transparent);
         }
 
         .actions {
@@ -291,7 +297,6 @@ function getWebviewContent(version) {
             <h1>MQL Clangd <span class="badge">v${version}</span></h1>
             <p class="subtitle">Bringing modern development tools to MetaTrader</p>
         </header>
-
         <!-- Tab buttons -->
         <nav class="tabs">
             <button class="tab-btn active" data-tab="debugger">MQL Debugger</button>
@@ -316,7 +321,13 @@ function getWebviewContent(version) {
                 <p>Unlike traditional debuggers, this solution uses a custom <strong>Debug Bridge</strong>. When you start debugging, the extension automatically instruments your MQL code with lightweight diagnostic macros, compiles it, and launches it in MetaTrader. It then communicates with VS Code via lightning-fast file I/O to simulate a real debugging session!</p>
 
                 <h3>Step-by-Step Guide</h3>
-                <ul class="step-list">
+                <ul class="step-list">Verify each finding against the current code and only fix it if needed.
+
+In @src/startupPage.js around lines 218 - 224, The CSS uses rgba(var(--vscode-textLink-foreground), 0.1) which fails because --vscode-textLink-foreground is a hex string; update the .highlight-box rule to compute a translucent background correctly by either using color-mix (e.g. background-color: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, transparent)) with a fallback hex, or switch to a dedicated semi-transparent variable (e.g. --vscode-textLink-foreground-alpha) and use that; modify the .highlight-box selector and the --vscode-textLink-foreground usage accordingly to ensure a valid translucent background.
+Verify each finding against the current code and only fix it if needed.
+
+In @src/startupPage.js around lines 218 - 224, The CSS uses rgba(var(--vscode-textLink-foreground), 0.1) which fails because --vscode-textLink-foreground is a hex string; update the .highlight-box rule to compute a translucent background correctly by either using color-mix (e.g. background-color: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, transparent)) with a fallback hex, or switch to a dedicated semi-transparent variable (e.g. --vscode-textLink-foreground-alpha) and use that; modify the .highlight-box selector and the --vscode-textLink-foreground usage accordingly to ensure a valid translucent background.
+
                     <li>
                         <strong>Set Breakpoints</strong><br>
                         Open any <span class="code-inline">.mq4</span>, <span class="code-inline">.mq5</span>, or <span class="code-inline">.mqh</span> file and set breakpoints by clicking in the editor's left gutter.
@@ -433,7 +444,7 @@ void OnTick()
 
             <div class="actions">
                 <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
-                <button id="dismissBtn2">Got it! Dismiss for version ${version}</button>
+                <button class="dismiss-btn">Got it! Dismiss for version ${version}</button>
             </div>
 
             <div class="footer">
@@ -503,7 +514,7 @@ void OnTick()
 
             <div class="actions">
                 <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
-                <button id="dismissBtn3">Got it! Dismiss for version ${version}</button>
+                <button class="dismiss-btn">Got it! Dismiss for version ${version}</button>
             </div>
 
             <div class="footer">
@@ -607,7 +618,7 @@ Print("This appears in VS Code in real-time!");</pre>
 
             <div class="actions">
                 <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
-                <button id="dismissBtn4">Got it! Dismiss for version ${version}</button>
+                <button class="dismiss-btn">Got it! Dismiss for version ${version}</button>
             </div>
 
             <div class="footer">

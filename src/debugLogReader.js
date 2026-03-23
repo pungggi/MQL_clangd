@@ -218,7 +218,7 @@ class MqlDebugLogReader {
      * @returns {DebugEvent|null}
      *
      * @typedef {Object} DebugEvent
-     * @property {'watch'|'break'|'enter'|'exit'} type
+     * @property {'watch'|'break'|'enter'|'exit'|'session_end'} type
      * @property {string} timestamp
      * @property {string} file        Source file (from __FILE__)
      * @property {string} func        Function name (from __FUNCTION__)

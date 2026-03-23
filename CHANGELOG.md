@@ -3,7 +3,7 @@
 ## 1.1.32 (pre-release)
 
 ### Features
-- **MQL Debugger (Real-Time Variable Inspection)**: Debug MetaTrader Expert Advisors and Scripts directly from VS Code. Place VS Code breakpoints, then press `Ctrl+Shift+D` or click the bug icon. The extension automatically instruments source files with telemetry macros (creating temporary `.mql_dbg_build.*` files — originals unchanged), compiles them, and streams variable states to a live debug dashboard. Temp files and compiled binaries auto-delete when the session ends. Supports `.mq5`, `.mq4`, and `.mqh` files (with automatic target resolution for headers).
+- **MQL Debugger (Real-Time Variable Inspection)**: Debug MetaTrader Expert Advisors and Scripts directly from VS Code. Place VS Code breakpoints, then press `Ctrl+Alt+D` or click the bug icon. The extension automatically instruments source files with telemetry macros (creating temporary `.mql_dbg_build.*` files — originals unchanged), compiles them, and streams variable states to a live debug dashboard. Temp files and compiled binaries auto-delete when the session ends. Supports `.mq5`, `.mq4`, and `.mqh` files (with automatic target resolution for headers).
   - **Auto-detected watches**: Locals, parameters, and member access expressions are collected automatically at each breakpoint. `deepAnalysis` mode additionally captures global primitives, `input` variables, and class field expansion.
   - **Manual `// @watch` annotations**: Explicitly name variables to watch near any breakpoint.
   - **Conditional breakpoints**: VS Code breakpoint conditions are honoured — telemetry only fires when the condition is true.
@@ -13,7 +13,7 @@
 - **Trade Report Dashboard**: Analyze Strategy Tester results in an interactive VS Code webview. Parses MT5 tester log files and displays trade summary (count, net P&L, win rate, gross profit/loss, commissions), an individual trade table, and a filterable log viewer (ALL / TRADE / INFO / WARN / DEBUG / ERROR).
   - **Click-to-source navigation**: Log entries and trades produced with LiveLog `Log*()` functions show clickable source badges that jump to the originating MQL line.
   - **Source Snapshots** (`mql_tools.TradeReport.SnapshotSources`): Copies referenced source files into a `snapshot/` folder next to the log so line-number links stay accurate after code changes.
-- **Run Backtest**: Launch an MT5 Strategy Tester run from VS Code (`Ctrl+Shift+T` / toolbar button / Command Palette). Auto-detects the EA, prompts for symbol and date range (pre-filled from `tester.ini`), monitors progress, and opens the Trade Report when done. Requires TradeReportServer (auto-started by default).
+- **Run Backtest**: Launch an MT5 Strategy Tester run from VS Code (`Ctrl+Alt+T` / toolbar button / Command Palette). Auto-detects the EA, prompts for symbol and date range (pre-filled from `tester.ini`), monitors progress, and opens the Trade Report when done. Requires TradeReportServer (auto-started by default).
   - New settings: `mql_tools.Backtest.ServerPort`, `AutoStartServer`, `PromptForParameters`, `AutoOpenReport`, `mql_tools.ShowButton.RunBacktest`.
 - **LiveLog — Source Location Tags**: `LogDebug`, `LogInfo`, `LogWarn`, `LogError` are now macros that embed `{File:Function:Line}` tags, enabling click-to-source in the Trade Report. New `LogTrade` macro for trade-level logging.
 - **Debug Adapter Protocol**: Registered `mql5` debugger type and breakpoint support for `mql5` / `mql4` languages, enabling native VS Code breakpoint gutters in MQL files.

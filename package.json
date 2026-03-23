@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.1.32",
+    "version": "1.1.31",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
@@ -471,6 +471,11 @@
                 "command": "mql_tools.stopDebugging",
                 "title": "%mql_tools.commands.stopDebugging.title%",
                 "category": "MQL"
+            },
+            {
+                "command": "mql_tools.showStartupPage",
+                "title": "MQL: Show Welcome Page",
+                "category": "MQL"
             }
         ],
         "menus": {
@@ -620,12 +625,12 @@
             },
             {
                 "command": "mql_tools.runBacktest",
-                "key": "ctrl+shift+t",
+                "key": "ctrl+alt+t",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             },
             {
                 "command": "mql_tools.startDebugging",
-                "key": "ctrl+shift+d",
+                "key": "ctrl+alt+d",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             }
         ]

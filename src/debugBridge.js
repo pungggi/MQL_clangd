@@ -39,6 +39,8 @@ class MqlDebugBridge {
         this._mql5Root = null;
         /** @type {ReturnType<typeof setInterval>|null} */
         this._retryTimer = null;
+        /** @type {vscode.OutputChannel|null} */
+        this._outputChannel = null;
     }
 
     get isActive() { return this._active; }
@@ -182,9 +184,9 @@ class MqlDebugBridge {
             this._reader = null;
         }
         if (this._restore) {
-            const lockedBinary = this._restore();
+            const lockedFiles = this._restore();
             this._restore = null;
-            if (lockedBinary) this._startDeleteRetry(lockedBinary);
+            if (lockedFiles && lockedFiles.length > 0) this._startDeleteRetry(lockedFiles);
         }
 
         // Clean up command file
@@ -226,25 +228,28 @@ class MqlDebugBridge {
     }
 
     /**
-     * Retry deleting a locked binary every 5 s for up to 60 s.
+     * Retry deleting locked temp files every 5 s for up to 60 s.
      * Cancelled automatically when a new session starts.
-     * @param {string} binaryPath
+     * @param {string[]} filePaths
      */
-    _startDeleteRetry(binaryPath) {
+    _startDeleteRetry(filePaths) {
         const MAX_ATTEMPTS = 12; // 12 × 5 s = 60 s
         let attempts = 0;
+        let remaining = [...filePaths];
         this._retryTimer = setInterval(() => {
             attempts++;
-            try {
-                fs.unlinkSync(binaryPath);
+            remaining = remaining.filter(fp => {
+                try {
+                    fs.unlinkSync(fp);
+                    this._log(`Cleaned up debug temp file: ${path.basename(fp)}`);
+                    return false; // removed from remaining
+                } catch {
+                    return true; // still locked
+                }
+            });
+            if (remaining.length === 0 || attempts >= MAX_ATTEMPTS) {
                 clearInterval(this._retryTimer);
                 this._retryTimer = null;
-                this._log(`Cleaned up debug binary: ${path.basename(binaryPath)}`);
-            } catch {
-                if (attempts >= MAX_ATTEMPTS) {
-                    clearInterval(this._retryTimer);
-                    this._retryTimer = null;
-                }
             }
         }, 5000);
     }
