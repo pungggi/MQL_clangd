@@ -36,5 +36,8 @@
     "mql_tools.commands.openTradingTerminal.title": "트레이딩 터미널 열기",
     "mql_tools.commands.createCommentary.title": "함수 주석 생성",
     "mql_tools.commands.reportNoisyDiagnostic.title": "시끄러운 clangd 진단 보고",
-    "mql_tools.commands.runBacktest.title": "백테스트 실행"
+    "mql_tools.commands.runBacktest.title": "백테스트 실행",
+    "mql_tools.commands.startDebugging.title": "MQL 디버그 세션 시작",
+    "mql_tools.commands.stopDebugging.title": "MQL 디버그 세션 중지",
+    "mql_tools.commands.showStartupPage.title": "시작 페이지 표시"
 }

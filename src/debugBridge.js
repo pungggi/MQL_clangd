@@ -43,6 +43,13 @@ class MqlDebugBridge {
         this._outputChannel = null;
     }
 
+    dispose() {
+        if (this._outputChannel) {
+            this._outputChannel.dispose();
+            this._outputChannel = null;
+        }
+    }
+
     get isActive() { return this._active; }
 
     // -------------------------------------------------------------------------
@@ -248,6 +255,9 @@ class MqlDebugBridge {
                 }
             });
             if (remaining.length === 0 || attempts >= MAX_ATTEMPTS) {
+                if (attempts >= MAX_ATTEMPTS && remaining.length > 0) {
+                    this._log(`Timeout waiting to delete ${remaining.length} locked debug temp files. Files may persist until editor is closed: ${remaining.join(', ')}`);
+                }
                 clearInterval(this._retryTimer);
                 this._retryTimer = null;
             }

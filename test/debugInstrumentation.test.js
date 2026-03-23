@@ -149,6 +149,24 @@ suite('debugInstrumentation', function () {
             assert.strictEqual(findInjectionPoint(lines, 1), null);
         });
 
+        test('returns null when targetLine is negative', function () {
+            const lines = [
+                'void OnTick() {',
+                '  int x = 5;',
+                '}',
+            ];
+            assert.strictEqual(findInjectionPoint(lines, -1), null);
+        });
+
+        test('returns null when targetLine exceeds array length', function () {
+            const lines = [
+                'void OnTick() {',
+                '  int x = 5;',
+                '}',
+            ];
+            assert.strictEqual(findInjectionPoint(lines, lines.length + 5), null);
+        });
+
         test('skips preprocessor directives', function () {
             const lines = [
                 'void Foo() {',
@@ -288,9 +306,7 @@ suite('debugInstrumentation', function () {
             ];
             const locals = parseLocalsInScope(lines, 2);
             const names = locals.map(l => l.name);
-            assert.ok(names.includes('bar'), 'should find param bar');
-            assert.ok(names.includes('baz'), 'should find param baz');
-            assert.ok(names.includes('x'), 'should find local x');
+            assert.deepStrictEqual(names.sort(), ['bar', 'baz', 'x']);
         });
 
         test('returns empty for out of range', function () {
@@ -331,11 +347,7 @@ suite('debugInstrumentation', function () {
 
     suite('sanitizeLabel', function () {
         test('replaces non-alphanumeric characters with underscores', function () {
-            const result = sanitizeLabel('test"label\\with|pipes');
-            assert.ok(!result.includes('"'));
-            assert.ok(!result.includes('\\'));
-            assert.ok(!result.includes('|'));
-            assert.strictEqual(result, 'test_label_with_pipes');
+            assert.strictEqual(sanitizeLabel('test"label\\with|pipes'), 'test_label_with_pipes');
         });
 
         test('preserves alphanumeric, underscores and hyphens', function () {
@@ -355,14 +367,11 @@ suite('debugInstrumentation', function () {
         });
 
         test('escapes comment delimiters', function () {
-            const result = sanitizeCondition('x /* comment */ y');
-            assert.ok(!result.includes('/*'));
-            assert.ok(!result.includes('*/'));
+            assert.strictEqual(sanitizeCondition('x /* comment */ y'), 'x /\\* comment *\\/ y');
         });
 
         test('escapes newlines', function () {
-            const result = sanitizeCondition('x > 5\n&& y < 10');
-            assert.ok(!result.includes('\n'));
+            assert.strictEqual(sanitizeCondition('x > 5\n&& y < 10'), 'x > 5\\n&& y < 10');
         });
 
         test('returns empty for null/undefined', function () {

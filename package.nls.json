@@ -36,5 +36,6 @@
     "mql_tools.commands.reportNoisyDiagnostic.title": "Report noisy clangd diagnostic",
     "mql_tools.commands.runBacktest.title": "Run Backtest",
     "mql_tools.commands.startDebugging.title": "Start MQL Debug Session",
-    "mql_tools.commands.stopDebugging.title": "Stop MQL Debug Session"
+    "mql_tools.commands.stopDebugging.title": "Stop MQL Debug Session",
+    "mql_tools.commands.showStartupPage.title": "Show Welcome Page"
 }

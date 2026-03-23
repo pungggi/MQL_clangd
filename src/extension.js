@@ -2941,6 +2941,12 @@ function deactivate() {
     } catch (error) {
         console.error('Error during debugBridge.stop():', error);
     }
+
+    try {
+        debugBridge.dispose();
+    } catch (error) {
+        console.error('Error during debugBridge.dispose():', error);
+    }
 }
 
 

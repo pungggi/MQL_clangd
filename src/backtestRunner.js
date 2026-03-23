@@ -173,7 +173,7 @@ async function startServer(serverDir, port = DEFAULT_PORT) {
                                 return true;
                             }
                             if (await isProcessOurServer(pid, serverDir)) {
-                                process.kill(pid, 'SIGTERM');
+                                try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
                             }
                         } catch { /* process not running — proceed */ }
                     }

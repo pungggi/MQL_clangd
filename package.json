@@ -474,7 +474,7 @@
             },
             {
                 "command": "mql_tools.showStartupPage",
-                "title": "MQL: Show Welcome Page",
+                "title": "%mql_tools.commands.showStartupPage.title%",
                 "category": "MQL"
             }
         ],

@@ -36,5 +36,8 @@
     "mql_tools.commands.openTradingTerminal.title": "Ticaret terminalini aç",
     "mql_tools.commands.createCommentary.title": "Fonksiyon yorumu oluştur",
     "mql_tools.commands.reportNoisyDiagnostic.title": "Gürültülü clangd tanılamasını bildir",
-    "mql_tools.commands.runBacktest.title": "Geriye Dönük Testi Çalıştır"
+    "mql_tools.commands.runBacktest.title": "Geriye Dönük Testi Çalıştır",
+    "mql_tools.commands.startDebugging.title": "MQL Hata Ayıklama Oturumunu Başlat",
+    "mql_tools.commands.stopDebugging.title": "MQL Hata Ayıklama Oturumunu Durdur",
+    "mql_tools.commands.showStartupPage.title": "Karşılama Sayfasını Göster"
 }

@@ -115,6 +115,8 @@ function isConditionSafe(condition) {
  *                         or null if no safe point found within the search window.
  */
 function findInjectionPoint(lines, targetLine) {
+    if (targetLine < 1) return null;
+
     const classifier = new MqlLineClassifier();
 
     // Pre-scan to build correct block-comment state up to the target line
@@ -1537,12 +1539,12 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const restore = () => {
         const locked = [];
         for (const tf of tempFiles) {
-            try { fs.unlinkSync(tf); } catch { locked.push(tf); }
+            try { fs.unlinkSync(tf); } catch (err) { if (err.code === 'EBUSY' || err.code === 'EPERM') locked.push(tf); }
         }
         if (entryTempPath) {
             const ext = path.extname(entryPointPath);
             const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
-            try { fs.unlinkSync(binaryPath); } catch { locked.push(binaryPath); }
+            try { fs.unlinkSync(binaryPath); } catch (err) { if (err.code === 'EBUSY' || err.code === 'EPERM') locked.push(binaryPath); }
         }
         return locked;
     };

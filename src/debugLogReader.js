@@ -13,6 +13,7 @@ const POLL_INTERVAL_MS  = 500;
  *   DBG|{timestamp}|{file}|{function}|{line}|BREAK|{label}
  *   DBG|{timestamp}|{file}|{function}|{line}|ENTER
  *   DBG|{timestamp}|{file}|{function}|{line}|EXIT
+ *   DBG|{timestamp}|{file}|{function}|{line}|SESSION_END
  *
  * Usage:
  *   const reader = new MqlDebugLogReader(basePath);

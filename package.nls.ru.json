@@ -35,5 +35,8 @@
     "mql_tools.commands.openTradingTerminal.title": "Открыть торговый терминал",
     "mql_tools.commands.createCommentary.title": "Создать комментарий к функции",
     "mql_tools.commands.reportNoisyDiagnostic.title": "Сообщить о шумной диагностике clangd",
-    "mql_tools.commands.runBacktest.title": "Запустить бэктест"
+    "mql_tools.commands.runBacktest.title": "Запустить бэктест",
+    "mql_tools.commands.startDebugging.title": "Начать сеанс отладки MQL",
+    "mql_tools.commands.stopDebugging.title": "Остановить сеанс отладки MQL",
+    "mql_tools.commands.showStartupPage.title": "Показать стартовую страницу"
 }

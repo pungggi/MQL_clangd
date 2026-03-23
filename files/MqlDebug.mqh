@@ -313,7 +313,10 @@ string MqlDebugReadCmd() {
 //| Check if a command is present in the command file                |
 //+------------------------------------------------------------------+
 bool MqlDebugCheckCmd(string cmd) {
-    return (StringFind(MqlDebugReadCmd(), cmd) >= 0);
+    string read = MqlDebugReadCmd();
+    StringTrimLeft(read);
+    StringTrimRight(read);
+    return (read == cmd);
 }
 
 //+------------------------------------------------------------------+
@@ -353,7 +356,7 @@ void MqlDebugPause() {
         }
 
         // VS Code wrote CONTINUE → resume
-        if (StringFind(cmd, "CONTINUE") >= 0) {
+        if (trimmedCmd == "CONTINUE") {
             break;
         }
 
