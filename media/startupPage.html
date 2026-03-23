@@ -259,10 +259,10 @@
         </header>
         <!-- Tab buttons -->
         <nav class="tabs" role="tablist">
-            <button class="tab-btn active" id="btn-debugger" data-tab="debugger" role="tab" aria-selected="true" aria-controls="tab-debugger">MQL Debugger</button>
-            <button class="tab-btn" id="btn-tradereport" data-tab="tradereport" role="tab" aria-selected="false" aria-controls="tab-tradereport">Trade Report</button>
-            <button class="tab-btn" id="btn-backtest" data-tab="backtest" role="tab" aria-selected="false" aria-controls="tab-backtest">Run Backtest</button>
-            <button class="tab-btn" id="btn-livelog" data-tab="livelog" role="tab" aria-selected="false" aria-controls="tab-livelog">Live Log</button>
+            <button class="tab-btn active" id="btn-debugger" data-tab="debugger" role="tab" aria-selected="true" aria-controls="tab-debugger" tabindex="0">MQL Debugger</button>
+            <button class="tab-btn" id="btn-tradereport" data-tab="tradereport" role="tab" aria-selected="false" aria-controls="tab-tradereport" tabindex="-1">Trade Report</button>
+            <button class="tab-btn" id="btn-backtest" data-tab="backtest" role="tab" aria-selected="false" aria-controls="tab-backtest" tabindex="-1">Run Backtest</button>
+            <button class="tab-btn" id="btn-livelog" data-tab="livelog" role="tab" aria-selected="false" aria-controls="tab-livelog" tabindex="-1">Live Log</button>
         </nav>
 
         <!-- ─── Tab 1: MQL Debugger ─── -->
@@ -385,7 +385,7 @@ void OnTick()
                 <h3>Source Snapshots</h3>
                 <p>Because source tags reference specific line numbers, editing your EA after a test run can make links point to the wrong lines. Enable <strong>Source Snapshots</strong> to freeze a copy of all referenced files alongside each log:</p>
                 <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">"mql_tools.TradeReport.SnapshotSources": true</pre>
-                <p>When a snapshot exists, each source badge shows two links: a <span style="color:#6a9955;font-weight:600;">green</span> one for the frozen snapshot and a <span style="color:#d7ba7d;font-weight:600;">yellow</span> one for the current live file.</p>
+                <p>When a snapshot exists, each source badge shows two links: a <strong>green (snapshot)</strong> one for the frozen snapshot and a <strong>yellow (live)</strong> one for the current live file.</p>
 
             </div>
 
@@ -590,6 +590,7 @@ Print("This appears in VS Code in real-time!");</pre>
                 document.querySelectorAll('.tab-btn').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
+                    b.setAttribute('tabindex', '-1');
                 });
                 document.querySelectorAll('.tab-panel').forEach(p => {
                     p.classList.remove('active');
@@ -597,6 +598,7 @@ Print("This appears in VS Code in real-time!");</pre>
                 });
                 btn.classList.add('active');
                 btn.setAttribute('aria-selected', 'true');
+                btn.setAttribute('tabindex', '0');
                 const panel = document.getElementById('tab-' + btn.dataset.tab);
                 if (panel) {
                     panel.classList.add('active');
@@ -613,21 +615,24 @@ Print("This appears in VS Code in real-time!");</pre>
         });
 
         // Arrow-key navigation for tabs (ARIA tabs pattern)
-        document.querySelector('[role="tablist"]').addEventListener('keydown', (e) => {
-            const tabs = [...document.querySelectorAll('[role="tab"]')];
-            const idx = tabs.indexOf(e.target);
-            if (idx === -1) return;
-            let next;
-            if (e.key === 'ArrowRight') next = tabs[(idx + 1) % tabs.length];
-            else if (e.key === 'ArrowLeft') next = tabs[(idx - 1 + tabs.length) % tabs.length];
-            else if (e.key === 'Home') next = tabs[0];
-            else if (e.key === 'End') next = tabs[tabs.length - 1];
-            if (next) {
-                e.preventDefault();
-                next.focus();
-                next.click();
-            }
-        });
+        const tablist = document.querySelector('[role="tablist"]');
+        if (tablist) {
+            tablist.addEventListener('keydown', (e) => {
+                const tabs = [...document.querySelectorAll('[role="tab"]')];
+                const idx = tabs.indexOf(e.target);
+                if (idx === -1) return;
+                let next;
+                if (e.key === 'ArrowRight') next = tabs[(idx + 1) % tabs.length];
+                else if (e.key === 'ArrowLeft') next = tabs[(idx - 1 + tabs.length) % tabs.length];
+                else if (e.key === 'Home') next = tabs[0];
+                else if (e.key === 'End') next = tabs[tabs.length - 1];
+                if (next) {
+                    e.preventDefault();
+                    next.focus();
+                    next.click();
+                }
+            });
+        }
     </script>
 </body>
 </html>

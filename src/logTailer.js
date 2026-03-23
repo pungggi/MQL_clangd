@@ -376,10 +376,18 @@ class MqlLogTailer {
                 ? new vscode.ThemeColor('statusBarItem.prominentBackground')
                 : new vscode.ThemeColor('statusBarItem.warningBackground');
             this.statusBarItem.tooltip = `Click to stop log tailing (${this.mode === 'livelog' ? 'Real-time mode' : 'Standard journal'})`;
+            this.statusBarItem.accessibilityInformation = {
+                label: `MQL Log tailing active, ${this.mode === 'livelog' ? 'real-time mode' : 'standard journal'}, click to stop`,
+                role: 'button'
+            };
         } else {
             this.statusBarItem.text = '$(primitive-square) MQL Log: Off';
             this.statusBarItem.backgroundColor = undefined;
             this.statusBarItem.tooltip = 'Click to start live MQL log tailing';
+            this.statusBarItem.accessibilityInformation = {
+                label: 'MQL Log tailing off, click to start',
+                role: 'button'
+            };
         }
         this.statusBarItem.show();
     }

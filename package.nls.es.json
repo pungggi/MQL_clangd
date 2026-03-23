@@ -27,6 +27,7 @@
     "mql_tools.commands.Addicon.title": "Agregar iconos al tema",
     "mql_tools.commands.Showfiles.title": "Mostrar/ocultar archivos ex4/ex5",
     "mql_tools.commands.InsNameMQL.title": "Insertar nombre de archivo 'mq4/mq5' en documento \"mqh\"",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "Insertar MQH como #include",
     "mql_tools.commands.InsResource.title": "Insertar BMP/WAV como #resource",
     "mql_tools.commands.InsImport.title": "Insertar DLL/EX5 como #import",

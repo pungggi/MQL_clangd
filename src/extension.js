@@ -2631,7 +2631,8 @@ function activate(context) {
         ];
 
         const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: `Current: ${current === 'livelog' ? 'LiveLog (Real-time)' : 'Standard Journal'}`
+            placeHolder: `Current: ${current === 'livelog' ? 'LiveLog (Real-time)' : 'Standard Journal'}`,
+            title: 'MQL: Switch Log Tail Mode'
         });
 
         if (selected && selected.mode !== current) {

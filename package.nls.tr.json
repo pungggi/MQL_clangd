@@ -27,6 +27,7 @@
     "mql_tools.commands.Addicon.title": "Temaya simgeler ekle",
     "mql_tools.commands.Showfiles.title": "ex4/ex5 dosyalarını göster/gizle",
     "mql_tools.commands.InsNameMQL.title": "\"mqh\" belgesine 'mq4/mq5' dosya adını ekle",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "MQH'yi #include olarak ekle",
     "mql_tools.commands.InsResource.title": "BMP/WAV'ı #resource olarak ekle",
     "mql_tools.commands.InsImport.title": "DLL/EX5'i #import olarak ekle",

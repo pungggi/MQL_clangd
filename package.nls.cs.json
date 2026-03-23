@@ -25,6 +25,7 @@
     "mql_tools.commands.Addicon.title": "Přidat ikony do motivu",
     "mql_tools.commands.Showfiles.title": "Zobrazit/skrýt soubory ex4/ex5",
     "mql_tools.commands.InsNameMQL.title": "Vložit název souboru 'mq4/mq5' do dokumentu \"mqh\"",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "Vložit MQH jako #include",
     "mql_tools.commands.InsResource.title": "Vložit BMP/WAV jako #resource",
     "mql_tools.commands.InsImport.title": "Vložit DLL/EX5 jako #import",

@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { parseLogFile } = require('./logParser');
 
 /**
@@ -356,7 +357,7 @@ class TradeReportPanel {
     }
 
     _getHtml(data) {
-        const nonce = require('crypto').randomBytes(16).toString('base64');
+        const nonce = crypto.randomBytes(16).toString('base64');
         const safeJson = (obj) => JSON.stringify(obj).replace(/</g, '\\u003c');
         return /*html*/`<!DOCTYPE html>
 <html lang="en">
@@ -523,7 +524,7 @@ tr:hover td { background: var(--surface); }
 .src-link:hover {
     background: rgba(249, 226, 175, 0.25);
     border-color: var(--yellow);
-    color: #fff;
+    color: var(--vscode-editor-foreground, #fff);
 }
 .src-link.src-snapshot {
     background: rgba(166, 227, 161, 0.12);
@@ -536,8 +537,9 @@ tr:hover td { background: var(--surface); }
 .src-link.src-snapshot:hover {
     background: rgba(166, 227, 161, 0.25);
     border-color: var(--green);
-    color: #fff;
+    color: var(--vscode-editor-foreground, #fff);
 }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .src-pair {
     display: inline-flex;
     gap: 4px;
@@ -681,6 +683,26 @@ tr:hover td { background: var(--surface); }
 
     function refresh() { vscode.postMessage({ type: 'refresh' }); }
 
+    function handleNavigation(target) {
+        var srcEl = target.closest('[data-src-file]');
+        if (srcEl) {
+            var srcTarget = srcEl.dataset.srcTarget || 'live';
+            vscode.postMessage({ type: 'openSource', file: srcEl.dataset.srcFile, line: parseInt(srcEl.dataset.srcLine, 10), target: srcTarget });
+            return true;
+        }
+        var logLink = target.closest('[data-log-line]');
+        if (logLink) {
+            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logLink.dataset.logLine, 10) });
+            return true;
+        }
+        var logEntry = target.closest('.log-entry');
+        if (logEntry && logEntry.dataset.line) {
+            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logEntry.dataset.line, 10) });
+            return true;
+        }
+        return false;
+    }
+
     // Event delegation for all clickable elements
     document.addEventListener('click', function(e) {
         var actionBtn = e.target.closest('[data-action]');
@@ -688,22 +710,8 @@ tr:hover td { background: var(--surface); }
             if (actionBtn.dataset.action === 'refresh') refresh();
             return;
         }
-        var srcEl = e.target.closest('[data-src-file]');
-        if (srcEl) {
+        if (handleNavigation(e.target)) {
             e.stopPropagation();
-            var target = srcEl.dataset.srcTarget || 'live';
-            vscode.postMessage({ type: 'openSource', file: srcEl.dataset.srcFile, line: parseInt(srcEl.dataset.srcLine, 10), target: target });
-            return;
-        }
-        var logLink = e.target.closest('[data-log-line]');
-        if (logLink) {
-            e.stopPropagation();
-            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logLink.dataset.logLine, 10) });
-            return;
-        }
-        var logEntry = e.target.closest('.log-entry');
-        if (logEntry && logEntry.dataset.line) {
-            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logEntry.dataset.line, 10) });
             return;
         }
         var filterBtn = e.target.closest('[data-filter]');
@@ -715,24 +723,8 @@ tr:hover td { background: var(--surface); }
 
     document.addEventListener('keydown', function(e) {
         if (e.key !== 'Enter' && e.key !== ' ') return;
-        var srcEl = e.target.closest('[data-src-file]');
-        if (srcEl) {
+        if (handleNavigation(e.target)) {
             e.preventDefault();
-            var target = srcEl.dataset.srcTarget || 'live';
-            vscode.postMessage({ type: 'openSource', file: srcEl.dataset.srcFile, line: parseInt(srcEl.dataset.srcLine, 10), target: target });
-            return;
-        }
-        var logLink = e.target.closest('[data-log-line]');
-        if (logLink) {
-            e.preventDefault();
-            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logLink.dataset.logLine, 10) });
-            return;
-        }
-        var logEntry = e.target.closest('.log-entry');
-        if (logEntry && logEntry.dataset.line) {
-            e.preventDefault();
-            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logEntry.dataset.line, 10) });
-            return;
         }
     });
 
@@ -768,9 +760,9 @@ tr:hover td { background: var(--surface); }
         var pc = s.netPnl >= 0 ? 'positive' : 'negative';
         document.getElementById('summaryCards').innerHTML =
             '<div class="card"><div class="label">Trades</div><div class="value neutral">' + s.tradeCount + '</div></div>' +
-            '<div class="card"><div class="label">Net P&L</div><div class="value ' + pc + '">' + fmt(s.netPnl) + '</div></div>' +
+            '<div class="card"><div class="label">Net P&L</div><div class="value ' + pc + '">' + (s.netPnl >= 0 ? '+' : '') + fmt(s.netPnl) + '</div></div>' +
             '<div class="card"><div class="label">Win Rate</div><div class="value neutral">' + fmt(s.winRate, 1) + '%</div></div>' +
-            '<div class="card"><div class="label">Gross Profit</div><div class="value positive">' + fmt(s.grossProfit) + '</div></div>' +
+            '<div class="card"><div class="label">Gross Profit</div><div class="value positive">+' + fmt(s.grossProfit) + '</div></div>' +
             '<div class="card"><div class="label">Gross Loss</div><div class="value negative">' + fmt(s.grossLoss) + '</div></div>' +
             '<div class="card"><div class="label">Commission</div><div class="value neutral">' + fmt(s.commission) + '</div></div>';
     }
@@ -781,9 +773,9 @@ tr:hover td { background: var(--surface); }
                 '<div class="empty-state"><h3>No trades found</h3><p>This log file does not contain any parsed trades.</p></div>';
             return;
         }
-        var h = '<table><thead><tr>' +
-            '<th>#</th><th>Type</th><th>Entry</th><th>SL</th><th>TP</th><th>Lots</th>' +
-            '<th>Close</th><th>Exit</th><th>P&L</th><th>Net</th><th>Source</th><th>Log</th>' +
+        var h = '<table><caption class="sr-only">Trade details</caption><thead><tr>' +
+            '<th scope="col">#</th><th scope="col">Type</th><th scope="col">Entry</th><th scope="col">SL</th><th scope="col">TP</th><th scope="col">Lots</th>' +
+            '<th scope="col">Close</th><th scope="col">Exit</th><th scope="col">P&amp;L</th><th scope="col">Net</th><th scope="col">Source</th><th scope="col">Log</th>' +
             '</tr></thead><tbody>';
         trades.forEach(function(t, i) {
             var cls = t.type === 'buy' ? 'type-buy' : 'type-sell';
@@ -815,8 +807,8 @@ tr:hover td { background: var(--surface); }
                 '<td>' + fmt(t.lots) + '</td>' +
                 '<td>' + fmt(t.closePrice, 5) + '</td>' +
                 '<td>' + esc(t.exitReason || '') + '</td>' +
-                '<td class="' + pc + '">' + fmt(t.grossPnl) + '</td>' +
-                '<td class="' + pc + '">' + fmt(t.netPnl) + '</td>' +
+                '<td class="' + pc + '">' + ((t.grossPnl || 0) >= 0 ? '+' : '') + fmt(t.grossPnl) + '</td>' +
+                '<td class="' + pc + '">' + ((t.netPnl || 0) >= 0 ? '+' : '') + fmt(t.netPnl) + '</td>' +
                 '<td>' + srcHtml + '</td>' +
                 '<td>' +
                     '<span class="log-link" tabindex="0" role="button" data-log-line="' + t.orderLine + '" title="Go to order line in log">L' + t.orderLine + '</span>' +
@@ -833,7 +825,8 @@ tr:hover td { background: var(--surface); }
         var h = '';
         levels.forEach(function(lv) {
             var active = currentFilter === lv ? ' active' : '';
-            h += '<button class="filter-btn' + active + '" data-filter="' + lv + '">' + lv + '</button>';
+            var pressed = currentFilter === lv ? 'true' : 'false';
+            h += '<button class="filter-btn' + active + '" data-filter="' + lv + '" aria-pressed="' + pressed + '">' + lv + '</button>';
         });
         document.getElementById('filterBar').innerHTML = h;
     }

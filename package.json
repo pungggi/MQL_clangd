@@ -367,47 +367,58 @@
             },
             {
                 "command": "mql_tools.Showfiles",
-                "title": "%mql_tools.commands.Showfiles.title%"
+                "title": "%mql_tools.commands.Showfiles.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsNameMQL",
-                "title": "%mql_tools.commands.InsNameMQL.title%"
+                "title": "%mql_tools.commands.InsNameMQL.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsMQL",
-                "title": "%mql_tools.commands.InsNameMQL.title%"
+                "title": "%mql_tools.commands.InsMQL.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsNameMQH",
-                "title": "%mql_tools.commands.InsNameMQH.title%"
+                "title": "%mql_tools.commands.InsNameMQH.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsMQH",
-                "title": "%mql_tools.commands.InsNameMQH.title%"
+                "title": "%mql_tools.commands.InsNameMQH.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsResource",
-                "title": "%mql_tools.commands.InsResource.title%"
+                "title": "%mql_tools.commands.InsResource.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsImport",
-                "title": "%mql_tools.commands.InsImport.title%"
+                "title": "%mql_tools.commands.InsImport.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsTime",
-                "title": "%mql_tools.commands.InsTime.title%"
+                "title": "%mql_tools.commands.InsTime.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.InsIcon",
-                "title": "%mql_tools.commands.InsIcon.title%"
+                "title": "%mql_tools.commands.InsIcon.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.commentary",
-                "title": "%mql_tools.commands.createCommentary.title%"
+                "title": "%mql_tools.commands.createCommentary.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.openInME",
-                "title": "%mql_tools.commands.openInME.title%"
+                "title": "%mql_tools.commands.openInME.title%",
+                "category": "MQL"
             },
             {
                 "command": "mql_tools.openTradingTerminal",
@@ -520,6 +531,7 @@
             ],
             "explorer/context": [
                 {
+                    "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh || resourceExtname == .ex4 || resourceExtname == .ex5",
                     "command": "mql_tools.Showfiles",
                     "group": "z_commands"
                 },
@@ -580,7 +592,7 @@
         "keybindings": [
             {
                 "command": "mql_tools.compileFile",
-                "key": "ctrl+shift+x",
+                "key": "ctrl+shift+b",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             },
             {
@@ -620,7 +632,7 @@
             },
             {
                 "command": "mql_tools.openTradingTerminal",
-                "key": "F4",
+                "key": "ctrl+F4",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             },
             {

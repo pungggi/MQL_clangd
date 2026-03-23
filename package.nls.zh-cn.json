@@ -26,6 +26,7 @@
     "mql_tools.commands.Addicon.title": "添加图标到主题",
     "mql_tools.commands.Showfiles.title": "显示/隐藏 ex4/ex5 文件",
     "mql_tools.commands.InsNameMQL.title": "在 \"mqh\" 文档中插入 'mq4/mq5' 文件名",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "以 #include 形式插入 MQH",
     "mql_tools.commands.InsResource.title": "以 #resource 形式插入 BMP/WAV",
     "mql_tools.commands.InsImport.title": "以 #import 形式插入 DLL/EX5",

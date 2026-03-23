@@ -194,10 +194,12 @@ body {
 }
 .btn:hover { background: var(--border); }
 .btn-primary {
-    background: #3b5998;
-    border-color: #4a6baf;
+    background: var(--vscode-button-background, #3b5998);
+    border-color: var(--vscode-button-hoverBackground, #4a6baf);
+    color: var(--vscode-button-foreground, var(--text));
 }
-.btn-primary:hover { background: #4a6baf; }
+.btn-primary:hover { background: var(--vscode-button-hoverBackground, #4a6baf); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 .empty-state {
     text-align: center;
@@ -313,6 +315,8 @@ body {
         }
         var row = e.target.closest('.run-row');
         if (row && row.dataset.path) {
+            const interactive = e.target.closest('a, button, input, textarea, select, [role="button"], [tabindex]');
+            if (interactive && interactive !== row) return;
             vscode.postMessage({ type: 'openRun', logPath: row.dataset.path });
         }
     });
@@ -321,6 +325,8 @@ body {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         var row = e.target.closest('.run-row');
         if (row && row.dataset.path) {
+            const interactive = e.target.closest('a, button, input, textarea, select, [role="button"], [tabindex]');
+            if (interactive && interactive !== row) return;
             e.preventDefault();
             vscode.postMessage({ type: 'openRun', logPath: row.dataset.path });
         }
@@ -364,8 +370,8 @@ body {
             h += '<div class="ea-meta">' + runLabel + '</div>';
             h += '</div>';
 
-            h += '<table class="runs-table"><thead><tr>';
-            h += '<th>Run</th><th>Symbol</th><th>Period</th><th>Trades</th><th>Net P&L</th><th>Win Rate</th><th>Date</th>';
+            h += '<table class="runs-table"><caption class="sr-only">' + esc(ea.name) + ' test runs</caption><thead><tr>';
+            h += '<th scope="col">Run</th><th scope="col">Symbol</th><th scope="col">Period</th><th scope="col">Trades</th><th scope="col">Net P&amp;L</th><th scope="col">Win Rate</th><th scope="col">Date</th>';
             h += '</tr></thead><tbody>';
 
             ea.runs.forEach(function(run, i) {
@@ -376,7 +382,7 @@ body {
                 h += '<td>' + esc(run.symbol) + '</td>';
                 h += '<td class="dim" style="font-size:11px">' + esc(run.from) + ' &mdash; ' + esc(run.to) + '</td>';
                 h += '<td><span class="badge badge-trades">' + run.tradeCount + '</span></td>';
-                h += '<td class="' + pc + '" style="font-weight:600">' + fmt(run.netPnl) + '</td>';
+                h += '<td class="' + pc + '" style="font-weight:600">' + (run.netPnl >= 0 ? '+' : '') + fmt(run.netPnl) + '</td>';
                 h += '<td class="neutral">' + fmt(run.winRate, 1) + '%</td>';
                 h += '<td class="dim" style="font-size:11px">' + formatDate(run.mtime) + '</td>';
                 h += '</tr>';

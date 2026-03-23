@@ -317,6 +317,7 @@ async function resolveEAName(context, port, resolveCompileTargets) {
     }));
     const pick = await vscode.window.showQuickPick(items, {
         placeHolder: 'Select EA to backtest',
+        title: 'MQL Backtest: Select Expert Advisor',
     });
     return pick ? pick.label : null;
 }
@@ -362,6 +363,7 @@ async function getTestParameters(eaName, port) {
     if (symbolItems && symbolItems.length > 0) {
         const symbolPick = await vscode.window.showQuickPick(symbolItems, {
             placeHolder: `Symbol (default: ${defaults.symbol || 'none'})`,
+            title: 'MQL Backtest: Select Symbol',
         });
         if (!symbolPick) return null; // cancelled
         symbol = symbolPick.label;
@@ -369,6 +371,7 @@ async function getTestParameters(eaName, port) {
         const input = await vscode.window.showInputBox({
             prompt: 'Symbol',
             value: defaults.symbol,
+            title: 'MQL Backtest: Enter Symbol',
         });
         if (input === undefined) return null;
         symbol = input;
@@ -378,6 +381,7 @@ async function getTestParameters(eaName, port) {
     const fromDate = await vscode.window.showInputBox({
         prompt: 'From date (YYYY.MM.DD)',
         value: defaults.fromDate,
+        title: 'MQL Backtest: Start Date',
         validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
     });
     if (fromDate === undefined) return null;
@@ -385,6 +389,7 @@ async function getTestParameters(eaName, port) {
     const toDate = await vscode.window.showInputBox({
         prompt: 'To date (YYYY.MM.DD)',
         value: defaults.toDate,
+        title: 'MQL Backtest: End Date',
         validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
     });
     if (toDate === undefined) return null;
