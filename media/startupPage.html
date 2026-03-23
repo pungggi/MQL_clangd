@@ -244,6 +244,11 @@
         tr:last-child td {
             border-bottom: none;
         }
+
+        button:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
@@ -605,6 +610,23 @@ Print("This appears in VS Code in real-time!");</pre>
             btn.addEventListener('click', () => {
                 vscode.postMessage({ command: 'dismiss' });
             });
+        });
+
+        // Arrow-key navigation for tabs (ARIA tabs pattern)
+        document.querySelector('[role="tablist"]').addEventListener('keydown', (e) => {
+            const tabs = [...document.querySelectorAll('[role="tab"]')];
+            const idx = tabs.indexOf(e.target);
+            if (idx === -1) return;
+            let next;
+            if (e.key === 'ArrowRight') next = tabs[(idx + 1) % tabs.length];
+            else if (e.key === 'ArrowLeft') next = tabs[(idx - 1 + tabs.length) % tabs.length];
+            else if (e.key === 'Home') next = tabs[0];
+            else if (e.key === 'End') next = tabs[tabs.length - 1];
+            if (next) {
+                e.preventDefault();
+                next.focus();
+                next.click();
+            }
         });
     </script>
 </body>

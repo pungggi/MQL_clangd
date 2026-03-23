@@ -30,7 +30,7 @@ class TradeReportDashboard {
             TradeReportDashboard.viewType,
             'Trade Report Dashboard',
             column,
-            { enableScripts: true, retainContextWhenHidden: true }
+            { enableScripts: true }
         );
 
         TradeReportDashboard.currentPanel = new TradeReportDashboard(panel, context, expertsDir);
@@ -141,12 +141,13 @@ class TradeReportDashboard {
     }
 
     _getHtml(eas) {
+        const nonce = require('crypto').randomBytes(16).toString('base64');
         const safeJson = (obj) => JSON.stringify(obj).replace(/</g, '\\u003c');
         return /*html*/`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trade Report Dashboard</title>
 <style>
@@ -267,6 +268,20 @@ body {
 }
 .badge-trades { background: rgba(137,180,250,0.15); color: var(--blue); }
 .badge-snapshot { background: rgba(166,227,161,0.15); color: var(--green); font-size: 9px; }
+
+.btn:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}
+.btn-primary:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}
+.runs-table tr.run-row:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -2px;
+    background: var(--hover);
+}
 </style>
 </head>
 <body>
@@ -274,24 +289,39 @@ body {
 <div class="toolbar">
     <h1>Trade Report Dashboard</h1>
     <div class="toolbar-actions">
-        <button class="btn" onclick="openFile()">Open Log File...</button>
-        <button class="btn" onclick="refresh()">Refresh</button>
+        <button class="btn" type="button" data-action="openFile">Open Log File...</button>
+        <button class="btn" type="button" data-action="refresh">Refresh</button>
     </div>
 </div>
 
 <div id="content"></div>
 
-<script>
+<script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let eas = ${safeJson(eas)};
 
     function openFile() { vscode.postMessage({ type: 'openFile' }); }
     function refresh()  { vscode.postMessage({ type: 'refresh' }); }
 
-    // Use event delegation for run rows — avoids path-escaping issues
+    // Event delegation — avoids inline handlers and path-escaping issues
     document.addEventListener('click', function(e) {
+        var actionBtn = e.target.closest('[data-action]');
+        if (actionBtn) {
+            if (actionBtn.dataset.action === 'openFile') openFile();
+            else if (actionBtn.dataset.action === 'refresh') refresh();
+            return;
+        }
         var row = e.target.closest('.run-row');
         if (row && row.dataset.path) {
+            vscode.postMessage({ type: 'openRun', logPath: row.dataset.path });
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var row = e.target.closest('.run-row');
+        if (row && row.dataset.path) {
+            e.preventDefault();
             vscode.postMessage({ type: 'openRun', logPath: row.dataset.path });
         }
     });
@@ -318,7 +348,7 @@ body {
                 '<h3>No EAs with test runs found</h3>' +
                 '<p>No <code>runs/</code> folders with <code>.log</code> files were found under Experts.<br>' +
                 'You can still open a log file directly.</p>' +
-                '<button class="btn btn-primary" onclick="openFile()">Open Log File...</button>' +
+                '<button class="btn btn-primary" type="button" data-action="openFile">Open Log File...</button>' +
                 '</div>';
             return;
         }
@@ -340,7 +370,7 @@ body {
 
             ea.runs.forEach(function(run, i) {
                 var pc = pnlClass(run.netPnl);
-                h += '<tr class="run-row" data-path="' + esc(run.path) + '">';
+                h += '<tr class="run-row" tabindex="0" role="button" data-path="' + esc(run.path) + '">';
                 var snapBadge = run.hasSnapshot ? ' <span class="badge badge-snapshot" title="Source snapshot available">snapshot</span>' : '';
                 h += '<td>' + esc(run.fileName) + snapBadge + '</td>';
                 h += '<td>' + esc(run.symbol) + '</td>';

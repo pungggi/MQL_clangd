@@ -31,7 +31,7 @@ class TradeReportPanel {
             TradeReportPanel.viewType,
             'MQL Trade Report',
             column,
-            { enableScripts: true, retainContextWhenHidden: true }
+            { enableScripts: true }
         );
 
         TradeReportPanel.currentPanel = new TradeReportPanel(panel, context, parsedData, logFilePath);
@@ -356,12 +356,13 @@ class TradeReportPanel {
     }
 
     _getHtml(data) {
+        const nonce = require('crypto').randomBytes(16).toString('base64');
         const safeJson = (obj) => JSON.stringify(obj).replace(/</g, '\\u003c');
         return /*html*/`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MQL Trade Report</title>
 <style>
@@ -627,13 +628,34 @@ tr:hover td { background: var(--surface); }
     color: var(--text);
 }
 .filter-btn:hover { background: var(--border); }
+
+.toolbar button:focus-visible, .filter-btn:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}
+.src-link:focus-visible {
+    outline: 2px solid var(--yellow);
+    outline-offset: 2px;
+}
+.src-link.src-snapshot:focus-visible {
+    outline-color: var(--green);
+}
+.log-entry:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -1px;
+    background: var(--surface2);
+}
+.log-link:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}
 </style>
 </head>
 <body>
 
 <div class="toolbar">
     <div style="font-size:16px; font-weight:600;">Trade Report</div>
-    <button onclick="refresh()">Reload</button>
+    <button type="button" data-action="refresh">Reload</button>
 </div>
 
 <div class="meta-bar" id="metaBar"></div>
@@ -646,7 +668,7 @@ tr:hover td { background: var(--surface); }
 <div class="filter-bar" id="filterBar"></div>
 <div class="log-section" id="logSection"></div>
 
-<script>
+<script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     let trades = ${safeJson(data.trades)};
@@ -659,8 +681,13 @@ tr:hover td { background: var(--surface); }
 
     function refresh() { vscode.postMessage({ type: 'refresh' }); }
 
-    // Event delegation for all clickable elements — avoids inline onclick with string escaping
+    // Event delegation for all clickable elements
     document.addEventListener('click', function(e) {
+        var actionBtn = e.target.closest('[data-action]');
+        if (actionBtn) {
+            if (actionBtn.dataset.action === 'refresh') refresh();
+            return;
+        }
         var srcEl = e.target.closest('[data-src-file]');
         if (srcEl) {
             e.stopPropagation();
@@ -686,6 +713,29 @@ tr:hover td { background: var(--surface); }
         }
     });
 
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var srcEl = e.target.closest('[data-src-file]');
+        if (srcEl) {
+            e.preventDefault();
+            var target = srcEl.dataset.srcTarget || 'live';
+            vscode.postMessage({ type: 'openSource', file: srcEl.dataset.srcFile, line: parseInt(srcEl.dataset.srcLine, 10), target: target });
+            return;
+        }
+        var logLink = e.target.closest('[data-log-line]');
+        if (logLink) {
+            e.preventDefault();
+            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logLink.dataset.logLine, 10) });
+            return;
+        }
+        var logEntry = e.target.closest('.log-entry');
+        if (logEntry && logEntry.dataset.line) {
+            e.preventDefault();
+            vscode.postMessage({ type: 'openLine', lineNumber: parseInt(logEntry.dataset.line, 10) });
+            return;
+        }
+    });
+
     function esc(v) {
         return String(v == null ? '' : v)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -696,9 +746,9 @@ tr:hover td { background: var(--surface); }
     function fmt(v, d) { d = d === undefined ? 2 : d; return Number(v || 0).toFixed(d); }
 
     function srcLinkHtml(file, line, label, showSnapshot) {
-        var liveLink = '<span class="src-link" data-src-file="' + esc(file) + '" data-src-line="' + line + '" data-src-target="live" title="Open current source: ' + esc(file) + ' line ' + line + '">' + esc(label) + '</span>';
+        var liveLink = '<span class="src-link" tabindex="0" role="button" data-src-file="' + esc(file) + '" data-src-line="' + line + '" data-src-target="live" title="Open current source: ' + esc(file) + ' line ' + line + '">' + esc(label) + '</span>';
         if (!showSnapshot) return liveLink;
-        var snapLink = '<span class="src-link src-snapshot" data-src-file="' + esc(file) + '" data-src-line="' + line + '" data-src-target="snapshot" title="Open snapshot (frozen at test time): ' + esc(file) + ' line ' + line + '">' + esc(label) + '</span>';
+        var snapLink = '<span class="src-link src-snapshot" tabindex="0" role="button" data-src-file="' + esc(file) + '" data-src-line="' + line + '" data-src-target="snapshot" title="Open snapshot (frozen at test time): ' + esc(file) + ' line ' + line + '">' + esc(label) + '</span>';
         return '<span class="src-pair">' + snapLink + liveLink + '</span>';
     }
 
@@ -769,8 +819,8 @@ tr:hover td { background: var(--surface); }
                 '<td class="' + pc + '">' + fmt(t.netPnl) + '</td>' +
                 '<td>' + srcHtml + '</td>' +
                 '<td>' +
-                    '<span class="log-link" data-log-line="' + t.orderLine + '" title="Go to order line in log">L' + t.orderLine + '</span>' +
-                    (t.exitLine ? ' <span class="log-link" data-log-line="' + t.exitLine + '" title="Go to exit line in log">L' + t.exitLine + '</span>' : '') +
+                    '<span class="log-link" tabindex="0" role="button" data-log-line="' + t.orderLine + '" title="Go to order line in log">L' + t.orderLine + '</span>' +
+                    (t.exitLine ? ' <span class="log-link" tabindex="0" role="button" data-log-line="' + t.exitLine + '" title="Go to exit line in log">L' + t.exitLine + '</span>' : '') +
                 '</td>' +
                 '</tr>';
         });
@@ -811,7 +861,7 @@ tr:hover td { background: var(--surface); }
                 var srcLabel = e.sourceFunc ? e.sourceFunc + ':' + e.sourceLine : e.sourceFile + ':' + e.sourceLine;
                 srcSpan = srcLinkHtml(e.sourceFile, e.sourceLine, srcLabel, hasSnapshot);
             }
-            h += '<div class="log-entry" data-line="' + e.lineNumber + '">' +
+            h += '<div class="log-entry" tabindex="0" role="button" data-line="' + e.lineNumber + '">' +
                 '<span class="ln">' + e.lineNumber + '</span>' +
                 '<span class="lvl lvl-' + e.level + '">' + e.level + '</span>' +
                 srcSpan +
