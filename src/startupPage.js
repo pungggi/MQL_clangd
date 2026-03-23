@@ -18,8 +18,7 @@ function showStartupPage(context, force = false) {
         `MQL Extension Welcome (v${currentVersion})`,
         vscode.ViewColumn.One,
         {
-            enableScripts: true,
-            retainContextWhenHidden: true
+            enableScripts: true
         }
     );
 
@@ -47,7 +46,10 @@ function showStartupPage(context, force = false) {
 function getWebviewContent(version, extensionPath) {
     const htmlPath = path.join(extensionPath, 'media', 'startupPage.html');
     try {
-        return fs.readFileSync(htmlPath, 'utf8').replace(/\{\{version\}\}/g, version);
+        const nonce = require('crypto').randomBytes(16).toString('base64');
+        return fs.readFileSync(htmlPath, 'utf8')
+            .replace(/\{\{version\}\}/g, version)
+            .replace(/\{\{nonce\}\}/g, nonce);
     } catch (err) {
         console.error(`[MQL Tools] Failed to read startup page from "${htmlPath}": ${err.message}`);
         return `<!DOCTYPE html><html><body><p>MQL Tools v${version} — startup page unavailable.</p></body></html>`;

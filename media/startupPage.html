@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Welcome to MQL Extension</title>
     <style>
@@ -252,15 +253,15 @@
             <p class="subtitle">Bringing modern development tools to MetaTrader</p>
         </header>
         <!-- Tab buttons -->
-        <nav class="tabs">
-            <button class="tab-btn active" data-tab="debugger">MQL Debugger</button>
-            <button class="tab-btn" data-tab="tradereport">Trade Report</button>
-            <button class="tab-btn" data-tab="backtest">Run Backtest</button>
-            <button class="tab-btn" data-tab="livelog">Live Log</button>
+        <nav class="tabs" role="tablist">
+            <button class="tab-btn active" id="btn-debugger" data-tab="debugger" role="tab" aria-selected="true" aria-controls="tab-debugger">MQL Debugger</button>
+            <button class="tab-btn" id="btn-tradereport" data-tab="tradereport" role="tab" aria-selected="false" aria-controls="tab-tradereport">Trade Report</button>
+            <button class="tab-btn" id="btn-backtest" data-tab="backtest" role="tab" aria-selected="false" aria-controls="tab-backtest">Run Backtest</button>
+            <button class="tab-btn" id="btn-livelog" data-tab="livelog" role="tab" aria-selected="false" aria-controls="tab-livelog">Live Log</button>
         </nav>
 
         <!-- ─── Tab 1: MQL Debugger ─── -->
-        <div id="tab-debugger" class="tab-panel active">
+        <div id="tab-debugger" class="tab-panel active" role="tabpanel" aria-labelledby="btn-debugger" aria-hidden="false">
 
             <div class="card">
                 <h2>Introducing MQL Debugging <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
@@ -341,7 +342,7 @@
         </div>
 
         <!-- ─── Tab 2: Trade Report Dashboard ─── -->
-        <div id="tab-tradereport" class="tab-panel">
+        <div id="tab-tradereport" class="tab-panel" role="tabpanel" aria-labelledby="btn-tradereport" aria-hidden="true">
 
             <div class="card">
                 <h2>Trade Report Dashboard <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
@@ -401,7 +402,7 @@ void OnTick()
         </div>
 
         <!-- ─── Tab 3: Run Backtest ─── -->
-        <div id="tab-backtest" class="tab-panel">
+        <div id="tab-backtest" class="tab-panel" role="tabpanel" aria-labelledby="btn-backtest" aria-hidden="true">
 
             <div class="card">
                 <h2>Run Backtest <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
@@ -471,7 +472,7 @@ void OnTick()
         </div>
 
         <!-- ─── Tab 4: Live Log ─── -->
-        <div id="tab-livelog" class="tab-panel">
+        <div id="tab-livelog" class="tab-panel" role="tabpanel" aria-labelledby="btn-livelog" aria-hidden="true">
 
             <div class="card">
                 <h2>Live Runtime Log <span class="badge" style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
@@ -575,16 +576,27 @@ Print("This appears in VS Code in real-time!");</pre>
         </div>
     </div>
 
-    <script>
+    <script nonce="{{nonce}}">
         const vscode = acquireVsCodeApi();
 
         // Tab switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                });
+                document.querySelectorAll('.tab-panel').forEach(p => {
+                    p.classList.remove('active');
+                    p.setAttribute('aria-hidden', 'true');
+                });
                 btn.classList.add('active');
-                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                const panel = document.getElementById('tab-' + btn.dataset.tab);
+                if (panel) {
+                    panel.classList.add('active');
+                    panel.setAttribute('aria-hidden', 'false');
+                }
             });
         });
 
