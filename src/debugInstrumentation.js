@@ -1539,12 +1539,20 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const restore = () => {
         const locked = [];
         for (const tf of tempFiles) {
-            try { fs.unlinkSync(tf); } catch (err) { if (err.code === 'EBUSY' || err.code === 'EPERM') locked.push(tf); }
+            try { fs.unlinkSync(tf); } catch (err) {
+                if (err && (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES')) {
+                    locked.push(tf);
+                }
+            }
         }
         if (entryTempPath) {
             const ext = path.extname(entryPointPath);
             const binaryPath = entryTempPath.replace(/\.mql_dbg_build\.mq[45]$/i, '.mql_dbg_build' + (ext.toLowerCase() === '.mq5' ? '.ex5' : '.ex4'));
-            try { fs.unlinkSync(binaryPath); } catch (err) { if (err.code === 'EBUSY' || err.code === 'EPERM') locked.push(binaryPath); }
+            try { fs.unlinkSync(binaryPath); } catch (err) {
+                if (err && (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES')) {
+                    locked.push(binaryPath);
+                }
+            }
         }
         return locked;
     };

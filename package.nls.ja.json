@@ -39,5 +39,5 @@
     "mql_tools.commands.runBacktest.title": "バックテストを実行",
     "mql_tools.commands.startDebugging.title": "MQLデバッグセッションを開始",
     "mql_tools.commands.stopDebugging.title": "MQLデバッグセッションを停止",
-    "mql_tools.commands.showStartupPage.title": "ウェルカムページを表示"
+    "mql_tools.commands.showStartupPage.title": "スタートアップページを表示"
 }

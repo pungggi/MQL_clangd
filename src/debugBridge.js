@@ -44,12 +44,20 @@ class MqlDebugBridge {
     }
 
     dispose() {
+        // Ensure session is stopped and all resources are released
+        if (this._active) {
+            this.stop();
+        }
+        // Clear any pending retry timer not covered by stop()
+        if (this._retryTimer) {
+            clearInterval(this._retryTimer);
+            this._retryTimer = null;
+        }
         if (this._outputChannel) {
             this._outputChannel.dispose();
             this._outputChannel = null;
         }
     }
-
     get isActive() { return this._active; }
 
     // -------------------------------------------------------------------------

@@ -46,7 +46,12 @@ function showStartupPage(context, force = false) {
 
 function getWebviewContent(version, extensionPath) {
     const htmlPath = path.join(extensionPath, 'media', 'startupPage.html');
-    return fs.readFileSync(htmlPath, 'utf8').replace(/\{\{version\}\}/g, version);
+    try {
+        return fs.readFileSync(htmlPath, 'utf8').replace(/\{\{version\}\}/g, version);
+    } catch (err) {
+        console.error(`[MQL Tools] Failed to read startup page from "${htmlPath}": ${err.message}`);
+        return `<!DOCTYPE html><html><body><p>MQL Tools v${version} — startup page unavailable.</p></body></html>`;
+    }
 }
 
 module.exports = {

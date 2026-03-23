@@ -36,7 +36,7 @@
     "mql_tools.commands.openTradingTerminal.title": "Ouvrir le terminal de trading",
     "mql_tools.commands.createCommentary.title": "Créer un commentaire de fonction",
     "mql_tools.commands.reportNoisyDiagnostic.title": "Signaler un diagnostic clangd bruyant",
-    "mql_tools.commands.runBacktest.title": "Run Backtest",
+    "mql_tools.commands.runBacktest.title": "Exécuter le backtest",
     "mql_tools.commands.startDebugging.title": "Démarrer la session de débogage MQL",
     "mql_tools.commands.stopDebugging.title": "Arrêter la session de débogage MQL",
     "mql_tools.commands.showStartupPage.title": "Afficher la page d'accueil"
