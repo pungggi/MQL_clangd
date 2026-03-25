@@ -149,6 +149,7 @@ class MqlDebugAdapter extends EventEmitter {
 
     _onStackTrace(req) {
         const stack = this._store.callStack;
+        const hit = this._store.latestHit;
         let frames;
         if (stack.length > 0) {
             // callStack is LIFO: last element is the innermost frame. Reverse for DAP (top = index 0).
@@ -159,14 +160,18 @@ class MqlDebugAdapter extends EventEmitter {
                 line:   parseInt(f.line, 10) || 0,
                 column: 0,
             }));
+            // Override top frame line with the original breakpoint line when available
+            if (frames.length > 0 && hit) {
+                const origLine = this._parseOriginalLine(hit.label);
+                if (origLine > 0) frames[0].line = origLine;
+            }
         } else {
             // No enter/exit events — synthesize a frame from the latest hit
-            const hit = this._store.latestHit;
             frames = hit ? [{
                 id:     0,
                 name:   hit.func || '(unknown)',
                 source: hit.file ? { path: this._mapToOriginalPath(hit.file) } : undefined,
-                line:   parseInt(hit.line, 10) || 0,
+                line:   this._parseOriginalLine(hit.label) || parseInt(hit.line, 10) || 0,
                 column: 0,
             }] : [];
         }
@@ -380,13 +385,21 @@ class MqlDebugAdapter extends EventEmitter {
      * If we have no tracking data yet (session started before any setBreakpoints),
      * assume active so we don't silently skip hits.
      */
+    /**
+     * Extract the original source line number from a breakpoint label.
+     * Label format: bp_{sanitized_file}_{line}  (e.g. "bp_SMC_mq5_310")
+     * @returns {number} original line, or 0 if unparseable
+     */
+    _parseOriginalLine(label) {
+        const m = label && label.match(/_(\d+)$/);
+        return m ? parseInt(m[1], 10) : 0;
+    }
+
     _isBreakpointActive(label) {
         if (this._activeBreakpoints.size === 0) return true;
 
-        // Parse original line number from label: bp_{sanitized_file}_{line}
-        const m = label && label.match(/_(\d+)$/);
-        if (!m) return true; // can't parse — assume active
-        const originalLine = parseInt(m[1], 10);
+        const originalLine = this._parseOriginalLine(label);
+        if (!originalLine) return true; // can't parse — assume active
 
         // Check all tracked files for this line
         for (const lines of this._activeBreakpoints.values()) {
@@ -422,7 +435,11 @@ class MqlDebugAdapter extends EventEmitter {
         // For included files: try resolving relative to the source directory
         if (this._sourcePath) {
             const resolved = path.join(path.dirname(this._sourcePath), mapped);
-            try { if (fs.existsSync(resolved)) return resolved; } catch {}
+            try {
+                if (fs.existsSync(resolved)) return resolved;
+            } catch (err) {
+                console.debug(`[MqlDebugAdapter] Source resolution failed for "${resolved}": ${err.message}`);
+            }
         }
 
         return mapped;

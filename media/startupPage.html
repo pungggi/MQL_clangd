@@ -321,8 +321,11 @@
                     </li>
                     <li>
                         <strong>Resume Execution</strong><br>
-                        Use the VS Code debug toolbar to click <strong>Continue</strong> and let your code run until the
-                        next breakpoint.
+                        Use the VS Code debug toolbar to click <strong>Continue</strong> (or press
+                        <span class="code-inline">F5</span>) to let your code run until the
+                        next breakpoint. <em>Note:</em> Step Over, Step Into, and Step Out all behave like Continue —
+                        they resume execution to the next breakpoint rather than stepping one line at a time
+                        (see Known Limitations below).
                     </li>
                     <li>
                         <strong>Stop Debugging</strong><br>
@@ -365,6 +368,18 @@
                         class="code-inline">OnTimer</span> events fire. Use only on demo accounts or in the Strategy
                     Tester. The EA auto-resumes after 120 seconds as a safety failsafe.
                 </div>
+
+                <h3 id="debug-limitations">Known Limitations</h3>
+                <ul>
+                    <li><strong>No Step Over / Step Into / Step Out:</strong> Because the debugger communicates with
+                        MetaTrader via file-based I/O (not a live process attachment), it cannot control execution at the
+                        instruction level. All stepping actions behave like <strong>Continue</strong> — they resume to
+                        the next breakpoint. To inspect intermediate state, set additional breakpoints on the lines you
+                        want to observe.</li>
+                    <li><strong>No Expression Evaluation:</strong> The Debug Console does not support evaluating
+                        arbitrary MQL expressions at runtime. Use <span class="code-inline">// @watch</span> annotations
+                        or enable Deep Analysis to capture the variables you need.</li>
+                </ul>
             </div>
 
             <div class="card">

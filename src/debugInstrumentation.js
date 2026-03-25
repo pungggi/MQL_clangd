@@ -365,7 +365,7 @@ function parseLocalsInScope(lines, bpLine) {
 
     // MQL5 declaration pattern: type [modifiers] name [= ...][, name2 [= ...]];
     // Matches: int x;  double y = 1.0;  string a, b;  const int z = 5;
-    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
     const RE_VARNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
 
     // Skip types that are clearly not variable declarations

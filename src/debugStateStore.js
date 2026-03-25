@@ -137,6 +137,10 @@ class DebugStateStore {
                 }
                 break;
             }
+            case 'session_end': {
+                this.sessionActive = false;
+                break;
+            }
             default:
                 console.warn(`[DebugStateStore] Unrecognized event type: ${event.type}`, event);
                 break;
