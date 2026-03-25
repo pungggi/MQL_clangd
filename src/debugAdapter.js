@@ -44,6 +44,10 @@ class MqlDebugAdapter extends EventEmitter {
         this._disposed = false;
         /** @type {Map<string, Set<number>>} active breakpoints per source path (lowercase) */
         this._activeBreakpoints = new Map();
+        /** True once VS Code has sent at least one setBreakpoints request */
+        this._breakpointsConfigured = false;
+        /** @type {ReturnType<typeof setTimeout>|null} debounce timer for BP config writes */
+        this._reinstrumentTimer = null;
 
         // onDidSendMessage is required by VS Code's DebugAdapter interface.
         // We expose it as an EventEmitter event named 'message'.
@@ -90,6 +94,10 @@ class MqlDebugAdapter extends EventEmitter {
     dispose() {
         if (this._disposed) return;
         this._disposed = true;
+        if (this._reinstrumentTimer) {
+            clearTimeout(this._reinstrumentTimer);
+            this._reinstrumentTimer = null;
+        }
         this._store.removeListener(this._storeListener);
         this._sendMessageEmitter.dispose();
     }
@@ -198,25 +206,74 @@ class MqlDebugAdapter extends EventEmitter {
     }
 
     _onSetBreakpoints(req) {
-        const bps = (req.arguments.breakpoints || []).map(b => ({
-            id: this._seq++,
-            verified: true,
-            line: b.line,
-        }));
-
-        // Track active breakpoint lines so we can auto-continue removed ones
         const src = req.arguments && req.arguments.source;
-        if (src && src.path) {
-            const key = src.path.toLowerCase().replace(/\\/g, '/');
-            const lines = new Set(bps.map(b => b.line));
+        const key = src && src.path ? src.path.toLowerCase().replace(/\\/g, '/') : null;
+
+        // Resolve each requested line to its nearest probe, returning the
+        // verified actual line (so VS Code moves the gutter indicator).
+        const bps = (req.arguments.breakpoints || []).map(b => {
+            let actualLine = b.line;
+            let verified = true;
+            if (key && this._bridge.probeMap) {
+                const fileProbes = this._bridge.probeMap.get(key);
+                if (fileProbes) {
+                    let found = false;
+                    for (let offset = 0; offset <= 10; offset++) {
+                        if (fileProbes.has(b.line + offset)) {
+                            actualLine = b.line + offset;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) verified = false;
+                }
+            }
+            return { id: this._seq++, verified, line: actualLine };
+        });
+
+        // Track active breakpoint lines (verified lines) for auto-continue fallback
+        if (key) {
+            const lines = new Set(bps.filter(b => b.verified).map(b => b.line));
             if (lines.size > 0) {
                 this._activeBreakpoints.set(key, lines);
             } else {
                 this._activeBreakpoints.delete(key);
             }
+            this._breakpointsConfigured = true;
+
+            // Write updated probe config — the EA picks it up within ~200 ms.
+            // Debounce so rapid multi-file changes batch into one write.
+            if (this._bridge.isActive) {
+                this._scheduleConfigWrite();
+            }
         }
 
         this._sendResponse(req, { breakpoints: bps });
+    }
+
+    /**
+     * Debounced write of the breakpoint config file.
+     * Collects all active probe IDs from _activeBreakpoints and writes them.
+     */
+    _scheduleConfigWrite() {
+        if (this._reinstrumentTimer) clearTimeout(this._reinstrumentTimer);
+        this._reinstrumentTimer = setTimeout(() => {
+            this._reinstrumentTimer = null;
+            this._writeBreakpointConfig();
+        }, 100);
+    }
+
+    /** Resolve all active breakpoint lines to probe IDs and write the config file. */
+    _writeBreakpointConfig() {
+        if (!this._bridge.isActive) return;
+        const activeIds = [];
+        for (const [filePath, lines] of this._activeBreakpoints) {
+            for (const line of lines) {
+                const id = this._bridge.resolveProbeId(filePath, line);
+                if (id !== undefined) activeIds.push(id);
+            }
+        }
+        this._bridge.writeBreakpointConfig(activeIds);
     }
 
     _onScopes(req) {
@@ -399,7 +456,9 @@ class MqlDebugAdapter extends EventEmitter {
     }
 
     _isBreakpointActive(label) {
-        if (this._activeBreakpoints.size === 0) return true;
+        // Before any setBreakpoints call we have no tracking data — assume active.
+        // An empty map after configuration means all BPs were removed → auto-continue.
+        if (!this._breakpointsConfigured) return true;
 
         const originalLine = this._parseOriginalLine(label);
         if (!originalLine) return true; // can't parse — assume active

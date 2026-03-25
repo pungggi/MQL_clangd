@@ -106,6 +106,53 @@ function isConditionSafe(condition) {
 }
 
 /**
+ * Check if a file is a "user file" (not a system include from MQL5/Include/).
+ * User files get full probe instrumentation at every executable line.
+ * System includes are only instrumented if they have explicit breakpoints.
+ *
+ * @param {string} filePath
+ * @param {string} mql5Root
+ * @returns {boolean}
+ */
+function isUserFile(filePath, mql5Root) {
+    if (!mql5Root) return true;
+    const includeDir = path.resolve(mql5Root, 'Include');
+    const rel = path.relative(includeDir, filePath);
+    return rel.startsWith('..') || path.isAbsolute(rel);
+}
+
+/**
+ * Find ALL executable lines inside function bodies that can serve as
+ * probe injection points.  Returns 0-based line indices.
+ *
+ * @param {string[]} lines
+ * @returns {number[]}
+ */
+function findAllExecutableLines(lines) {
+    const classifier = new MqlLineClassifier();
+    const functions = findFunctionBoundaries(lines);
+
+    const inFunction = new Set();
+    for (const fn of functions) {
+        for (let i = fn.bodyStart + 1; i < fn.bodyEnd; i++) {
+            inFunction.add(i);
+        }
+    }
+
+    const points = [];
+    for (let i = 0; i < lines.length; i++) {
+        const kind = classifier.classify(lines[i]);
+        if (!inFunction.has(i)) continue;
+        if (kind !== 'code') continue;
+        const trimmed = lines[i].trimEnd();
+        if (trimmed.endsWith(';') || trimmed.endsWith('}')) {
+            points.push(i);
+        }
+    }
+    return points;
+}
+
+/**
  * Find the first line at or after `targetLine` (1-based) that ends a complete
  * statement (ends with `;` or `}`) and is not a comment/preprocessor.
  *
@@ -1102,6 +1149,41 @@ function buildInjectionLines(label, watchVars, condition) {
 }
 
 /**
+ * Generate the macro injection lines for one dynamic probe.
+ * Wraps the BREAK + watches + PAUSE inside an `if (MqlDebugProbeCheck(id))` block
+ * so the EA only fires the probe when VS Code has activated it via the config file.
+ *
+ * @param {number}   probeId    Sequential probe index
+ * @param {string}   label      Breakpoint label (e.g. "bp_SMC_mq5_310")
+ * @param {{ name: string, type?: string, isArray?: boolean }[]} watchVars
+ * @param {string}   condition  Optional condition string (may be empty)
+ * @returns {string[]}  Lines to insert
+ */
+function buildProbeInjection(probeId, label, watchVars, condition) {
+    const inner = [];
+    inner.push(`MQL_DBG_BREAK("${label}");`);
+    for (const v of watchVars) {
+        if (v.isArray) {
+            const arrMacro = macroForType(v.type, true);
+            if (arrMacro) inner.push(`${arrMacro}("${v.name}", ${v.name});`);
+        } else {
+            const macro = macroForType(v.type);
+            inner.push(`${macro}("${v.name}", ${v.name});`);
+        }
+    }
+    inner.push(`MQL_DBG_PAUSE;`);
+
+    const condExpr = (condition && condition.trim() && isConditionSafe(condition))
+        ? ` && (${condition})` : '';
+
+    return [
+        `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
+        ...inner.map(l => `  ${l}`),
+        `}`
+    ];
+}
+
+/**
  * Get the leading whitespace from a line.
  */
 function getIndent(line) {
@@ -1236,13 +1318,108 @@ function resolveIncludePath(incPath, includeBase, mql5Root) {
 }
 
 /**
+ * Collect all watch variables for a breakpoint at the given line.
+ * Factored out so it can be called from the all-line probe loop.
+ *
+ * @param {string[]} lines        Source lines (0-based array)
+ * @param {number}   bpLine       1-based breakpoint line
+ * @param {string}   condition    Breakpoint condition (may be empty)
+ * @param {{ classMap: Map, globalMap: Map }} typeDB
+ * @param {boolean}  deepAnalysis
+ * @returns {{ name: string, type: string, isArray?: boolean }[]}
+ */
+function collectWatchVars(lines, bpLine, typeDB, deepAnalysis) {
+    const annotatedVars = parseWatchAnnotations(lines, bpLine);
+    const localVars = parseLocalsInScope(lines, bpLine);
+
+    const seen = new Set();
+    const watchVars = [];
+    for (const name of annotatedVars) {
+        seen.add(name);
+        const local = localVars.find(l => l.name === name);
+        watchVars.push({ name, type: local ? local.type : '', isArray: local ? local.isArray : false });
+    }
+    for (const local of localVars) {
+        if (!seen.has(local.name)) {
+            seen.add(local.name);
+            watchVars.push(local);
+        }
+    }
+
+    const enclosingClass = findEnclosingClassName(lines, bpLine);
+    for (const expr of findMemberAccessExpressions(lines, bpLine)) {
+        if (seen.has(expr)) continue;
+        const resolved = resolveMemberType(expr, localVars, typeDB.globalMap, typeDB.classMap, enclosingClass);
+        if (resolved && isWatchableType(resolved.type, typeDB.classMap)) {
+            seen.add(expr);
+            watchVars.push({ name: expr, type: resolved.type, isArray: resolved.isArray });
+        }
+    }
+
+    for (const member of findImplicitClassMembers(lines, bpLine, localVars, typeDB.classMap, enclosingClass)) {
+        if (!seen.has(member.name)) {
+            seen.add(member.name);
+            watchVars.push(member);
+        }
+    }
+
+    if (deepAnalysis) {
+        for (const g of findGlobalVarsNearBreakpoint(lines, bpLine, typeDB.globalMap, typeDB.classMap, seen)) {
+            seen.add(g.name);
+            watchVars.push(g);
+        }
+        for (const field of findClassFieldExpansions(localVars, typeDB.classMap)) {
+            if (!seen.has(field.name)) {
+                seen.add(field.name);
+                watchVars.push(field);
+            }
+        }
+        for (const [varName, info] of typeDB.globalMap) {
+            if (!info.isInput || seen.has(varName)) continue;
+            if (!isWatchableType(info.type, typeDB.classMap)) continue;
+            seen.add(varName);
+            watchVars.push({ name: varName, type: info.type, isArray: info.isArray });
+        }
+        const globalClassInstances = findGlobalClassInstancesNearBreakpoint(
+            lines, bpLine, typeDB.globalMap, typeDB.classMap, seen
+        );
+        for (const field of findClassFieldExpansions(globalClassInstances, typeDB.classMap)) {
+            if (!seen.has(field.name)) {
+                seen.add(field.name);
+                watchVars.push(field);
+            }
+        }
+    }
+
+    for (const expr of extractReturnExpressions(lines, bpLine)) {
+        if (seen.has(expr)) continue;
+        let type = '', isArray = false;
+        const local = localVars.find(l => l.name === expr);
+        if (local) {
+            type = local.type; isArray = local.isArray || false;
+        } else if (typeDB.globalMap.has(expr)) {
+            const g = typeDB.globalMap.get(expr);
+            type = g.type; isArray = g.isArray;
+        } else if (expr.includes('.')) {
+            const resolved = resolveMemberType(expr, localVars, typeDB.globalMap, typeDB.classMap, enclosingClass);
+            if (resolved) { type = resolved.type; isArray = resolved.isArray; }
+        }
+        if (!type || !isWatchableType(type, typeDB.classMap)) continue;
+        seen.add(expr);
+        watchVars.push({ name: expr, type, isArray });
+    }
+
+    return watchVars;
+}
+
+/**
  * Instrument a source file and its included dependencies for debugging.
  *
  * @param {string}   entryPointPath Absolute path to the main .mq5/.mq4 file
  * @param {Map<string, Array<{line: number, condition?: string}>>} breakpointMap
  *   Map of normalized path -> array of VS Code breakpoints
  * @param {string}   mql5Root       MQL5 root directory (for resolving includes)
- * @returns {{ tempPath: string, restore: () => void, skipped: string[] }|null}
+ * @returns {{ tempPath: string, restore: () => void, skipped: string[], lineMap: Map, probeMap: Map }|null}
  */
 function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const graph = new Map();
@@ -1313,6 +1490,13 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     // 1. Build DAG of includes
     buildNode(entryPointPath);
 
+    // 1b. Mark all user files for full probe instrumentation
+    for (const node of graph.values()) {
+        if (isUserFile(node.filePath, mql5Root)) {
+            node.needsCopy = true;
+        }
+    }
+
     // 2. Propagate needsCopy = true upstream
     let changed;
     do {
@@ -1345,6 +1529,9 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const cleanedDirs = new Set();
     /** @type {Map<string, { originalLine: number, linesInserted: number }[]>} */
     const lineMap = new Map();
+    /** @type {Map<string, Map<number, number>>}  normPath → Map<line1Based → probeId> */
+    const probeMap = new Map();
+    let nextProbeId = 0;
 
     for (const node of graph.values()) {
         if (!node.needsCopy) continue;
@@ -1372,202 +1559,134 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 const childExt = path.extname(inc.incPath);
                 const childBase = inc.incPath.slice(0, -childExt.length);
                 const newIncPath = `${childBase}.mql_dbg_build${childExt}`;
-                
-                // Preserve original delimiter style (quotes vs angle brackets)
+
                 if (inc.prefix && inc.suffix) {
                     node.lines[inc.lineIdx] = `${inc.prefix}${newIncPath}${inc.suffix}`;
                 } else {
-                    // Fallback to quotes if delimiter style cannot be determined
                     node.lines[inc.lineIdx] = `#include "${newIncPath}" /* fallback */`;
                 }
             }
         }
 
-        // Inject debug instrumentation
-        if (node.bps.length > 0) {
-            // 1. Identify which function names need ENTER/EXIT from ORIGINAL lines
-            const bpLineSet = new Set(node.bps.map(b => b.line));
-            const origFuncs = findFunctionBoundaries(node.lines);
-            const funcNamesToInstrument = new Set();
-            for (const fn of origFuncs) {
-                for (let i = fn.bodyStart; i <= fn.bodyEnd; i++) {
-                    if (bpLineSet.has(i + 1)) {
-                        // Tag this function by its bodyStart line content for re-identification
-                        funcNamesToInstrument.add(fn.bodyStart);
-                        break;
-                    }
+        // ---------------------------------------------------------------
+        // Inject probes — either all executable lines (user files) or
+        // only lines with explicit BPs (system includes).
+        // ---------------------------------------------------------------
+        const fullInstrument = isUserFile(node.filePath, mql5Root) || node.bps.length > 0;
+        if (fullInstrument && node.lines.length > 0) {
+            // Build a set of BP injection points for this file
+            const bpByInjLine = new Map(); // 0-based injection line → bp
+            const bpLineSet = new Set();
+            for (const bp of node.bps) {
+                const injPoint = findInjectionPoint(node.lines, bp.line);
+                if (injPoint === null) {
+                    skippedArr.push(`${path.basename(node.filePath)}:${bp.line}`);
+                } else {
+                    bpByInjLine.set(injPoint, bp);
+                    bpLineSet.add(bp.line);
                 }
             }
-            // Store the function signature lines so we can re-find them after injection
+
+            // 1. Identify functions needing ENTER/EXIT (only those with BPs)
+            const origFuncs = findFunctionBoundaries(node.lines);
             const funcSigLines = new Set();
-            // Save original function boundaries for the line offset table
             const instrumentedFuncBounds = [];
             for (const fn of origFuncs) {
-                if (funcNamesToInstrument.has(fn.bodyStart)) {
-                    // Record the text of the line containing the opening brace
+                let hasBp = false;
+                for (let i = fn.bodyStart; i <= fn.bodyEnd; i++) {
+                    if (bpLineSet.has(i + 1)) { hasBp = true; break; }
+                }
+                if (hasBp) {
                     funcSigLines.add(node.lines[fn.bodyStart]);
                     instrumentedFuncBounds.push({ bodyStart: fn.bodyStart, bodyEnd: fn.bodyEnd });
                 }
             }
 
-            // 2. Compute include insertion point on ORIGINAL lines (before any splices)
+            // 2. Compute include insertion point on ORIGINAL lines
             const includeInsertAtOriginal = findIncludeInsertAt(node.lines);
 
-            // 3. Inject breakpoint macros (on original line numbers)
+            // 3. Determine which lines get probes
+            const execLines = isUserFile(node.filePath, mql5Root)
+                ? findAllExecutableLines(node.lines)    // ALL executable lines
+                : [...bpByInjLine.keys()];              // only BP lines for system includes
+
+            const sanitizedBase = sanitizeLabel(path.basename(node.filePath));
+            const fileProbeMap = new Map();
+
+            // 4. Build probe injections
             const injections = [];
-            for (const bp of node.bps) {
-                const injPoint = findInjectionPoint(node.lines, bp.line);
-                if (injPoint === null) {
-                    const base = path.basename(node.filePath);
-                    skippedArr.push(`${base}:${bp.line}`);
-                    continue;
-                }
-                const annotatedVars = parseWatchAnnotations(node.lines, bp.line);
-                const localVars = parseLocalsInScope(node.lines, bp.line);
+            for (const execLine of execLines) {
+                const bp = bpByInjLine.get(execLine);
+                const originalLine = execLine + 1; // 1-based
+                const probeId = nextProbeId++;
 
-                const seen = new Set();
-                const watchVars = [];
-                for (const name of annotatedVars) {
-                    seen.add(name);
-                    const local = localVars.find(l => l.name === name);
-                    watchVars.push({ name, type: local ? local.type : '', isArray: local ? local.isArray : false });
-                }
-                for (const local of localVars) {
-                    if (!seen.has(local.name)) {
-                        seen.add(local.name);
-                        watchVars.push(local);
-                    }
+                let watchVars = [];
+                let condition = '';
+                if (bp) {
+                    watchVars = collectWatchVars(node.lines, bp.line, typeDB, deepAnalysis);
+                    condition = bp.condition || '';
                 }
 
-                // Resolve member access expressions (obj.member, this.field, a.b.c)
-                const enclosingClass = findEnclosingClassName(node.lines, bp.line);
-                for (const expr of findMemberAccessExpressions(node.lines, bp.line)) {
-                    if (seen.has(expr)) continue;
-                    const resolved = resolveMemberType(expr, localVars, typeDB.globalMap, typeDB.classMap, enclosingClass);
-                    if (resolved && isWatchableType(resolved.type, typeDB.classMap)) {
-                        seen.add(expr);
-                        watchVars.push({ name: expr, type: resolved.type, isArray: resolved.isArray });
-                    }
-                }
+                const label = `bp_${sanitizedBase}_${originalLine}`;
+                const macroLines = buildProbeInjection(probeId, label, watchVars, condition);
+                injections.push({ afterLine: execLine, macroLines });
 
-                // Watch implicit class members (accessed without this. prefix)
-                for (const member of findImplicitClassMembers(node.lines, bp.line, localVars, typeDB.classMap, enclosingClass)) {
-                    if (!seen.has(member.name)) {
-                        seen.add(member.name);
-                        watchVars.push(member);
-                    }
+                // Record probe mapping (actual line + BP line if different)
+                fileProbeMap.set(originalLine, probeId);
+                if (bp && bp.line !== originalLine) {
+                    fileProbeMap.set(bp.line, probeId);
                 }
-
-                // Deep analysis: global primitives near breakpoint + class field expansion + input vars
-                if (deepAnalysis) {
-                    for (const g of findGlobalVarsNearBreakpoint(node.lines, bp.line, typeDB.globalMap, typeDB.classMap, seen)) {
-                        seen.add(g.name);
-                        watchVars.push(g);
-                    }
-                    for (const field of findClassFieldExpansions(localVars, typeDB.classMap)) {
-                        if (!seen.has(field.name)) {
-                            seen.add(field.name);
-                            watchVars.push(field);
-                        }
-                    }
-                    // Watch all input variables unconditionally (always relevant context)
-                    for (const [varName, info] of typeDB.globalMap) {
-                        if (!info.isInput || seen.has(varName)) continue;
-                        if (!isWatchableType(info.type, typeDB.classMap)) continue;
-                        seen.add(varName);
-                        watchVars.push({ name: varName, type: info.type, isArray: info.isArray });
-                    }
-                    // Expand global class instances referenced near breakpoint into their fields
-                    const globalClassInstances = findGlobalClassInstancesNearBreakpoint(
-                        node.lines, bp.line, typeDB.globalMap, typeDB.classMap, seen
-                    );
-                    for (const field of findClassFieldExpansions(globalClassInstances, typeDB.classMap)) {
-                        if (!seen.has(field.name)) {
-                            seen.add(field.name);
-                            watchVars.push(field);
-                        }
-                    }
-                }
-
-                // Watch return expression (covers globals returned directly, always active)
-                for (const expr of extractReturnExpressions(node.lines, bp.line)) {
-                    if (seen.has(expr)) continue;
-                    let type = '', isArray = false;
-                    const local = localVars.find(l => l.name === expr);
-                    if (local) {
-                        type = local.type; isArray = local.isArray || false;
-                    } else if (typeDB.globalMap.has(expr)) {
-                        const g = typeDB.globalMap.get(expr);
-                        type = g.type; isArray = g.isArray;
-                    } else if (expr.includes('.')) {
-                        const resolved = resolveMemberType(expr, localVars, typeDB.globalMap, typeDB.classMap, enclosingClass);
-                        if (resolved) { type = resolved.type; isArray = resolved.isArray; }
-                    }
-                    if (!type || !isWatchableType(type, typeDB.classMap)) continue;
-                    seen.add(expr);
-                    watchVars.push({ name: expr, type, isArray });
-                }
-
-                const sanitizedBase = sanitizeLabel(path.basename(node.filePath));
-                const label = `bp_${sanitizedBase}_${bp.line}`;
-                const macroLines = buildInjectionLines(label, watchVars, bp.condition || '');
-                injections.push({ afterLine: injPoint, macroLines });
             }
+
+            // Splice injections (reverse order to preserve indices)
             injections.sort((a, b) => b.afterLine - a.afterLine);
             for (const { afterLine, macroLines } of injections) {
                 node.lines.splice(afterLine + 1, 0, ...macroLines);
             }
 
-            ensureInclude(node.lines);
+            // 5. Include + probe init
+            const includeIdx = ensureInclude(node.lines);
+            if (node.filePath === entryPointPath && includeIdx >= 0) {
+                node.lines.splice(includeIdx + 1, 0,
+                    `int __mqldbg_probes_init__ = MqlDebugInitProbes(10000);`);
+            }
 
-            // 4. Inject ENTER/EXIT on the modified source
-            //    Re-find function boundaries, then filter to only the functions
-            //    we identified in step 1 (matched by signature line text)
+            // 6. ENTER/EXIT (same as before — only for functions with BPs)
             if (funcSigLines.size > 0) {
                 const modifiedFuncs = findFunctionBoundaries(node.lines);
                 const relevantFuncs = modifiedFuncs.filter(fn =>
                     funcSigLines.has(node.lines[fn.bodyStart])
                 );
-                // Process in reverse to preserve indices
                 relevantFuncs.sort((a, b) => b.bodyStart - a.bodyStart);
                 for (const fn of relevantFuncs) {
                     const indent = getIndent(node.lines[fn.bodyStart]) + '    ';
-
-                    // EXIT before closing brace
                     node.lines.splice(fn.bodyEnd, 0, `${indent}MQL_DBG_EXIT;`);
-
-                    // EXIT before each return (backwards)
-                    // Wrap in braces to avoid breaking braceless if/for/while blocks.
-                    // e.g. `if (x) return;` → `if (x) { MQL_DBG_EXIT; return; }`
                     for (let i = fn.bodyEnd - 1; i > fn.bodyStart; i--) {
                         if (/^return\b[\s\S]*;\s*$/.test(node.lines[i].trim())) {
                             const retIndent = getIndent(node.lines[i]);
                             node.lines[i] = `${retIndent}{ MQL_DBG_EXIT; ${node.lines[i].trim()} }`;
                         }
                     }
-
-                    // ENTER after opening brace
                     node.lines.splice(fn.bodyStart + 1, 0, `${indent}MQL_DBG_ENTER;`);
                 }
             }
 
-            // 5. Build line offset table for this file
-            //    originalLine is 1-based: "N lines inserted after original line X"
-            //    (originalLine 0 means inserted before the first line)
-            //    includeInsertAtOriginal was computed on original lines (before splices)
+            // 7. Build line offset table
             const fileOffsets = [];
-            if (includeInsertAtOriginal >= 0) {
-                fileOffsets.push({ originalLine: includeInsertAtOriginal, linesInserted: 1 });
+            const includeLines = (node.filePath === entryPointPath && includeInsertAtOriginal >= 0) ? 2 : (includeInsertAtOriginal >= 0 ? 1 : 0);
+            if (includeLines > 0) {
+                fileOffsets.push({ originalLine: includeInsertAtOriginal, linesInserted: includeLines });
             }
             for (const { afterLine, macroLines } of injections) {
                 fileOffsets.push({ originalLine: afterLine + 1, linesInserted: macroLines.length });
             }
             for (const fn of instrumentedFuncBounds) {
-                fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 }); // ENTER
-                fileOffsets.push({ originalLine: fn.bodyEnd, linesInserted: 1 });        // EXIT
+                fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 });
+                fileOffsets.push({ originalLine: fn.bodyEnd, linesInserted: 1 });
             }
             fileOffsets.sort((a, b) => a.originalLine - b.originalLine);
             lineMap.set(node.normPath, fileOffsets);
+            probeMap.set(node.normPath, fileProbeMap);
         }
 
         // Save
@@ -1616,7 +1735,7 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
 
     if (!entryTempPath) return null;
 
-    return { tempPath: entryTempPath, restore, skipped: skippedArr, lineMap };
+    return { tempPath: entryTempPath, restore, skipped: skippedArr, lineMap, probeMap };
 }
 
 module.exports = {

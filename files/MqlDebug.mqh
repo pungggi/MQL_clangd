@@ -369,4 +369,74 @@ void MqlDebugPause() {
 
 #define MQL_DBG_PAUSE MqlDebugPause()
 
+//+------------------------------------------------------------------+
+//| Dynamic Breakpoint Probes                                        |
+//|                                                                  |
+//| Probes are injected at every executable line. Only those listed  |
+//| in MqlDebugBPConfig.txt actually fire (BREAK + PAUSE).          |
+//| VS Code rewrites the config file on every breakpoint change;     |
+//| the EA reloads it every ~200 ms, so new/removed breakpoints     |
+//| take effect without recompilation or EA restart.                 |
+//+------------------------------------------------------------------+
+#define MQLDEBUG_BP_CONFIG   "MqlDebugBPConfig.txt"
+#define MQLDEBUG_RELOAD_MS   200
+
+bool   __mqldbg_active[];
+int    __mqldbg_maxProbe = 0;
+uint   __mqldbg_lastReload = 0;
+
+//+------------------------------------------------------------------+
+//| Allocate the probe array. Called once via global initializer.     |
+//+------------------------------------------------------------------+
+int MqlDebugInitProbes(int count) {
+    __mqldbg_maxProbe = count;
+    ArrayResize(__mqldbg_active, count);
+    ArrayFill(__mqldbg_active, 0, count, false);
+    return 0;
+}
+
+//+------------------------------------------------------------------+
+//| Reload active probe IDs from the config file.                    |
+//| Format: comma-separated probe IDs, e.g. "3,17,42"               |
+//+------------------------------------------------------------------+
+void MqlDebugLoadConfig() {
+    ArrayFill(__mqldbg_active, 0, __mqldbg_maxProbe, false);
+
+    int handle = FileOpen(MQLDEBUG_BP_CONFIG,
+                          FILE_READ | FILE_TXT | FILE_ANSI |
+                          FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if (handle == INVALID_HANDLE) return;
+
+    string content = FileReadString(handle);
+    FileClose(handle);
+
+    if (content == "") return;
+
+    string parts[];
+    int cnt = StringSplit(content, ',', parts);
+    for (int i = 0; i < cnt; i++) {
+        StringTrimLeft(parts[i]);
+        StringTrimRight(parts[i]);
+        int id = (int)StringToInteger(parts[i]);
+        if (id >= 0 && id < __mqldbg_maxProbe)
+            __mqldbg_active[id] = true;
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Check whether a probe should fire. Reloads config every ~200 ms. |
+//+------------------------------------------------------------------+
+bool MqlDebugProbeCheck(int id) {
+    if (__mqldbg_maxProbe == 0 || id < 0 || id >= __mqldbg_maxProbe)
+        return false;
+
+    uint now = GetTickCount();
+    if (now - __mqldbg_lastReload > MQLDEBUG_RELOAD_MS) {
+        __mqldbg_lastReload = now;
+        MqlDebugLoadConfig();
+    }
+
+    return __mqldbg_active[id];
+}
+
 #endif // MQLDEBUG_MQH

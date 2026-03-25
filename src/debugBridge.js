@@ -37,6 +37,14 @@ class MqlDebugBridge {
         this._active = false;
         /** @type {string|null} */
         this._mql5Root = null;
+        /** @type {string|null} */
+        this._sourcePath = null;
+        /** @type {Function|null} */
+        this._compilePath = null;
+        /** @type {object|null} */
+        this._context = null;
+        /** @type {Map<string, Map<number, number>>|null}  normPath → Map<line → probeId> */
+        this._probeMap = null;
         /** @type {ReturnType<typeof setInterval>|null} */
         this._retryTimer = null;
         /** @type {vscode.OutputChannel|null} */
@@ -62,6 +70,7 @@ class MqlDebugBridge {
     }
     get isActive() { return this._active; }
     get lineMap() { return this._lineMap; }
+    get probeMap() { return this._probeMap; }
 
     // -------------------------------------------------------------------------
     // Public API
@@ -83,6 +92,9 @@ class MqlDebugBridge {
         }
 
         this._mql5Root = mql5Root;
+        this._sourcePath = sourcePath;
+        this._compilePath = compilePath;
+        this._context = context;
 
         // Cancel any pending binary-delete retry from a previous session
         if (this._retryTimer) {
@@ -108,15 +120,16 @@ class MqlDebugBridge {
         }
 
         // 3. Instrument workspace and resolve includes
-        let tempPath, restore, skipped, lineMap;
+        let tempPath, restore, skipped, lineMap, probeMap;
         try {
             const result = instrumentWorkspace(sourcePath, breakpointMap, mql5Root);
             if (!result) {
                 vscode.window.showErrorMessage(`MQL Debug: Failed to instrument workspace.`);
                 return;
             }
-            ({ tempPath, restore, skipped, lineMap } = result);
+            ({ tempPath, restore, skipped, lineMap, probeMap } = result);
             this._lineMap = lineMap;
+            this._probeMap = probeMap;
         } catch (err) {
             vscode.window.showErrorMessage(`MQL Debug: Failed to instrument source: ${err.message}`);
             return;
@@ -158,6 +171,16 @@ class MqlDebugBridge {
 
         // Compilation succeeded — keep the temp file alive until session ends
         // (MetaTrader needs the .ex5 which is next to the temp file)
+
+        // 4b. Write initial breakpoint config so the EA knows which probes to activate
+        const initialIds = [];
+        for (const [normPath, bps] of breakpointMap) {
+            for (const bp of bps) {
+                const id = this.resolveProbeId(normPath, bp.line);
+                if (id !== undefined) initialIds.push(id);
+            }
+        }
+        this.writeBreakpointConfig(initialIds);
 
         // 5. Start debug session
         this._active = true;
@@ -206,6 +229,10 @@ class MqlDebugBridge {
         if (!this._active) return;
         this._active = false;
         this._lineMap = null;
+        this._probeMap = null;
+        this._sourcePath = null;
+        this._compilePath = null;
+        this._context = null;
 
         if (this._reader) {
             this._reader.stop();
@@ -222,6 +249,40 @@ class MqlDebugBridge {
 
         store.endSession();
         vscode.window.showInformationMessage('MQL Debug session stopped.');
+    }
+
+    /**
+     * Write the active probe IDs to the BP config file.
+     * The EA reads this file every ~200 ms and activates/deactivates probes.
+     * @param {number[]} activeIds  Array of probe IDs that should fire
+     */
+    writeBreakpointConfig(activeIds) {
+        if (!this._mql5Root) return;
+        const configPath = path.join(this._mql5Root, 'Files', 'MqlDebugBPConfig.txt');
+        try {
+            fs.writeFileSync(configPath, activeIds.join(','), 'utf-8');
+        } catch (err) {
+            console.warn('[MqlDebugBridge] Failed to write BP config:', err.message);
+        }
+    }
+
+    /**
+     * Resolve a breakpoint line to a probe ID.
+     * Tries exact match first, then searches forward up to 10 lines
+     * (mirrors findInjectionPoint behaviour).
+     *
+     * @param {string} normPath  Normalized (lowercase, forward-slash) file path
+     * @param {number} line      1-based line number
+     * @returns {number|undefined}
+     */
+    resolveProbeId(normPath, line) {
+        const fileProbes = this._probeMap && this._probeMap.get(normPath);
+        if (!fileProbes) return undefined;
+        for (let offset = 0; offset <= 10; offset++) {
+            const id = fileProbes.get(line + offset);
+            if (id !== undefined) return id;
+        }
+        return undefined;
     }
 
     // -------------------------------------------------------------------------
@@ -285,14 +346,15 @@ class MqlDebugBridge {
         }, 5000);
     }
 
-    /** Delete the command file (cleanup). */
+    /** Delete the command file and BP config file (cleanup). */
     _cleanCmdFile() {
         if (!this._mql5Root) return;
-        const cmdPath = path.join(this._mql5Root, 'Files', 'MqlDebugCmd.txt');
-        try {
-            fs.unlinkSync(cmdPath);
-        } catch {
-            // File may not exist — that's fine
+        for (const name of ['MqlDebugCmd.txt', 'MqlDebugBPConfig.txt']) {
+            try {
+                fs.unlinkSync(path.join(this._mql5Root, 'Files', name));
+            } catch {
+                // File may not exist — that's fine
+            }
         }
     }
 
