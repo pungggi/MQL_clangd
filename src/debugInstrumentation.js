@@ -1181,24 +1181,25 @@ function findFunctionBoundaries(lines) {
  * @param {string[]} lines  Source lines (mutated in place)
  * @returns {number} 0-based insertion index, or -1 if already present
  */
-function ensureInclude(lines) {
-    // Already included?
+function findIncludeInsertAt(lines) {
     if (lines.some(l => l.includes('MqlDebug.mqh'))) return -1;
-
-    // Find insertion point: after last consecutive #property or // comment at top
     let insertAt = 0;
     for (let i = 0; i < Math.min(30, lines.length); i++) {
         const t = lines[i].trimStart();
         if (t.startsWith('#property') || t.startsWith('//') || t === '') {
             insertAt = i + 1;
         } else if (t.startsWith('#include') || t.startsWith('#define')) {
-            // Insert before other includes/defines if no properties found
             break;
         } else {
             break;
         }
     }
+    return insertAt;
+}
 
+function ensureInclude(lines) {
+    const insertAt = findIncludeInsertAt(lines);
+    if (insertAt < 0) return -1;
     lines.splice(insertAt, 0, INCLUDE_LINE);
     return insertAt;
 }
@@ -1409,7 +1410,10 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 }
             }
 
-            // 2. Inject breakpoint macros (on original line numbers)
+            // 2. Compute include insertion point on ORIGINAL lines (before any splices)
+            const includeInsertAtOriginal = findIncludeInsertAt(node.lines);
+
+            // 3. Inject breakpoint macros (on original line numbers)
             const injections = [];
             for (const bp of node.bps) {
                 const injPoint = findInjectionPoint(node.lines, bp.line);
@@ -1514,9 +1518,9 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 node.lines.splice(afterLine + 1, 0, ...macroLines);
             }
 
-            const includeInsertAt = ensureInclude(node.lines);
+            ensureInclude(node.lines);
 
-            // 3. Inject ENTER/EXIT on the modified source
+            // 4. Inject ENTER/EXIT on the modified source
             //    Re-find function boundaries, then filter to only the functions
             //    we identified in step 1 (matched by signature line text)
             if (funcSigLines.size > 0) {
@@ -1547,18 +1551,20 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 }
             }
 
-            // 4. Build line offset table for this file
-            //    All originalLine values are 1-based: "N lines inserted after original line X"
+            // 5. Build line offset table for this file
+            //    originalLine is 1-based: "N lines inserted after original line X"
+            //    (originalLine 0 means inserted before the first line)
+            //    includeInsertAtOriginal was computed on original lines (before splices)
             const fileOffsets = [];
-            if (includeInsertAt >= 0) {
-                fileOffsets.push({ originalLine: includeInsertAt + 1, linesInserted: 1 });
+            if (includeInsertAtOriginal >= 0) {
+                fileOffsets.push({ originalLine: includeInsertAtOriginal, linesInserted: 1 });
             }
             for (const { afterLine, macroLines } of injections) {
                 fileOffsets.push({ originalLine: afterLine + 1, linesInserted: macroLines.length });
             }
             for (const fn of instrumentedFuncBounds) {
                 fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 }); // ENTER
-                fileOffsets.push({ originalLine: fn.bodyEnd + 1, linesInserted: 1 });    // EXIT
+                fileOffsets.push({ originalLine: fn.bodyEnd, linesInserted: 1 });        // EXIT
             }
             fileOffsets.sort((a, b) => a.originalLine - b.originalLine);
             lineMap.set(node.normPath, fileOffsets);

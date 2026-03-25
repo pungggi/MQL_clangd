@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
+const { instrumentedToOriginal } = require('./debugInstrumentation');
 
 const THREAD_ID = 1;
 
@@ -157,10 +158,11 @@ class MqlDebugAdapter extends EventEmitter {
                 id: i,
                 name: f.func,
                 source: f.file ? { path: this._mapToOriginalPath(f.file) } : undefined,
-                line: parseInt(f.line, 10) || 0,
+                line: this._translateLine(f.file, parseInt(f.line, 10) || 0),
                 column: 0,
             }));
             // Override top frame line with the original breakpoint line when available
+            // (label-based parsing is more precise than the offset table for the hit frame)
             if (frames.length > 0 && hit) {
                 const origLine = this._parseOriginalLine(hit.label);
                 if (origLine > 0) frames[0].line = origLine;
@@ -171,7 +173,7 @@ class MqlDebugAdapter extends EventEmitter {
                 id: 0,
                 name: hit.func || '(unknown)',
                 source: hit.file ? { path: this._mapToOriginalPath(hit.file) } : undefined,
-                line: this._parseOriginalLine(hit.label) || parseInt(hit.line, 10) || 0,
+                line: this._parseOriginalLine(hit.label) || this._translateLine(hit.file, parseInt(hit.line, 10) || 0),
                 column: 0,
             }] : [];
         }
@@ -263,7 +265,7 @@ class MqlDebugAdapter extends EventEmitter {
                     { name: 'Label', value: hit.label || '(none)', variablesReference: 0 },
                     { name: 'Function', value: hit.func || '(unknown)', variablesReference: 0 },
                     { name: 'File', value: hit.file || '(unknown)', variablesReference: 0 },
-                    { name: 'Line', value: String(hit.line || 0), type: 'int', variablesReference: 0 },
+                    { name: 'Line', value: String(this._translateLine(hit.file, parseInt(hit.line, 10) || 0)), type: 'int', variablesReference: 0 },
                     { name: 'Timestamp', value: hit.timestamp || '', variablesReference: 0 },
                     { name: 'BP Hit Count', value: String(hit.hitCount || 0), type: 'int', variablesReference: 0 },
                     { name: 'Total Hits', value: String(this._store.hits.length), type: 'int', variablesReference: 0 },
@@ -314,9 +316,10 @@ class MqlDebugAdapter extends EventEmitter {
             for (let i = this._lastHitCount; i < hits.length; i++) {
                 const h = hits[i];
                 // Output to Debug Console so user sees hit history
+                const displayLine = this._translateLine(h.file, parseInt(h.line, 10) || 0);
                 this._sendEvent('output', {
                     category: 'console',
-                    output: `[MQL Break] ${h.label}  ${h.func}:${h.line}  (${h.file})  ${h.timestamp}\n`,
+                    output: `[MQL Break] ${h.label}  ${h.func}:${displayLine}  (${h.file})  ${h.timestamp}\n`,
                 });
                 // Output watch values for this hit
                 if (h.watches && h.watches.length) {
@@ -443,6 +446,45 @@ class MqlDebugAdapter extends EventEmitter {
         }
 
         return mapped;
+    }
+
+    // -------------------------------------------------------------------------
+    // Line mapping
+    // -------------------------------------------------------------------------
+
+    /**
+     * Translate an instrumented line number back to the original source line.
+     * Falls back to the raw line if no line map is available.
+     *
+     * @param {string} file  File name as reported by MQL5 (__FILE__)
+     * @param {number} instrumentedLine  1-based line in the instrumented file
+     * @returns {number}
+     */
+    _translateLine(file, instrumentedLine) {
+        if (!instrumentedLine || !this._bridge.lineMap) return instrumentedLine;
+        const mapped = file ? file.replace(/\.mql_dbg_build\.(mq[45])/i, '.$1') : '';
+        const normFile = mapped.toLowerCase().replace(/\\/g, '/');
+        const normBase = normFile.substring(normFile.lastIndexOf('/') + 1);
+        // lineMap is keyed by normalized full path; prefer full-path match, fall back to basename
+        let baseMatch = null;
+        let baseMatchCount = 0;
+        for (const [key, offsets] of this._bridge.lineMap) {
+            if (key === normFile || key.endsWith('/' + normFile)) {
+                return instrumentedToOriginal(instrumentedLine, offsets);
+            }
+            const keyBase = key.substring(key.lastIndexOf('/') + 1);
+            if (keyBase === normBase) {
+                if (!baseMatch) baseMatch = offsets;
+                baseMatchCount++;
+            }
+        }
+        if (baseMatch) {
+            if (baseMatchCount > 1) {
+                console.warn(`[MqlDebugAdapter] Ambiguous line map: ${baseMatchCount} files match basename "${normBase}". Using first match.`);
+            }
+            return instrumentedToOriginal(instrumentedLine, baseMatch);
+        }
+        return instrumentedLine;
     }
 
     // -------------------------------------------------------------------------
