@@ -368,12 +368,20 @@ function parseLocalsInScope(lines, bpLine) {
     const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
     const RE_VARNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
 
-    // Skip types that are clearly not variable declarations
+    // Skip identifiers that are clearly not type names on the left side of a declaration
     const NON_TYPE_KEYWORDS = new Set([
         'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
         'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
         'new', 'virtual', 'override', 'public', 'private', 'protected',
         'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
+    ]);
+    // MQL type keywords must never be extracted as variable names
+    // (can happen when RE_VNAME iterates over function-call syntax in defaults)
+    const NON_VARNAME_KEYWORDS = new Set([
+        ...NON_TYPE_KEYWORDS,
+        'int', 'uint', 'short', 'ushort', 'char', 'uchar',
+        'long', 'ulong', 'double', 'float', 'string', 'bool',
+        'datetime', 'color',
     ]);
 
     for (let i = funcBodyStart + 1; i <= idx && i < lines.length; i++) {
@@ -395,7 +403,7 @@ function parseLocalsInScope(lines, bpLine) {
         while ((vm = RE_VARNAME.exec(varsPart)) !== null) {
             const vName = vm[1];
             const isArray = vm[0].includes('[');
-            if (!seen.has(vName) && !NON_TYPE_KEYWORDS.has(vName)) {
+            if (!seen.has(vName) && !NON_VARNAME_KEYWORDS.has(vName)) {
                 seen.add(vName);
                 locals.push({ name: vName, type: typeName, isArray });
             }
@@ -474,6 +482,13 @@ function parseClassDefinitions(lines) {
         'new', 'virtual', 'override', 'public', 'private', 'protected',
         'template', 'typedef', 'namespace',
     ]);
+    // MQL type keywords must never be extracted as variable names
+    const SKIP_VARNAMES = new Set([
+        ...SKIP,
+        'int', 'uint', 'short', 'ushort', 'char', 'uchar',
+        'long', 'ulong', 'double', 'float', 'string', 'bool',
+        'datetime', 'color',
+    ]);
 
     for (let i = 0; i < lines.length; i++) {
         const m = lines[i].match(RE_CLASS);
@@ -523,7 +538,7 @@ function parseClassDefinitions(lines) {
             RE_VNAME.lastIndex = 0;
             let vm;
             while ((vm = RE_VNAME.exec(dm[2])) !== null) {
-                if (!SKIP.has(vm[1])) {
+                if (!SKIP_VARNAMES.has(vm[1])) {
                     members.push({ name: vm[1], type: dm[1], isArray: vm[0].includes('[') });
                 }
             }
@@ -544,13 +559,21 @@ function parseClassDefinitions(lines) {
  */
 function parseGlobalDeclarations(lines) {
     const globals = [];
-    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*([A-Za-z_][^;{]*)\s*;/;
+    // Exclude parens to avoid matching function prototypes like: int func(int, datetime);
+    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*([A-Za-z_][^;{()]*)\s*;/;
     const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
     const SKIP = new Set([
         'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
         'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
         'new', 'virtual', 'override', 'public', 'private', 'protected',
         'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
+    ]);
+    // MQL type keywords must never be extracted as variable names
+    const SKIP_VARNAMES = new Set([
+        ...SKIP,
+        'int', 'uint', 'short', 'ushort', 'char', 'uchar',
+        'long', 'ulong', 'double', 'float', 'string', 'bool',
+        'datetime', 'color',
     ]);
 
     let depth = 0;
@@ -574,7 +597,7 @@ function parseGlobalDeclarations(lines) {
         RE_VNAME.lastIndex = 0;
         let vm;
         while ((vm = RE_VNAME.exec(m[2])) !== null) {
-            if (!SKIP.has(vm[1])) {
+            if (!SKIP_VARNAMES.has(vm[1])) {
                 globals.push({ name: vm[1], type: m[1], isArray: vm[0].includes('['), isInput });
             }
         }
