@@ -1734,8 +1734,12 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 }
             }
 
-            // Splice injections BEFORE target line (reverse order to preserve indices).
-            // For braceless control bodies, wrap in { } to preserve control flow.
+            // Splice injections (reverse order to preserve indices).
+            // For braceless control bodies, wrap in { } and insert probe BEFORE
+            // the target line to preserve control flow.
+            // For normal lines, insert probe AFTER the target line — inserting
+            // before would break multi-line statements whose final line ends
+            // with ';' (the probe's `if` would land mid-expression).
             injections.sort((a, b) => b.targetLine - a.targetLine);
             for (const { targetLine, macroLines, braceless } of injections) {
                 const indent = getIndent(node.lines[targetLine]);
@@ -1743,7 +1747,7 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                     node.lines.splice(targetLine + 1, 0, `${indent}}`);
                     node.lines.splice(targetLine, 0, `${indent}{`, ...macroLines);
                 } else {
-                    node.lines.splice(targetLine, 0, ...macroLines);
+                    node.lines.splice(targetLine + 1, 0, ...macroLines);
                 }
             }
 
@@ -1782,7 +1786,8 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             }
             for (const { targetLine, macroLines, braceless } of injections) {
                 const extra = braceless ? 2 : 0;  // { and }
-                fileOffsets.push({ originalLine: targetLine, linesInserted: macroLines.length + extra });
+                const insertAt = braceless ? targetLine : targetLine + 1;
+                fileOffsets.push({ originalLine: insertAt, linesInserted: macroLines.length + extra });
             }
             for (const fn of instrumentedFuncBounds) {
                 fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 });
