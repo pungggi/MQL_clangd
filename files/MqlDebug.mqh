@@ -384,7 +384,7 @@ void MqlDebugPause() {
 #ifndef __clang__
 bool   __mqldbg_active[];
 #else
-bool   *__mqldbg_active;
+bool   *__mqldbg_active = nullptr;
 #endif
 int    __mqldbg_maxProbe = 0;
 uint   __mqldbg_lastReload = 0;
@@ -401,7 +401,10 @@ int MqlDebugInitProbes(int count) {
         __mqldbg_maxProbe = 0;
         return 0;
     }
-    ArrayResize(__mqldbg_active, count);
+    if (ArrayResize(__mqldbg_active, count) < count) {
+        __mqldbg_maxProbe = 0;
+        return -1;
+    }
     ArrayFill(__mqldbg_active, 0, count, false);
     __mqldbg_maxProbe = count;
     return 0;

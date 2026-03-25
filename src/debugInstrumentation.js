@@ -162,11 +162,25 @@ function findAllExecutableLines(lines) {
  * @returns {boolean}
  */
 function isBracelessBody(lines, idx) {
-    // Walk backward to the first non-blank, non-line-comment line
+    // Walk backward to the first non-blank, non-comment line.
+    // We must skip block-comment lines (/* ... */) in addition to // comments.
     let prev = -1;
+    let inBlock = false;
     for (let i = idx - 1; i >= 0; i--) {
         const t = lines[i].trim();
-        if (t === '' || t.startsWith('//')) continue;
+        if (t === '') continue;
+        // Scanning backward: if a line ends a block comment, we are entering one
+        if (!inBlock && t.endsWith('*/')) {
+            inBlock = true;
+        }
+        if (inBlock) {
+            // If this line starts the block comment, we're leaving it
+            if (t.includes('/*')) inBlock = false;
+            continue;
+        }
+        if (t.startsWith('//')) continue;
+        // Skip block-comment continuation lines (e.g. " * text")
+        if (t.startsWith('*') && !t.startsWith('*/')) continue;
         prev = i;
         break;
     }
@@ -1224,7 +1238,7 @@ function buildProbeInjection(probeId, label, watchVars, condition) {
 
     const result = [];
     if (condition && condition.trim() && !isConditionSafe(condition)) {
-        result.push(`// Invalid breakpoint condition: ${condition}`);
+        result.push(`// Invalid breakpoint condition: ${sanitizeCondition(condition)}`);
     }
     result.push(
         `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,

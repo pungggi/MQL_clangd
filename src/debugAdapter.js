@@ -285,11 +285,7 @@ class MqlDebugAdapter extends EventEmitter {
                     try {
                         id = this._bridge.resolveProbeId(filePath, line);
                     } catch (err) {
-                        if (this._logger) {
-                            this._logger.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
-                        } else {
-                            console.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
-                        }
+                        console.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
                         continue;
                     }
                     if (id !== undefined) activeIds.push(id);
@@ -297,11 +293,7 @@ class MqlDebugAdapter extends EventEmitter {
             }
             this._bridge.writeBreakpointConfig(activeIds);
         } catch (err) {
-            if (this._logger) {
-                this._logger.error(`[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:`, err);
-            } else {
-                console.error(`[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:`, err);
-            }
+            console.error(`[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:`, err);
         }
     }
 
