@@ -308,6 +308,28 @@ const MQL_BUILTIN_STRUCTS = new Map([
 ]);
 
 // -------------------------------------------------------------------------
+// Keyword sets for declaration parsing
+// -------------------------------------------------------------------------
+
+/** Identifiers that are clearly not type names on the left side of a declaration. */
+const NON_TYPE_KEYWORDS = new Set([
+    'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+    'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
+    'new', 'virtual', 'override', 'public', 'private', 'protected',
+    'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
+]);
+
+/** MQL primitive type keywords — valid as type names but must never be extracted as variable names. */
+const MQL_PRIMITIVE_TYPES = new Set([
+    'int', 'uint', 'short', 'ushort', 'char', 'uchar',
+    'long', 'ulong', 'double', 'float', 'string', 'bool',
+    'datetime', 'color',
+]);
+
+/** Union of NON_TYPE_KEYWORDS + MQL_PRIMITIVE_TYPES — used to filter extracted variable names. */
+const NON_VARNAME_KEYWORDS = new Set([...NON_TYPE_KEYWORDS, ...MQL_PRIMITIVE_TYPES]);
+
+// -------------------------------------------------------------------------
 // Local variable discovery
 // -------------------------------------------------------------------------
 
@@ -368,21 +390,7 @@ function parseLocalsInScope(lines, bpLine) {
     const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
     const RE_VARNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
 
-    // Skip identifiers that are clearly not type names on the left side of a declaration
-    const NON_TYPE_KEYWORDS = new Set([
-        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
-        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
-        'new', 'virtual', 'override', 'public', 'private', 'protected',
-        'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
-    ]);
-    // MQL type keywords must never be extracted as variable names
-    // (can happen when RE_VNAME iterates over function-call syntax in defaults)
-    const NON_VARNAME_KEYWORDS = new Set([
-        ...NON_TYPE_KEYWORDS,
-        'int', 'uint', 'short', 'ushort', 'char', 'uchar',
-        'long', 'ulong', 'double', 'float', 'string', 'bool',
-        'datetime', 'color',
-    ]);
+    // NON_TYPE_KEYWORDS / NON_VARNAME_KEYWORDS are module-level constants
 
     for (let i = funcBodyStart + 1; i <= idx && i < lines.length; i++) {
         const line = lines[i];
@@ -476,19 +484,7 @@ function parseClassDefinitions(lines) {
     const RE_CLASS = /^\s*(?:class|struct)\s+([A-Za-z_]\w*)(?:\s*:\s*(?:(?:public|private|protected)\s+)?([A-Za-z_]\w*))?/;
     const RE_DECL = /^\s*(?:(?:static|const)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
     const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
-    const SKIP = new Set([
-        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
-        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
-        'new', 'virtual', 'override', 'public', 'private', 'protected',
-        'template', 'typedef', 'namespace',
-    ]);
-    // MQL type keywords must never be extracted as variable names
-    const SKIP_VARNAMES = new Set([
-        ...SKIP,
-        'int', 'uint', 'short', 'ushort', 'char', 'uchar',
-        'long', 'ulong', 'double', 'float', 'string', 'bool',
-        'datetime', 'color',
-    ]);
+    // Uses module-level NON_TYPE_KEYWORDS / NON_VARNAME_KEYWORDS
 
     for (let i = 0; i < lines.length; i++) {
         const m = lines[i].match(RE_CLASS);
@@ -533,12 +529,12 @@ function parseClassDefinitions(lines) {
 
             const dm = trimmed.match(RE_DECL);
             if (!dm) continue;
-            if (SKIP.has(dm[1])) continue;
+            if (NON_TYPE_KEYWORDS.has(dm[1])) continue;
 
             RE_VNAME.lastIndex = 0;
             let vm;
             while ((vm = RE_VNAME.exec(dm[2])) !== null) {
-                if (!SKIP_VARNAMES.has(vm[1])) {
+                if (!NON_VARNAME_KEYWORDS.has(vm[1])) {
                     members.push({ name: vm[1], type: dm[1], isArray: vm[0].includes('[') });
                 }
             }
@@ -562,19 +558,7 @@ function parseGlobalDeclarations(lines) {
     // Exclude parens to avoid matching function prototypes like: int func(int, datetime);
     const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*([A-Za-z_][^;{()]*)\s*;/;
     const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
-    const SKIP = new Set([
-        'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
-        'break', 'continue', 'class', 'struct', 'enum', 'void', 'delete',
-        'new', 'virtual', 'override', 'public', 'private', 'protected',
-        'template', 'typedef', 'namespace', 'Print', 'Comment', 'Alert',
-    ]);
-    // MQL type keywords must never be extracted as variable names
-    const SKIP_VARNAMES = new Set([
-        ...SKIP,
-        'int', 'uint', 'short', 'ushort', 'char', 'uchar',
-        'long', 'ulong', 'double', 'float', 'string', 'bool',
-        'datetime', 'color',
-    ]);
+    // Uses module-level NON_TYPE_KEYWORDS / NON_VARNAME_KEYWORDS
 
     let depth = 0;
     for (let i = 0; i < lines.length; i++) {
@@ -591,13 +575,13 @@ function parseGlobalDeclarations(lines) {
 
         const m = trimmed.match(RE_DECL);
         if (!m) continue;
-        if (SKIP.has(m[1])) continue;
+        if (NON_TYPE_KEYWORDS.has(m[1])) continue;
 
         const isInput = /\bs?input\b/.test(lines[i]);
         RE_VNAME.lastIndex = 0;
         let vm;
         while ((vm = RE_VNAME.exec(m[2])) !== null) {
-            if (!SKIP_VARNAMES.has(vm[1])) {
+            if (!NON_VARNAME_KEYWORDS.has(vm[1])) {
                 globals.push({ name: vm[1], type: m[1], isArray: vm[0].includes('['), isInput });
             }
         }
