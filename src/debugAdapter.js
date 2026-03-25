@@ -29,18 +29,18 @@ class MqlDebugAdapter extends EventEmitter {
      */
     constructor(store, bridge, sourcePath, mql5Root, compilePath, context, originalPath) {
         super();
-        this._store        = store;
-        this._bridge       = bridge;
-        this._sourcePath   = sourcePath;
-        this._mql5Root     = mql5Root;
-        this._compilePath  = compilePath;
-        this._context      = context;
+        this._store = store;
+        this._bridge = bridge;
+        this._sourcePath = sourcePath;
+        this._mql5Root = mql5Root;
+        this._compilePath = compilePath;
+        this._context = context;
         this._originalPath = originalPath;
 
-        this._lastHitCount    = 0;
-        this._wasActive       = false;
-        this._seq             = 1;
-        this._disposed        = false;
+        this._lastHitCount = 0;
+        this._wasActive = false;
+        this._seq = 1;
+        this._disposed = false;
         /** @type {Map<string, Set<number>>} active breakpoints per source path (lowercase) */
         this._activeBreakpoints = new Map();
 
@@ -61,24 +61,24 @@ class MqlDebugAdapter extends EventEmitter {
     handleMessage(message) {
         if (this._disposed) return;
         switch (message.command) {
-            case 'initialize':          this._onInitialize(message); break;
-            case 'launch':              this._onLaunch(message); break;
-            case 'configurationDone':   this._onConfigurationDone(message); break;
-            case 'threads':             this._onThreads(message); break;
-            case 'stackTrace':          this._onStackTrace(message); break;
-            case 'scopes':              this._onScopes(message); break;
-            case 'variables':           this._onVariables(message); break;
-            case 'continue':            this._onContinue(message); break;
-            case 'pause':               this._onPause(message); break;
-            case 'next':                this._onContinue(message); break;  // step-over → continue
-            case 'stepIn':              this._onContinue(message); break;
-            case 'stepOut':             this._onContinue(message); break;
-            case 'terminate':           this._onTerminate(message); break;
-            case 'disconnect':          this._onDisconnect(message); break;
-            case 'setBreakpoints':      this._onSetBreakpoints(message); break;
+            case 'initialize': this._onInitialize(message); break;
+            case 'launch': this._onLaunch(message); break;
+            case 'configurationDone': this._onConfigurationDone(message); break;
+            case 'threads': this._onThreads(message); break;
+            case 'stackTrace': this._onStackTrace(message); break;
+            case 'scopes': this._onScopes(message); break;
+            case 'variables': this._onVariables(message); break;
+            case 'continue': this._onContinue(message); break;
+            case 'pause': this._onPause(message); break;
+            case 'next': this._onContinue(message); break;  // step-over → continue
+            case 'stepIn': this._onContinue(message); break;
+            case 'stepOut': this._onContinue(message); break;
+            case 'terminate': this._onTerminate(message); break;
+            case 'disconnect': this._onDisconnect(message); break;
+            case 'setBreakpoints': this._onSetBreakpoints(message); break;
             case 'setExceptionBreakpoints': this._sendResponse(message, {}); break;
-            case 'setFunctionBreakpoints':  this._sendResponse(message, { breakpoints: [] }); break;
-            case 'source':              this._onSource(message); break;
+            case 'setFunctionBreakpoints': this._sendResponse(message, { breakpoints: [] }); break;
+            case 'source': this._onSource(message); break;
             default:
                 // Acknowledge unknown requests gracefully so VS Code doesn't show errors
                 this._sendResponse(message, {});
@@ -115,8 +115,8 @@ class MqlDebugAdapter extends EventEmitter {
                 this._mql5Root,
                 this._compilePath,
                 this._context,
-                () => {
-                    vscode.commands.executeCommand('mql_tools.openTradingTerminal').then(undefined, () => {});
+                (eaPath) => {
+                    vscode.commands.executeCommand('mql_tools.openTradingTerminal', eaPath, this._mql5Root).then(undefined, () => { });
                 }
             );
         } catch (err) {
@@ -154,10 +154,10 @@ class MqlDebugAdapter extends EventEmitter {
         if (stack.length > 0) {
             // callStack is LIFO: last element is the innermost frame. Reverse for DAP (top = index 0).
             frames = stack.slice().reverse().map((f, i) => ({
-                id:     i,
-                name:   f.func,
+                id: i,
+                name: f.func,
                 source: f.file ? { path: this._mapToOriginalPath(f.file) } : undefined,
-                line:   parseInt(f.line, 10) || 0,
+                line: parseInt(f.line, 10) || 0,
                 column: 0,
             }));
             // Override top frame line with the original breakpoint line when available
@@ -168,10 +168,10 @@ class MqlDebugAdapter extends EventEmitter {
         } else {
             // No enter/exit events — synthesize a frame from the latest hit
             frames = hit ? [{
-                id:     0,
-                name:   hit.func || '(unknown)',
+                id: 0,
+                name: hit.func || '(unknown)',
                 source: hit.file ? { path: this._mapToOriginalPath(hit.file) } : undefined,
-                line:   this._parseOriginalLine(hit.label) || parseInt(hit.line, 10) || 0,
+                line: this._parseOriginalLine(hit.label) || parseInt(hit.line, 10) || 0,
                 column: 0,
             }] : [];
         }
@@ -197,9 +197,9 @@ class MqlDebugAdapter extends EventEmitter {
 
     _onSetBreakpoints(req) {
         const bps = (req.arguments.breakpoints || []).map(b => ({
-            id:       this._seq++,
+            id: this._seq++,
             verified: true,
-            line:     b.line,
+            line: b.line,
         }));
 
         // Track active breakpoint lines so we can auto-continue removed ones
@@ -221,14 +221,14 @@ class MqlDebugAdapter extends EventEmitter {
         this._sendResponse(req, {
             scopes: [
                 {
-                    name:               'Watches',
+                    name: 'Watches',
                     variablesReference: 1,
-                    expensive:          false,
+                    expensive: false,
                 },
                 {
-                    name:               'Breakpoint Info',
+                    name: 'Breakpoint Info',
                     variablesReference: 2,
-                    expensive:          false,
+                    expensive: false,
                 },
             ]
         });
@@ -242,16 +242,16 @@ class MqlDebugAdapter extends EventEmitter {
             const hit = this._store.latestHit;
             if (hit && hit.watches && hit.watches.length) {
                 variables = hit.watches.map(w => ({
-                    name:               w.varName,
-                    value:              String(w.value),
-                    type:               w.varType,
+                    name: w.varName,
+                    value: String(w.value),
+                    type: w.varType,
                     variablesReference: 0,
                 }));
             } else {
                 variables = this._store.latestWatchList.map(w => ({
-                    name:               w.varName,
-                    value:              String(w.value),
-                    type:               w.varType,
+                    name: w.varName,
+                    value: String(w.value),
+                    type: w.varType,
                     variablesReference: 0,
                 }));
             }
@@ -260,13 +260,13 @@ class MqlDebugAdapter extends EventEmitter {
             const hit = this._store.latestHit;
             if (hit) {
                 variables = [
-                    { name: 'Label',          value: hit.label || '(none)',                              variablesReference: 0 },
-                    { name: 'Function',       value: hit.func || '(unknown)',                            variablesReference: 0 },
-                    { name: 'File',           value: hit.file || '(unknown)',                            variablesReference: 0 },
-                    { name: 'Line',           value: String(hit.line || 0),     type: 'int',            variablesReference: 0 },
-                    { name: 'Timestamp',      value: hit.timestamp || '',                                variablesReference: 0 },
-                    { name: 'BP Hit Count',   value: String(hit.hitCount || 0), type: 'int',            variablesReference: 0 },
-                    { name: 'Total Hits',     value: String(this._store.hits.length), type: 'int',      variablesReference: 0 },
+                    { name: 'Label', value: hit.label || '(none)', variablesReference: 0 },
+                    { name: 'Function', value: hit.func || '(unknown)', variablesReference: 0 },
+                    { name: 'File', value: hit.file || '(unknown)', variablesReference: 0 },
+                    { name: 'Line', value: String(hit.line || 0), type: 'int', variablesReference: 0 },
+                    { name: 'Timestamp', value: hit.timestamp || '', variablesReference: 0 },
+                    { name: 'BP Hit Count', value: String(hit.hitCount || 0), type: 'int', variablesReference: 0 },
+                    { name: 'Total Hits', value: String(this._store.hits.length), type: 'int', variablesReference: 0 },
                 ];
             }
         }
@@ -316,14 +316,14 @@ class MqlDebugAdapter extends EventEmitter {
                 // Output to Debug Console so user sees hit history
                 this._sendEvent('output', {
                     category: 'console',
-                    output:   `[MQL Break] ${h.label}  ${h.func}:${h.line}  (${h.file})  ${h.timestamp}\n`,
+                    output: `[MQL Break] ${h.label}  ${h.func}:${h.line}  (${h.file})  ${h.timestamp}\n`,
                 });
                 // Output watch values for this hit
                 if (h.watches && h.watches.length) {
                     for (const w of h.watches) {
                         this._sendEvent('output', {
                             category: 'console',
-                            output:   `  ${w.varName} (${w.varType}) = ${w.value}\n`,
+                            output: `  ${w.varName} (${w.varType}) = ${w.value}\n`,
                         });
                     }
                 }
@@ -338,9 +338,9 @@ class MqlDebugAdapter extends EventEmitter {
                 // Fire stopped event — VS Code will pause the UI and request
                 // stackTrace/scopes/variables, populating the native panels.
                 this._sendEvent('stopped', {
-                    reason:            'breakpoint',
-                    description:       `Hit: ${hits[hits.length - 1].label}`,
-                    threadId:          THREAD_ID,
+                    reason: 'breakpoint',
+                    description: `Hit: ${hits[hits.length - 1].label}`,
+                    threadId: THREAD_ID,
                     allThreadsStopped: true,
                 });
             } else {
@@ -451,35 +451,35 @@ class MqlDebugAdapter extends EventEmitter {
 
     _sendResponse(req, body) {
         const msg = {
-            type:        'response',
-            seq:         this._seq++,
+            type: 'response',
+            seq: this._seq++,
             request_seq: req.seq,
-            success:     true,
-            command:     req.command,
-            body:        body || {},
+            success: true,
+            command: req.command,
+            body: body || {},
         };
         this._sendMessageEmitter.fire(msg);
     }
 
     _sendErrorResponse(req, message) {
         const msg = {
-            type:        'response',
-            seq:         this._seq++,
+            type: 'response',
+            seq: this._seq++,
             request_seq: req.seq,
-            success:     false,
-            command:     req.command,
+            success: false,
+            command: req.command,
             message,
-            body:        {},
+            body: {},
         };
         this._sendMessageEmitter.fire(msg);
     }
 
     _sendEvent(event, body) {
         const msg = {
-            type:  'event',
-            seq:   this._seq++,
+            type: 'event',
+            seq: this._seq++,
             event,
-            body:  body || {},
+            body: body || {},
         };
         this._sendMessageEmitter.fire(msg);
     }

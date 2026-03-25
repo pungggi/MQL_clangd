@@ -306,13 +306,18 @@
                     <li>
                         <strong>Start Debugging</strong><br>
                         Click the <strong>Start Debugging</strong> (bug icon) button in the editor's top title bar, or
-                        press <span class="code-inline">Ctrl+Shift+D</span>. The extension will instrument and compile
+                        press <span class="code-inline">Ctrl+Alt+D</span>. The extension will instrument and compile
                         your code into a special debug build (named <span class="code-inline">*.mql_dbg_build</span>).
                     </li>
                     <li>
-                        <strong>Attach to Chart</strong><br>
-                        MetaTrader will launch automatically. Find your compiled debug Expert Advisor or Script in the
-                        Navigator panel and <strong>drag it onto a chart</strong> to begin execution.
+                        <strong>MetaTrader Launches &amp; Auto-Attaches the EA</strong><br>
+                        MetaTrader opens automatically. If your source file lives inside the terminal's
+                        <span class="code-inline">MQL5\Experts\</span> folder, the debug EA is
+                        <strong>attached to the first open chart automatically</strong> — no manual drag-and-drop
+                        required. Simply switch to MetaTrader and let it run.<br><br>
+                        <em>If your workspace is outside the Experts folder</em>, MetaTrader will still open but you
+                        will need to find the <span class="code-inline">*.mql_dbg_build</span> EA in the Navigator
+                        panel and drag it onto a chart manually.
                     </li>
                     <li>
                         <strong>Inspect the State</strong><br>
@@ -372,7 +377,8 @@
                 <h3 id="debug-limitations">Known Limitations</h3>
                 <ul>
                     <li><strong>No Step Over / Step Into / Step Out:</strong> Because the debugger communicates with
-                        MetaTrader via file-based I/O (not a live process attachment), it cannot control execution at the
+                        MetaTrader via file-based I/O (not a live process attachment), it cannot control execution at
+                        the
                         instruction level. All stepping actions behave like <strong>Continue</strong> — they resume to
                         the next breakpoint. To inspect intermediate state, set additional breakpoints on the lines you
                         want to observe.</li>

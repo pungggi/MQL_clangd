@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const pathModule = require('path');
 const lg = require('./language');
 const { tf } = require('./timeUtils');
@@ -311,7 +312,41 @@ async function OpenFileInMetaEditor(uri) {
     }
 }
 
-async function OpenTradingTerminal() {
+/**
+ * Build a startup INI file so MetaTrader auto-attaches an EA on launch.
+ *
+ * @param {string} eaPath   Absolute path to the compiled .ex5/.ex4 binary
+ * @param {string} mql5Root MQL5 root directory (contains Experts/, Files/, …)
+ * @returns {string|null}   Path to the generated INI file, or null if the EA
+ *                          is not inside the Experts tree.
+ */
+function buildStartupIni(eaPath, mql5Root) {
+    const expertsDir = pathModule.join(mql5Root, 'Experts');
+    const relative = pathModule.relative(expertsDir, eaPath);
+
+    // If the EA lives outside the Experts tree, relative will start with ".."
+    if (relative.startsWith('..') || pathModule.isAbsolute(relative)) return null;
+
+    // Expert= expects a backslash-separated path without extension
+    const expertValue = relative
+        .replace(/\.[^.]+$/, '')       // strip .ex5 / .ex4
+        .replace(/\//g, '\\');         // normalise to backslashes
+
+    const iniContent = `[StartUp]\r\nExpert=${expertValue}\r\n`;
+    const iniPath = pathModule.join(os.tmpdir(), `mql_debug_startup_${Date.now()}.ini`);
+    fs.writeFileSync(iniPath, iniContent, 'utf-8');
+    return iniPath;
+}
+
+/**
+ * Open the MetaTrader trading terminal.
+ *
+ * @param {string} [eaPath]   Optional absolute path to a compiled EA (.ex5/.ex4).
+ *                             When provided the terminal is launched with a startup
+ *                             config that auto-attaches the EA to a chart.
+ * @param {string} [mql5Root] MQL5 root directory — required when eaPath is given.
+ */
+async function OpenTradingTerminal(eaPath, mql5Root) {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const editor = vscode.window.activeTextEditor;
 
@@ -371,6 +406,16 @@ async function OpenTradingTerminal() {
             });
     }
 
+    // Build optional startup INI when an EA path is provided
+    let iniPath = null;
+    if (eaPath && mql5Root) {
+        iniPath = buildStartupIni(eaPath, mql5Root);
+        if (!iniPath) {
+            // EA is outside the Experts tree — fall back to manual attach
+            console.warn('[OpenTradingTerminal] EA is not inside MQL5/Experts; skipping auto-attach.');
+        }
+    }
+
     const portableSwitch = generatePortableSwitch(portableMode);
     const useWine = isWineEnabled(config);
 
@@ -394,11 +439,18 @@ async function OpenTradingTerminal() {
 
             const args = [];
             if (portableSwitch) args.push(portableSwitch);
+            if (iniPath) {
+                const iniResult = await toWineWindowsPath(iniPath, wineBinary, winePrefix);
+                if (iniResult.success) {
+                    args.push(`/config:${iniResult.path}`);
+                }
+            }
 
             await execWineBatch(terminalWinPath, args, wineBinary, winePrefix, wineEnv, lg['err_open_terminal']);
         } else {
             const args = [];
             if (portableSwitch) args.push(portableSwitch);
+            if (iniPath) args.push(`/config:${iniPath}`);
             const proc = childProcess.spawn(TerminalDir, args, { detached: true, stdio: 'ignore' });
             proc.on('error', (err) => {
                 console.error('Terminal launch error:', err);
@@ -409,6 +461,14 @@ async function OpenTradingTerminal() {
     }
     catch (e) {
         return vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
+    }
+    finally {
+        // Clean up the temporary INI after the terminal has had time to read it
+        if (iniPath) {
+            setTimeout(() => {
+                try { fs.unlinkSync(iniPath); } catch (_) { /* best-effort */ }
+            }, BATCH_FILE_CLEANUP_DELAY_MS);
+        }
     }
 }
 

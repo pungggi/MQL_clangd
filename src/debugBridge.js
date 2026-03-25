@@ -41,6 +41,8 @@ class MqlDebugBridge {
         this._retryTimer = null;
         /** @type {vscode.OutputChannel|null} */
         this._outputChannel = null;
+        /** @type {Map<string, { originalLine: number, linesInserted: number }[]>|null} */
+        this._lineMap = null;
     }
 
     dispose() {
@@ -59,6 +61,7 @@ class MqlDebugBridge {
         }
     }
     get isActive() { return this._active; }
+    get lineMap() { return this._lineMap; }
 
     // -------------------------------------------------------------------------
     // Public API
@@ -105,14 +108,14 @@ class MqlDebugBridge {
         }
 
         // 3. Instrument workspace and resolve includes
-        let tempPath, restore, skipped;
+        let tempPath, restore, skipped, lineMap;
         try {
             const result = instrumentWorkspace(sourcePath, breakpointMap, mql5Root);
             if (!result) {
                 vscode.window.showErrorMessage(`MQL Debug: Failed to instrument workspace.`);
                 return;
             }
-            ({ tempPath, restore, skipped } = result);
+            ({ tempPath, restore, skipped, lineMap } = result);
         } catch (err) {
             vscode.window.showErrorMessage(`MQL Debug: Failed to instrument source: ${err.message}`);
             return;
@@ -172,17 +175,25 @@ class MqlDebugBridge {
         this._reader.start();
 
         // 6. Invoke optional post-start callback (e.g. open trading terminal)
-        if (typeof onStarted === 'function') onStarted();
-
         const isMql5 = sourcePath.toLowerCase().endsWith('.mq5');
-        const exName = path.basename(tempPath).replace(/\.mq[45]$/i, isMql5 ? '.ex5' : '.ex4');
+        const exExt = isMql5 ? '.ex5' : '.ex4';
+        const exName = path.basename(tempPath).replace(/\.mq[45]$/i, exExt);
+        const exFullPath = path.join(path.dirname(tempPath), exName);
+        if (typeof onStarted === 'function') onStarted(exFullPath);
 
-        vscode.window.showInformationMessage(
-            `MQL Debug session started. Attach the temporary "${exName}" in MetaTrader to begin.`,
-            'Stop Session'
-        ).then(selection => {
-            if (selection === 'Stop Session') this.stop();
-        });
+        // Check if the EA is inside the Experts tree (auto-attach will work)
+        const expertsDir = path.join(mql5Root, 'Experts');
+        const relToExperts = path.relative(expertsDir, exFullPath);
+        const canAutoAttach = !relToExperts.startsWith('..') && !path.isAbsolute(relToExperts);
+
+        const statusMsg = canAutoAttach
+            ? `MQL Debug session started. "${exName}" will auto-attach when MetaTrader opens.`
+            : `MQL Debug session started. Attach the temporary "${exName}" in MetaTrader to begin.`;
+
+        vscode.window.showInformationMessage(statusMsg, 'Stop Session')
+            .then(selection => {
+                if (selection === 'Stop Session') this.stop();
+            });
     }
 
     /** Stop the current debug session and clean up. */

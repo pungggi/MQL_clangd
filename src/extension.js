@@ -2588,7 +2588,7 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsTime', () => InsertTime()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsIcon', () => InsertIcon()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => OpenFileInMetaEditor(uri)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', () => OpenTradingTerminal()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', (eaPath, mql5Root) => OpenTradingTerminal(eaPath, mql5Root)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));
 

@@ -1005,6 +1005,27 @@ function extractReturnExpressions(lines, bpLine) {
 }
 
 /**
+ * Map an instrumented file line number back to the original source line.
+ *
+ * @param {number} instrumentedLine  1-based line in the instrumented file
+ * @param {{ originalLine: number, linesInserted: number }[]} offsets
+ *   Sorted by originalLine ascending
+ * @returns {number} 1-based line in the original file
+ */
+function instrumentedToOriginal(instrumentedLine, offsets) {
+    let totalOffset = 0;
+    for (const { originalLine, linesInserted } of offsets) {
+        const injectionPoint = originalLine + totalOffset + 1;
+        if (instrumentedLine < injectionPoint) break;
+        if (instrumentedLine < injectionPoint + linesInserted) {
+            return originalLine;
+        }
+        totalOffset += linesInserted;
+    }
+    return instrumentedLine - totalOffset;
+}
+
+/**
  * Sanitize a string for use as a label in MQL macros.
  * Strips or replaces anything except letters, numbers, underscore, and dash.
  * @param {string} label
@@ -1151,10 +1172,11 @@ function findFunctionBoundaries(lines) {
  * #property directive block, or at the very top if none found).
  *
  * @param {string[]} lines  Source lines (mutated in place)
+ * @returns {number} 0-based insertion index, or -1 if already present
  */
 function ensureInclude(lines) {
     // Already included?
-    if (lines.some(l => l.includes('MqlDebug.mqh'))) return;
+    if (lines.some(l => l.includes('MqlDebug.mqh'))) return -1;
 
     // Find insertion point: after last consecutive #property or // comment at top
     let insertAt = 0;
@@ -1171,6 +1193,7 @@ function ensureInclude(lines) {
     }
 
     lines.splice(insertAt, 0, INCLUDE_LINE);
+    return insertAt;
 }
 
 /**
@@ -1312,6 +1335,8 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const skippedArr = [];
     let entryTempPath = '';
     const cleanedDirs = new Set();
+    /** @type {Map<string, { originalLine: number, linesInserted: number }[]>} */
+    const lineMap = new Map();
 
     for (const node of graph.values()) {
         if (!node.needsCopy) continue;
@@ -1367,10 +1392,13 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             }
             // Store the function signature lines so we can re-find them after injection
             const funcSigLines = new Set();
+            // Save original function boundaries for the line offset table
+            const instrumentedFuncBounds = [];
             for (const fn of origFuncs) {
                 if (funcNamesToInstrument.has(fn.bodyStart)) {
                     // Record the text of the line containing the opening brace
                     funcSigLines.add(node.lines[fn.bodyStart]);
+                    instrumentedFuncBounds.push({ bodyStart: fn.bodyStart, bodyEnd: fn.bodyEnd });
                 }
             }
 
@@ -1479,7 +1507,7 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 node.lines.splice(afterLine + 1, 0, ...macroLines);
             }
 
-            ensureInclude(node.lines);
+            const includeInsertAt = ensureInclude(node.lines);
 
             // 3. Inject ENTER/EXIT on the modified source
             //    Re-find function boundaries, then filter to only the functions
@@ -1511,6 +1539,22 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                     node.lines.splice(fn.bodyStart + 1, 0, `${indent}MQL_DBG_ENTER;`);
                 }
             }
+
+            // 4. Build line offset table for this file
+            //    All originalLine values are 1-based: "N lines inserted after original line X"
+            const fileOffsets = [];
+            if (includeInsertAt >= 0) {
+                fileOffsets.push({ originalLine: includeInsertAt, linesInserted: 1 });
+            }
+            for (const { afterLine, macroLines } of injections) {
+                fileOffsets.push({ originalLine: afterLine + 1, linesInserted: macroLines.length });
+            }
+            for (const fn of instrumentedFuncBounds) {
+                fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 }); // ENTER
+                fileOffsets.push({ originalLine: fn.bodyEnd, linesInserted: 1 });        // EXIT
+            }
+            fileOffsets.sort((a, b) => a.originalLine - b.originalLine);
+            lineMap.set(node.normPath, fileOffsets);
         }
 
         // Save
@@ -1559,11 +1603,12 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
 
     if (!entryTempPath) return null;
 
-    return { tempPath: entryTempPath, restore, skipped: skippedArr };
+    return { tempPath: entryTempPath, restore, skipped: skippedArr, lineMap };
 }
 
 module.exports = {
     instrumentWorkspace,
+    instrumentedToOriginal,
     // Exported for unit testing
     _test: {
         MqlLineClassifier,
