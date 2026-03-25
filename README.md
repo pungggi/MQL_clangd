@@ -17,6 +17,7 @@
 | Smart Compile Target for Headers | ❌ | ✅ |
 | Document Symbols (Outline, Breadcrumbs) | ❌ | ✅ |
 | Run Backtest from VS Code | ❌ | ✅ |
+| Debugging | ❌ | **Coming next** |
 
 ---
 
