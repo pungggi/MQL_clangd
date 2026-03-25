@@ -1544,14 +1544,14 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             //    All originalLine values are 1-based: "N lines inserted after original line X"
             const fileOffsets = [];
             if (includeInsertAt >= 0) {
-                fileOffsets.push({ originalLine: includeInsertAt, linesInserted: 1 });
+                fileOffsets.push({ originalLine: includeInsertAt + 1, linesInserted: 1 });
             }
             for (const { afterLine, macroLines } of injections) {
                 fileOffsets.push({ originalLine: afterLine + 1, linesInserted: macroLines.length });
             }
             for (const fn of instrumentedFuncBounds) {
                 fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 }); // ENTER
-                fileOffsets.push({ originalLine: fn.bodyEnd, linesInserted: 1 });        // EXIT
+                fileOffsets.push({ originalLine: fn.bodyEnd + 1, linesInserted: 1 });    // EXIT
             }
             fileOffsets.sort((a, b) => a.originalLine - b.originalLine);
             lineMap.set(node.normPath, fileOffsets);

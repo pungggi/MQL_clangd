@@ -334,7 +334,11 @@ function buildStartupIni(eaPath, mql5Root) {
 
     const iniContent = `[StartUp]\r\nExpert=${expertValue}\r\n`;
     const iniPath = pathModule.join(os.tmpdir(), `mql_debug_startup_${Date.now()}.ini`);
-    fs.writeFileSync(iniPath, iniContent, 'utf-8');
+    try {
+        fs.writeFileSync(iniPath, iniContent, 'utf-8');
+    } catch (err) {
+        throw new Error(`Failed to create startup INI at ${iniPath}: ${err.message}`, { cause: err });
+    }
     return iniPath;
 }
 
@@ -443,6 +447,8 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
                 const iniResult = await toWineWindowsPath(iniPath, wineBinary, winePrefix);
                 if (iniResult.success) {
                     args.push(`/config:${iniResult.path}`);
+                } else {
+                    console.warn(`[OpenTradingTerminal] Wine conversion of INI path failed; skipping auto-attach. iniPath=${iniPath}, error=${iniResult.error || 'unknown'}`);
                 }
             }
 

@@ -116,6 +116,7 @@ class MqlDebugBridge {
                 return;
             }
             ({ tempPath, restore, skipped, lineMap } = result);
+            this._lineMap = lineMap;
         } catch (err) {
             vscode.window.showErrorMessage(`MQL Debug: Failed to instrument source: ${err.message}`);
             return;
@@ -204,6 +205,7 @@ class MqlDebugBridge {
 
         if (!this._active) return;
         this._active = false;
+        this._lineMap = null;
 
         if (this._reader) {
             this._reader.stop();
