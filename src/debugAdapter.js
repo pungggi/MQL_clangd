@@ -265,7 +265,7 @@ class MqlDebugAdapter extends EventEmitter {
                     { name: 'Label', value: hit.label || '(none)', variablesReference: 0 },
                     { name: 'Function', value: hit.func || '(unknown)', variablesReference: 0 },
                     { name: 'File', value: hit.file || '(unknown)', variablesReference: 0 },
-                    { name: 'Line', value: String(this._translateLine(hit.file, parseInt(hit.line, 10) || 0)), type: 'int', variablesReference: 0 },
+                    { name: 'Line', value: String(this._parseOriginalLine(hit.label) || this._translateLine(hit.file, parseInt(hit.line, 10) || 0)), type: 'int', variablesReference: 0 },
                     { name: 'Timestamp', value: hit.timestamp || '', variablesReference: 0 },
                     { name: 'BP Hit Count', value: String(hit.hitCount || 0), type: 'int', variablesReference: 0 },
                     { name: 'Total Hits', value: String(this._store.hits.length), type: 'int', variablesReference: 0 },
@@ -316,7 +316,7 @@ class MqlDebugAdapter extends EventEmitter {
             for (let i = this._lastHitCount; i < hits.length; i++) {
                 const h = hits[i];
                 // Output to Debug Console so user sees hit history
-                const displayLine = this._translateLine(h.file, parseInt(h.line, 10) || 0);
+                const displayLine = this._parseOriginalLine(h.label) || this._translateLine(h.file, parseInt(h.line, 10) || 0);
                 this._sendEvent('output', {
                     category: 'console',
                     output: `[MQL Break] ${h.label}  ${h.func}:${displayLine}  (${h.file})  ${h.timestamp}\n`,
