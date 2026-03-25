@@ -153,6 +153,52 @@ function findAllExecutableLines(lines) {
 }
 
 /**
+ * Detect whether `lines[idx]` is the sole body of a braceless control structure
+ * (if / else if / for / while / else).  When true the probe injection must wrap
+ * both the probe and the original line in { } to preserve control flow.
+ *
+ * @param {string[]} lines  Source lines (0-based)
+ * @param {number}   idx    0-based index of the candidate line
+ * @returns {boolean}
+ */
+function isBracelessBody(lines, idx) {
+    // Walk backward to the first non-blank, non-line-comment line
+    let prev = -1;
+    for (let i = idx - 1; i >= 0; i--) {
+        const t = lines[i].trim();
+        if (t === '' || t.startsWith('//')) continue;
+        prev = i;
+        break;
+    }
+    if (prev < 0) return false;
+
+    const prevTrimmed = lines[prev].trim();
+
+    // `else` or `} else` without opening brace
+    if (/^(\}\s*)?else\s*$/.test(prevTrimmed)) return true;
+
+    // Line ends with `)` — trace back to the matching `(` and check for control keyword
+    if (prevTrimmed.endsWith(')')) {
+        let depth = 0;
+        for (let i = prev; i >= 0; i--) {
+            const line = lines[i];
+            for (let c = line.length - 1; c >= 0; c--) {
+                if (line[c] === ')') depth++;
+                else if (line[c] === '(') {
+                    depth--;
+                    if (depth === 0) {
+                        const before = line.substring(0, c).trim();
+                        return /\b(if|else\s+if|for|while)\s*$/.test(before);
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
  * Find the first line at or after `targetLine` (1-based) that ends a complete
  * statement (ends with `;` or `}`) and is not a comment/preprocessor.
  *
@@ -1176,11 +1222,16 @@ function buildProbeInjection(probeId, label, watchVars, condition) {
     const condExpr = (condition && condition.trim() && isConditionSafe(condition))
         ? ` && (${condition})` : '';
 
-    return [
+    const result = [];
+    if (condition && condition.trim() && !isConditionSafe(condition)) {
+        result.push(`// Invalid breakpoint condition: ${condition}`);
+    }
+    result.push(
         `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
         ...inner.map(l => `  ${l}`),
         `}`
-    ];
+    );
+    return result;
 }
 
 /**
@@ -1323,7 +1374,6 @@ function resolveIncludePath(incPath, includeBase, mql5Root) {
  *
  * @param {string[]} lines        Source lines (0-based array)
  * @param {number}   bpLine       1-based breakpoint line
- * @param {string}   condition    Breakpoint condition (may be empty)
  * @param {{ classMap: Map, globalMap: Map }} typeDB
  * @param {boolean}  deepAnalysis
  * @returns {{ name: string, type: string, isArray?: boolean }[]}
@@ -1533,6 +1583,27 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
     const probeMap = new Map();
     let nextProbeId = 0;
 
+    // Pre-count total probes across all files so MqlDebugInitProbes() receives
+    // the correct capacity before the entry point is written to disk.
+    // (The entry point is processed first in the graph, so nextProbeId would
+    //  only reflect its own probes at the time of insertion without this pass.)
+    let totalProbeCount = 0;
+    for (const node of graph.values()) {
+        if (!node.needsCopy || !node.lines || node.lines.length === 0) continue;
+        if (isUserFile(node.filePath, mql5Root)) {
+            totalProbeCount += findAllExecutableLines(node.lines).length;
+        } else if (node.bps.length > 0) {
+            // Count unique injection points for system-include BPs
+            const seen = new Set();
+            for (const bp of node.bps) {
+                const ip = findInjectionPoint(node.lines, bp.line);
+                if (ip !== null) seen.add(ip);
+            }
+            totalProbeCount += seen.size;
+        }
+    }
+    const probeCapacity = Math.max(totalProbeCount + 100, 1000);
+
     for (const node of graph.values()) {
         if (!node.needsCopy) continue;
 
@@ -1582,7 +1653,17 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 if (injPoint === null) {
                     skippedArr.push(`${path.basename(node.filePath)}:${bp.line}`);
                 } else {
-                    bpByInjLine.set(injPoint, bp);
+                    if (bpByInjLine.has(injPoint)) {
+                        // Merge conditions — two BPs at the same effective line
+                        const existing = bpByInjLine.get(injPoint);
+                        if (bp.condition && existing.condition) {
+                            existing.condition = `(${existing.condition}) || (${bp.condition})`;
+                        } else if (bp.condition) {
+                            existing.condition = bp.condition;
+                        }
+                    } else {
+                        bpByInjLine.set(injPoint, bp);
+                    }
                     bpLineSet.add(bp.line);
                 }
             }
@@ -1629,7 +1710,8 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
 
                 const label = `bp_${sanitizedBase}_${originalLine}`;
                 const macroLines = buildProbeInjection(probeId, label, watchVars, condition);
-                injections.push({ afterLine: execLine, macroLines });
+                const braceless = isBracelessBody(node.lines, execLine);
+                injections.push({ targetLine: execLine, macroLines, braceless });
 
                 // Record probe mapping (actual line + BP line if different)
                 fileProbeMap.set(originalLine, probeId);
@@ -1638,17 +1720,24 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 }
             }
 
-            // Splice injections (reverse order to preserve indices)
-            injections.sort((a, b) => b.afterLine - a.afterLine);
-            for (const { afterLine, macroLines } of injections) {
-                node.lines.splice(afterLine + 1, 0, ...macroLines);
+            // Splice injections BEFORE target line (reverse order to preserve indices).
+            // For braceless control bodies, wrap in { } to preserve control flow.
+            injections.sort((a, b) => b.targetLine - a.targetLine);
+            for (const { targetLine, macroLines, braceless } of injections) {
+                const indent = getIndent(node.lines[targetLine]);
+                if (braceless) {
+                    node.lines.splice(targetLine + 1, 0, `${indent}}`);
+                    node.lines.splice(targetLine, 0, `${indent}{`, ...macroLines);
+                } else {
+                    node.lines.splice(targetLine, 0, ...macroLines);
+                }
             }
 
             // 5. Include + probe init
             const includeIdx = ensureInclude(node.lines);
             if (node.filePath === entryPointPath && includeIdx >= 0) {
                 node.lines.splice(includeIdx + 1, 0,
-                    `int __mqldbg_probes_init__ = MqlDebugInitProbes(10000);`);
+                    `int __mqldbg_probes_init__ = MqlDebugInitProbes(${probeCapacity});`);
             }
 
             // 6. ENTER/EXIT (same as before — only for functions with BPs)
@@ -1677,8 +1766,9 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             if (includeLines > 0) {
                 fileOffsets.push({ originalLine: includeInsertAtOriginal, linesInserted: includeLines });
             }
-            for (const { afterLine, macroLines } of injections) {
-                fileOffsets.push({ originalLine: afterLine + 1, linesInserted: macroLines.length });
+            for (const { targetLine, macroLines, braceless } of injections) {
+                const extra = braceless ? 2 : 0;  // { and }
+                fileOffsets.push({ originalLine: targetLine, linesInserted: macroLines.length + extra });
             }
             for (const fn of instrumentedFuncBounds) {
                 fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 });

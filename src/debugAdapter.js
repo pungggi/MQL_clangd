@@ -218,11 +218,22 @@ class MqlDebugAdapter extends EventEmitter {
                 const fileProbes = this._bridge.probeMap.get(key);
                 if (fileProbes) {
                     let found = false;
+                    // First check forward (downward)
                     for (let offset = 0; offset <= 10; offset++) {
                         if (fileProbes.has(b.line + offset)) {
                             actualLine = b.line + offset;
                             found = true;
                             break;
+                        }
+                    }
+                    // Then check backward (upward)
+                    if (!found) {
+                        for (let offset = -1; offset >= -10; offset--) {
+                            if (fileProbes.has(b.line + offset)) {
+                                actualLine = b.line + offset;
+                                found = true;
+                                break;
+                            }
                         }
                     }
                     if (!found) verified = false;
@@ -266,14 +277,32 @@ class MqlDebugAdapter extends EventEmitter {
     /** Resolve all active breakpoint lines to probe IDs and write the config file. */
     _writeBreakpointConfig() {
         if (!this._bridge.isActive) return;
-        const activeIds = [];
-        for (const [filePath, lines] of this._activeBreakpoints) {
-            for (const line of lines) {
-                const id = this._bridge.resolveProbeId(filePath, line);
-                if (id !== undefined) activeIds.push(id);
+        try {
+            const activeIds = [];
+            for (const [filePath, lines] of this._activeBreakpoints) {
+                for (const line of lines) {
+                    let id;
+                    try {
+                        id = this._bridge.resolveProbeId(filePath, line);
+                    } catch (err) {
+                        if (this._logger) {
+                            this._logger.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
+                        } else {
+                            console.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
+                        }
+                        continue;
+                    }
+                    if (id !== undefined) activeIds.push(id);
+                }
+            }
+            this._bridge.writeBreakpointConfig(activeIds);
+        } catch (err) {
+            if (this._logger) {
+                this._logger.error(`[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:`, err);
+            } else {
+                console.error(`[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:`, err);
             }
         }
-        this._bridge.writeBreakpointConfig(activeIds);
     }
 
     _onScopes(req) {

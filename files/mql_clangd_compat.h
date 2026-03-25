@@ -930,6 +930,7 @@ template<typename T> void ArrayFree(T array[]);
 template<typename T> bool ArraySetAsSeries(T array[], bool flag);
 template<typename T> bool ArrayGetAsSeries(const T array[]);
 template<typename T> int ArrayInitialize(T array[], T value);
+template<typename T, typename V> void ArrayFill(T array[], int start, int count, V value);
 template<typename T> int ArrayCopy(T dst_array[], const T src_array[], int dst_start = 0, int src_start = 0, int count = WHOLE_ARRAY);
 template<typename T> int ArrayMaximum(const T array[], int start = 0, int count = WHOLE_ARRAY);
 template<typename T> int ArrayMinimum(const T array[], int start = 0, int count = WHOLE_ARRAY);

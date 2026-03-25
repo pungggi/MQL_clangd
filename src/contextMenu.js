@@ -21,6 +21,17 @@ const {
 } = require('./wineHelper');
 
 const BATCH_FILE_CLEANUP_DELAY_MS = 5000;
+const TERMINAL_KILL_DELAY_MS = 1500;
+const STARTUP_INI_CLEANUP_DELAY_MS = 60_000;
+
+let _mqlDebugChannel = null;
+
+function getMqlDebugChannel() {
+    if (!_mqlDebugChannel) {
+        _mqlDebugChannel = vscode.window.createOutputChannel('MQL Debug', { log: false });
+    }
+    return _mqlDebugChannel;
+}
 
 /**
  * Executes a Wine batch file with consistent error handling and cleanup
@@ -315,8 +326,13 @@ async function OpenFileInMetaEditor(uri) {
 /** Check if a terminal process is already running (Windows only). */
 function _isTerminalRunning(exeName) {
     return new Promise(resolve => {
-        childProcess.exec(
-            `tasklist /FI "IMAGENAME eq ${exeName}" /NH`,
+        if (!/^[A-Za-z0-9._-]+$/.test(exeName)) {
+            resolve(false);
+            return;
+        }
+        childProcess.execFile(
+            'tasklist',
+            ['/FI', `IMAGENAME eq ${exeName}`, '/NH'],
             { encoding: 'utf-8', timeout: 3000 },
             (err, stdout) => {
                 if (err) { resolve(false); return; }
@@ -329,8 +345,13 @@ function _isTerminalRunning(exeName) {
 /** Kill a running terminal process by image name (Windows only). */
 function _killTerminal(exeName) {
     return new Promise(resolve => {
-        childProcess.exec(
-            `taskkill /IM ${exeName} /F`,
+        if (!/^[A-Za-z0-9._-]+$/.test(exeName)) {
+            resolve();
+            return;
+        }
+        childProcess.execFile(
+            'taskkill',
+            ['/IM', exeName, '/F'],
             { encoding: 'utf-8', timeout: 5000 },
             () => resolve() // resolve regardless of success
         );
@@ -455,11 +476,15 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
     const useWine = isWineEnabled(config);
 
     // Grab the MQL output channel for visible diagnostics
-    const _oc = vscode.window.createOutputChannel('MQL Debug', { log: false });
+    const _oc = getMqlDebugChannel();
 
     if (iniPath) {
         let iniContent = '';
-        try { iniContent = fs.readFileSync(iniPath, 'utf-8'); } catch {}
+        try {
+            iniContent = fs.readFileSync(iniPath, 'utf-8');
+        } catch (err) {
+            console.warn(`[Auto-attach] Failed to read INI file at ${iniPath}:`, err);
+        }
         _oc.appendLine(`[Auto-attach] INI path: ${iniPath}`);
         _oc.appendLine(`[Auto-attach] INI content:\n${iniContent}`);
         _oc.show(true);
@@ -476,7 +501,7 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
                 if (choice === 'Close & Relaunch') {
                     await _killTerminal(lowNm);
                     // Small delay so the OS releases the process handle
-                    await new Promise(r => setTimeout(r, 1500));
+                    await new Promise(r => setTimeout(r, TERMINAL_KILL_DELAY_MS));
                 } else {
                     // User chose manual attach or dismissed — skip INI
                     iniPath = null;
@@ -538,11 +563,11 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
     finally {
         // Clean up the temporary INI after MT5 has had time to start and read it.
         // MT5 can take 10-30s to initialise; BATCH_FILE_CLEANUP_DELAY_MS (5s) is
-        // too short, so use a longer delay for startup INIs.
+        // too short, so use STARTUP_INI_CLEANUP_DELAY_MS for startup INIs.
         if (iniPath) {
             setTimeout(() => {
                 try { fs.unlinkSync(iniPath); } catch (_) { /* best-effort */ }
-            }, 60_000);
+            }, STARTUP_INI_CLEANUP_DELAY_MS);
         }
     }
 }

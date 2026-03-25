@@ -37,12 +37,6 @@ class MqlDebugBridge {
         this._active = false;
         /** @type {string|null} */
         this._mql5Root = null;
-        /** @type {string|null} */
-        this._sourcePath = null;
-        /** @type {Function|null} */
-        this._compilePath = null;
-        /** @type {object|null} */
-        this._context = null;
         /** @type {Map<string, Map<number, number>>|null}  normPath → Map<line → probeId> */
         this._probeMap = null;
         /** @type {ReturnType<typeof setInterval>|null} */
@@ -92,9 +86,6 @@ class MqlDebugBridge {
         }
 
         this._mql5Root = mql5Root;
-        this._sourcePath = sourcePath;
-        this._compilePath = compilePath;
-        this._context = context;
 
         // Cancel any pending binary-delete retry from a previous session
         if (this._retryTimer) {
@@ -173,14 +164,14 @@ class MqlDebugBridge {
         // (MetaTrader needs the .ex5 which is next to the temp file)
 
         // 4b. Write initial breakpoint config so the EA knows which probes to activate
-        const initialIds = [];
+        const initialIds = new Set();
         for (const [normPath, bps] of breakpointMap) {
             for (const bp of bps) {
                 const id = this.resolveProbeId(normPath, bp.line);
-                if (id !== undefined) initialIds.push(id);
+                if (id !== undefined) initialIds.add(id);
             }
         }
-        this.writeBreakpointConfig(initialIds);
+        this.writeBreakpointConfig([...initialIds]);
 
         // 5. Start debug session
         this._active = true;
@@ -230,9 +221,6 @@ class MqlDebugBridge {
         this._active = false;
         this._lineMap = null;
         this._probeMap = null;
-        this._sourcePath = null;
-        this._compilePath = null;
-        this._context = null;
 
         if (this._reader) {
             this._reader.stop();

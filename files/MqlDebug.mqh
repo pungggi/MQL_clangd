@@ -381,7 +381,11 @@ void MqlDebugPause() {
 #define MQLDEBUG_BP_CONFIG   "MqlDebugBPConfig.txt"
 #define MQLDEBUG_RELOAD_MS   200
 
+#ifndef __clang__
 bool   __mqldbg_active[];
+#else
+bool   *__mqldbg_active;
+#endif
 int    __mqldbg_maxProbe = 0;
 uint   __mqldbg_lastReload = 0;
 
@@ -389,9 +393,17 @@ uint   __mqldbg_lastReload = 0;
 //| Allocate the probe array. Called once via global initializer.     |
 //+------------------------------------------------------------------+
 int MqlDebugInitProbes(int count) {
-    __mqldbg_maxProbe = count;
+    if (count < 0) {
+        __mqldbg_maxProbe = 0;
+        return -1;
+    }
+    if (count == 0) {
+        __mqldbg_maxProbe = 0;
+        return 0;
+    }
     ArrayResize(__mqldbg_active, count);
     ArrayFill(__mqldbg_active, 0, count, false);
+    __mqldbg_maxProbe = count;
     return 0;
 }
 
@@ -412,11 +424,18 @@ void MqlDebugLoadConfig() {
 
     if (content == "") return;
 
+#ifndef __clang__
     string parts[];
+#else
+    string *parts;
+#endif
     int cnt = StringSplit(content, ',', parts);
     for (int i = 0; i < cnt; i++) {
         StringTrimLeft(parts[i]);
         StringTrimRight(parts[i]);
+        if (parts[i] == "" || StringGetCharacter(parts[i], 0) < '0' ||
+            StringGetCharacter(parts[i], 0) > '9')
+          continue;
         int id = (int)StringToInteger(parts[i]);
         if (id >= 0 && id < __mqldbg_maxProbe)
             __mqldbg_active[id] = true;
