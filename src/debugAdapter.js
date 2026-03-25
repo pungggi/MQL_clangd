@@ -41,6 +41,8 @@ class MqlDebugAdapter extends EventEmitter {
         this._wasActive       = false;
         this._seq             = 1;
         this._disposed        = false;
+        /** @type {Map<string, Set<number>>} active breakpoints per source path (lowercase) */
+        this._activeBreakpoints = new Map();
 
         // onDidSendMessage is required by VS Code's DebugAdapter interface.
         // We expose it as an EventEmitter event named 'message'.
@@ -194,6 +196,19 @@ class MqlDebugAdapter extends EventEmitter {
             verified: true,
             line:     b.line,
         }));
+
+        // Track active breakpoint lines so we can auto-continue removed ones
+        const src = req.arguments && req.arguments.source;
+        if (src && src.path) {
+            const key = src.path.toLowerCase().replace(/\\/g, '/');
+            const lines = new Set(bps.map(b => b.line));
+            if (lines.size > 0) {
+                this._activeBreakpoints.set(key, lines);
+            } else {
+                this._activeBreakpoints.delete(key);
+            }
+        }
+
         this._sendResponse(req, { breakpoints: bps });
     }
 
@@ -290,6 +305,7 @@ class MqlDebugAdapter extends EventEmitter {
 
         // Emit stopped + console output for each new hit
         if (hits.length > this._lastHitCount) {
+            let shouldStop = false;
             for (let i = this._lastHitCount; i < hits.length; i++) {
                 const h = hits[i];
                 // Output to Debug Console so user sees hit history
@@ -306,19 +322,26 @@ class MqlDebugAdapter extends EventEmitter {
                         });
                     }
                 }
+                // Check if this breakpoint is still active in VS Code
+                if (this._isBreakpointActive(h.label)) {
+                    shouldStop = true;
+                }
             }
             this._lastHitCount = hits.length;
 
-            // Fire stopped event — VS Code will pause the UI and request
-            // stackTrace/scopes/variables, populating the native panels.
-            // VS Code handles repeated stopped events while already paused
-            // by simply refreshing the panels — no continued event needed.
-            this._sendEvent('stopped', {
-                reason:            'breakpoint',
-                description:       `Hit: ${hits[hits.length - 1].label}`,
-                threadId:          THREAD_ID,
-                allThreadsStopped: true,
-            });
+            if (shouldStop) {
+                // Fire stopped event — VS Code will pause the UI and request
+                // stackTrace/scopes/variables, populating the native panels.
+                this._sendEvent('stopped', {
+                    reason:            'breakpoint',
+                    description:       `Hit: ${hits[hits.length - 1].label}`,
+                    threadId:          THREAD_ID,
+                    allThreadsStopped: true,
+                });
+            } else {
+                // Breakpoint was removed during session — auto-continue
+                this._sendContinueCommand();
+            }
         }
 
         // Session ended
@@ -345,6 +368,31 @@ class MqlDebugAdapter extends EventEmitter {
         } catch (err) {
             console.warn('[MqlDebugAdapter] Failed to write continue command:', err.message);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Breakpoint tracking
+    // -------------------------------------------------------------------------
+
+    /**
+     * Check if a breakpoint label (e.g. "bp_SMC_mq5_310") corresponds to
+     * a line that still has an active breakpoint in VS Code.
+     * If we have no tracking data yet (session started before any setBreakpoints),
+     * assume active so we don't silently skip hits.
+     */
+    _isBreakpointActive(label) {
+        if (this._activeBreakpoints.size === 0) return true;
+
+        // Parse original line number from label: bp_{sanitized_file}_{line}
+        const m = label && label.match(/_(\d+)$/);
+        if (!m) return true; // can't parse — assume active
+        const originalLine = parseInt(m[1], 10);
+
+        // Check all tracked files for this line
+        for (const lines of this._activeBreakpoints.values()) {
+            if (lines.has(originalLine)) return true;
+        }
+        return false;
     }
 
     // -------------------------------------------------------------------------
