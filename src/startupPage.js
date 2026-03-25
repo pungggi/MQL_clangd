@@ -24,7 +24,7 @@ function showStartupPage(context, force = false) {
 
     panel.webview.html = getWebviewContent(currentVersion, context.extensionPath);
 
-    // Mark version as seen when the panel is closed (by any means)
+    // Mark version as seen when the panel is closed
     panel.onDidDispose(() => {
         context.globalState.update('mql-tools.startupPageDismissedVersion', currentVersion);
     });

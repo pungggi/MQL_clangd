@@ -320,6 +320,7 @@ class MqlDebugBridge {
         const bpMap = new Map();
         for (const bp of vscode.debug.breakpoints) {
             if (!(bp instanceof vscode.SourceBreakpoint)) continue;
+            if (bp.enabled === false) continue;
             const bpPath = bp.location.uri.fsPath.toLowerCase().replace(/\\/g, '/');
             if (!bpMap.has(bpPath)) bpMap.set(bpPath, []);
             bpMap.get(bpPath).push({

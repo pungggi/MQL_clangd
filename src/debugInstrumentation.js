@@ -544,7 +544,7 @@ function parseClassDefinitions(lines) {
  */
 function parseGlobalDeclarations(lines) {
     const globals = [];
-    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*((?:[A-Za-z_]\w*(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?(?:\s*,\s*)?)+)\s*;/;
+    const RE_DECL = /^\s*(?:(?:static|const|input)\s+)*([A-Za-z_]\w*)\s+\*?\s*([A-Za-z_][^;{]*)\s*;/;
     const RE_VNAME = /([A-Za-z_]\w*)(?:\s*(?:\[[^\]]*\]))*(?:\s*=[^,;]*)?/g;
     const SKIP = new Set([
         'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',

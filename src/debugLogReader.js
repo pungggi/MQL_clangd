@@ -141,11 +141,10 @@ class MqlDebugLogReader {
         if (!this.watcher && fs.existsSync(this.filePath)) {
             this._setupWatcher();
         }
-        // Only read here when the watcher is absent — otherwise the watcher
-        // handles real-time reads and polling would double-open the file every 500 ms.
-        if (!this.watcher) {
-            this._checkForNewContent();
-        }
+        // Always check for new content — fs.watch on Windows can silently miss
+        // change events for files written by external processes (e.g. MetaTrader).
+        // The watcher is the fast path; polling is the reliable fallback.
+        this._checkForNewContent();
         this.timer = setTimeout(() => this._poll(), POLL_INTERVAL_MS);
     }
 

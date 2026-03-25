@@ -358,12 +358,25 @@ class MqlDebugAdapter extends EventEmitter {
      */
     _mapToOriginalPath(filePath) {
         if (!filePath) return filePath;
-        // Replace .mql_dbg_build.mq5 → .mq5 (and .mq4)
+        // Strip .mql_dbg_build from the filename
         const mapped = filePath.replace(/\.mql_dbg_build\.(mq[45])/i, '.$1');
-        if (filePath === this._sourcePath && this._originalPath) {
-            // If we have the original path, use it directly (handles full path)
+
+        // __FILE__ in MQL5 returns just the filename (no directory path).
+        // Resolve back to a full path by matching the basename.
+        const mappedBase = path.basename(mapped).toLowerCase();
+        if (this._originalPath && path.basename(this._originalPath).toLowerCase() === mappedBase) {
             return this._originalPath;
         }
+        if (this._sourcePath && path.basename(this._sourcePath).toLowerCase() === mappedBase) {
+            return this._sourcePath;
+        }
+
+        // For included files: try resolving relative to the source directory
+        if (this._sourcePath) {
+            const resolved = path.join(path.dirname(this._sourcePath), mapped);
+            try { if (fs.existsSync(resolved)) return resolved; } catch {}
+        }
+
         return mapped;
     }
 

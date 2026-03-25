@@ -2,6 +2,9 @@
 //|                                                      MqlDebug.mqh |
 //|                          MQL Tools Extension - Debug Bridge       |
 //+------------------------------------------------------------------+
+#ifndef MQLDEBUG_MQH
+#define MQLDEBUG_MQH
+
 #ifndef __clang__
 #property copyright "MQL Tools Extension"
 #property version "1.00"
@@ -365,3 +368,5 @@ void MqlDebugPause() {
 }
 
 #define MQL_DBG_PAUSE MqlDebugPause()
+
+#endif // MQLDEBUG_MQH
