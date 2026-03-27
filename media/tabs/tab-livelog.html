@@ -1,0 +1,149 @@
+        <!-- ─── Tab 2: Live Log ─── -->
+        <div id="tab-livelog" class="tab-panel" role="tabpanel" aria-labelledby="btn-livelog" aria-hidden="true">
+
+            <div class="card">
+                <h2>Live Runtime Log</h2>
+
+                <p>Monitor your MQL4/MQL5 terminal logs <strong>in real-time directly within VS Code</strong> — no need
+                    to
+                    switch to MetaTrader or open external log files.</p>
+
+                <div class="highlight-box">
+                    The Live Log feature tails your MetaTrader log files and streams new entries into a dedicated VS
+                    Code output
+                    channel as they appear. Toggle it from the status bar or with <span class="code-inline">MQL: Toggle
+                        Live
+                        Runtime Log</span>.
+                </div>
+
+                <h3>Two Tailing Modes</h3>
+                <table>
+                    <tr>
+                        <th>Mode</th>
+                        <th>How it works</th>
+                        <th>Latency</th>
+                    </tr>
+                    <tr>
+                        <td><strong>LiveLog (Real-time)</strong></td>
+                        <td>Tails <span class="code-inline">MQL5/Files/LiveLog.txt</span>. Your EA writes to this file
+                            with an
+                            immediate flush using <span class="code-inline">PrintLive()</span> or the <span
+                                class="code-inline">Log*()</span> macros from <span
+                                class="code-inline">LiveLog.mqh</span>.</td>
+                        <td>&#9889; Instant</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Standard Journal</strong></td>
+                        <td>Tails the daily <span class="code-inline">MQL5/Logs/YYYYMMDD.log</span> file produced by
+                            MetaTrader's built-in <span class="code-inline">Print()</span>.</td>
+                        <td>Delayed (MT5 buffers output)</td>
+                    </tr>
+                </table>
+                <p>Switch between modes at any time with <span class="code-inline">MQL: Switch Log Tail Mode
+                        (Live/Standard)</span>.</p>
+
+                <h3>Setting Up LiveLog (Real-Time Mode)</h3>
+                <ul class="step-list">
+                    <li>
+                        <strong>Install the library</strong><br>
+                        Run <span class="code-inline">MQL: Install LiveLog Library</span> from the Command Palette. This
+                        deploys
+                        <span class="code-inline">LiveLog.mqh</span> into your MetaTrader <span
+                            class="code-inline">Include/</span> folder.
+                    </li>
+                    <li>
+                        <strong>Include it in your EA</strong><br>
+                        <pre
+                            style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">#include &lt;LiveLog.mqh&gt;</pre>
+                    </li>
+                    <li>
+                        <strong>Log messages with instant flush</strong><br>
+                        Use <span class="code-inline">PrintLive()</span> anywhere you would use <span
+                            class="code-inline">Print()</span>:
+                        <pre
+                            style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">PrintLive("OnTick fired — bid: " + DoubleToString(bid, 5));
+PrintFormatLive("Signal: %d | Spread: %.1f pts", signal, spread);</pre>
+                    </li>
+                    <li>
+                        <strong>Use level-prefixed macros for Trade Report integration</strong><br>
+                        The <span class="code-inline">Log*()</span> macros embed a <span
+                            class="code-inline">{File:Function:Line}</span> source location tag automatically, enabling
+                        <strong>click-to-source</strong> navigation in the Trade Report Dashboard:
+                        <pre
+                            style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">LogDebug("Checking entry conditions");
+LogInfo("Order placed — lots: 0.10, SL: 1.2050");
+LogWarn("Spread too wide, skipping");
+LogError("OrderSend failed: " + IntegerToString(GetLastError()));
+LogTrade("SIMULATED BUY MARKET");</pre>
+                    </li>
+                    <li>
+                        <strong>(Optional) Redirect all Print() calls automatically</strong><br>
+                        Add <span class="code-inline">#define LIVELOG_REDIRECT</span> before the include to make every
+                        <span class="code-inline">Print()</span> and <span class="code-inline">PrintFormat()</span> go
+                        to LiveLog
+                        automatically — no code changes needed:
+                        <pre
+                            style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">#define LIVELOG_REDIRECT
+#include &lt;LiveLog.mqh&gt;
+
+// All Print() calls now flush immediately to LiveLog.txt
+Print("This appears in VS Code in real-time!");</pre>
+                    </li>
+                    <li>
+                        <strong>(Optional) Clean session end marker</strong><br>
+                        Call <span class="code-inline">LiveLogClose()</span> from your <span
+                            class="code-inline">OnDeinit</span>
+                        to write a "Session Ended" marker in the log:
+                        <pre
+                            style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">void OnDeinit(const int reason)
+{
+    LiveLogClose();
+}</pre>
+                    </li>
+                </ul>
+
+                <h3>Commands</h3>
+                <ul>
+                    <li><span class="code-inline">MQL: Toggle Live Runtime Log</span> — Start / stop log tailing (also
+                        available
+                        in the status bar)</li>
+                    <li><span class="code-inline">MQL: Install LiveLog Library</span> — Deploy <span
+                            class="code-inline">LiveLog.mqh</span> to your Include folder</li>
+                    <li><span class="code-inline">MQL: Switch Log Tail Mode (Live/Standard)</span> — Switch between
+                        real-time
+                        and standard modes</li>
+                </ul>
+
+                <h3>Notes</h3>
+                <ul>
+                    <li>Only <em>new</em> log entries are shown — historical entries are not replayed when tailing
+                        starts.</li>
+                    <li><span class="code-inline">LiveLog.txt</span> auto-rotates at 10 MB (renamed to <span
+                            class="code-inline">LiveLog_YYYY_MM_DD.txt</span>) to prevent disk space issues.</li>
+                    <li>The extension auto-detects your MQL version (4 or 5) and data folder from the active file and
+                        workspace
+                        structure. Set <span class="code-inline">mql_tools.Metaeditor.Include5Dir</span> or <span
+                            class="code-inline">Include4Dir</span> explicitly if auto-detection fails.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>Encountered a bug, have a feature request, or just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BLive%20Log%5D%20"
+                        style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open
+                        an
+                        Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button class="dismiss-btn">Got it! Dismiss for version {{version}}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+

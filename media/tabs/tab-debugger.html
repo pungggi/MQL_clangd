@@ -1,0 +1,135 @@
+        <!-- ─── Tab 1: MQL Debugger ─── -->
+        <div id="tab-debugger" class="tab-panel active" role="tabpanel" aria-labelledby="btn-debugger"
+            aria-hidden="false">
+
+            <div class="card">
+                <h2>Introducing MQL Debugging <span class="badge"
+                        style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
+
+                <p>We are thrilled to introduce a highly requested feature: <strong>Integrated Debugging for
+                        MQL</strong>!</p>
+
+                <div class="highlight-box">
+                    <strong>Why Pre-Release?</strong> This is released early to gather your feedback. It is fully
+                    functional but undergoing active testing. If it proves valuable and stable, we'll integrate it
+                    permanently. Try it out and let us know what you think!
+                </div>
+
+                <h3>How it Works</h3>
+                <p>Unlike traditional debuggers, this solution uses a custom <strong>Debug Bridge</strong>. When you
+                    start debugging, the extension automatically instruments your MQL code with lightweight diagnostic
+                    macros, compiles it, and launches it in MetaTrader. It then communicates with VS Code via file I/O
+                    to simulate a real debugging session.</p>
+
+                <h3>Step-by-Step Guide</h3>
+                <ul class="step-list">
+                    <li>
+                        <strong>Set Breakpoints</strong><br>
+                        Open any <span class="code-inline">.mq4</span>, <span class="code-inline">.mq5</span>, or <span
+                            class="code-inline">.mqh</span> file and set breakpoints by clicking in the editor's left
+                        gutter.
+                    </li>
+                    <li>
+                        <strong>Start Debugging</strong><br>
+                        Click the <strong>Start Debugging</strong> (bug icon) button in the editor's top title bar, or
+                        press <span class="code-inline">Ctrl+Alt+D</span>. The extension will instrument and compile
+                        your code into a special debug build (named <span class="code-inline">*.mql_dbg_build</span>).
+                    </li>
+                    <li>
+                        <strong>MetaTrader Launches &amp; Auto-Attaches the EA</strong><br>
+                        MetaTrader opens automatically. If your source file lives inside the terminal's
+                        <span class="code-inline">MQL5\Experts\</span> folder, the debug EA is
+                        <strong>attached to the first open chart automatically</strong> — no manual drag-and-drop
+                        required. Simply switch to MetaTrader and let it run.<br><br>
+                        <em>If your workspace is outside the Experts folder</em>, MetaTrader will still open but you
+                        will need to find the <span class="code-inline">*.mql_dbg_build</span> EA in the Navigator
+                        panel and drag it onto a chart manually.
+                    </li>
+                    <li>
+                        <strong>Inspect the State</strong><br>
+                        When a breakpoint is hit, VS Code will pause. Explore your variables in the <em>Run and
+                            Debug</em> panel and view your <em>Call Stack</em>.
+                    </li>
+                    <li>
+                        <strong>Resume Execution</strong><br>
+                        Use the VS Code debug toolbar to click <strong>Continue</strong> (or press
+                        <span class="code-inline">F5</span>) to let your code run until the
+                        next breakpoint. <em>Note:</em> Step Over, Step Into, and Step Out all behave like Continue —
+                        they resume execution to the next breakpoint rather than stepping one line at a time
+                        (see Known Limitations below).
+                    </li>
+                    <li>
+                        <strong>Stop Debugging</strong><br>
+                        When you are finished, click Stop in VS Code. The extension will automatically send a stop
+                        command to MetaTrader, causing the debug EA/Script to self-unload from the chart.
+                    </li>
+                </ul>
+
+                <h3>What Variables are Tracked?</h3>
+                <p>To keep performance high, the debugger smartly tracks variables based on your settings:</p>
+                <ul>
+                    <li><strong>Locals & Parameters:</strong> Tracks local variables and function parameters accessed
+                        near your breakpoints.</li>
+                    <li><strong>Class Members:</strong> Monitors fields belonging to the current class instance (<span
+                            class="code-inline">this</span>).</li>
+                    <li><strong>Deep Analysis (Optional):</strong> Want more details? Enable <span
+                            class="code-inline">mql_tools.Debug.DetailLevel = "deepAnalysis"</span> in your VS Code
+                        settings. This will additionally track global primitives and recursively expand object fields.
+                    </li>
+                    <li><strong>Breakpoint Info:</strong> Provides metadata such as hit counts, source file names, line
+                        numbers, and timestamps.</li>
+                </ul>
+
+                <h3>Advanced Features</h3>
+                <ul>
+                    <li><strong>Conditional Breakpoints:</strong> Right-click a breakpoint and add a condition —
+                        telemetry only fires when the condition is true.</li>
+                    <li><strong>Manual <span class="code-inline">// @watch</span> annotations:</strong> Add a <span
+                            class="code-inline">// @watch myVar otherVar</span> comment near a breakpoint to explicitly
+                        name variables the auto-detector might miss.</li>
+                    <li><strong>Call Stack Tracking:</strong> Functions containing breakpoints automatically report
+                        <span class="code-inline">ENTER</span>/<span class="code-inline">EXIT</span> events so the
+                        dashboard shows a live call stack.
+                    </li>
+                </ul>
+
+                <div class="warn-box">
+                    <strong>&#9888; Pause / Continue:</strong> Each breakpoint injects a blocking spin-wait. The EA
+                    thread is fully paused — no <span class="code-inline">OnTick</span>/<span
+                        class="code-inline">OnTimer</span> events fire. Use only on demo accounts or in the Strategy
+                    Tester. The EA auto-resumes after 120 seconds as a safety failsafe.
+                </div>
+
+                <h3 id="debug-limitations">Known Limitations</h3>
+                <ul>
+                    <li><strong>No Step Over / Step Into / Step Out:</strong> Because the debugger communicates with
+                        MetaTrader via file-based I/O (not a live process attachment), it cannot control execution at the
+                        instruction level. All stepping actions behave like <strong>Continue</strong> — they resume to
+                        the next breakpoint. To inspect intermediate state, set additional breakpoints on the lines you
+                        want to observe.</li>
+                    <li><strong>No Expression Evaluation:</strong> The Debug Console does not support evaluating
+                        arbitrary MQL expressions at runtime. Use <span class="code-inline">// @watch</span> annotations
+                        or enable Deep Analysis to capture the variables you need.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>This feature is in its early stages and your input is critical. Encountered a bug, have a feature
+                    request, or just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BDebugger%5D%20"
+                        style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open
+                        an Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button class="dismiss-btn">Got it! Dismiss for version {{version}}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+

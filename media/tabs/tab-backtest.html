@@ -1,0 +1,126 @@
+        <!-- ─── Tab 3: Run Backtest ─── -->
+        <div id="tab-backtest" class="tab-panel" role="tabpanel" aria-labelledby="btn-backtest" aria-hidden="true">
+
+            <div class="card">
+                <h2>Run Backtest <span class="badge"
+                        style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
+
+                <p>Trigger an MT5 Strategy Tester run for your EA <strong>directly from VS Code</strong> — without
+                    touching the MetaTrader UI.</p>
+
+                <div class="highlight-box">
+                    Press <span class="code-inline">Ctrl+Shift+T</span>, click the <strong>&#9879; Run Backtest</strong>
+                    toolbar button, or run <span class="code-inline">MQL: Run Backtest</span> from the Command Palette.
+                    When the test finishes, the <strong>Trade Report Dashboard</strong> opens automatically.
+                </div>
+                <h3>Why use this over the standard setup?</h3>
+                <ul>
+                    <li><strong>No Context Switching:</strong> Launch tests instantly from your editor without ever
+                        clicking through the MetaTrader UI.</li>
+                    <li><strong>Integrated Analysis:</strong> The <strong>Trade Report Dashboard</strong> automatically
+                        loads your results upon completion, giving you access to rich visualizations that the standard
+                        MetaTrader tester doesn't offer.</li>
+                    <li><strong>Click-to-Source:</strong> Jump directly from any log entry (a decision, error, warning,
+                        or trade) straight to the exact line of code that caused it.</li>
+                    <li><strong>Click-to-Chart:</strong> Jump directly from the IDE report to the exact candle on your
+                        MetaTrader chart simply by clicking a trade or log entry.</li>
+                </ul>
+
+                <h3>Prerequisites</h3>
+                <ul>
+                    <li>A <span class="code-inline">tester.ini</span> file must exist in your EA's folder (e.g. <span
+                            class="code-inline">Experts/MyEA/tester.ini</span>). MetaTrader generates this when you save
+                        Strategy Tester settings.</li>
+                    <li><strong>TradeReportServer</strong> must be running. By default the extension auto-starts it —
+                        see <span class="code-inline">mql_tools.Backtest.AutoStartServer</span>.</li>
+                </ul>
+
+                <h3>Step-by-Step Guide</h3>
+                <ul class="step-list">
+                    <li>
+                        <strong>Open your EA file</strong><br>
+                        Open any <span class="code-inline">.mq5</span>, <span class="code-inline">.mq4</span>, or <span
+                            class="code-inline">.mqh</span> file that belongs to your Expert Advisor.
+                    </li>
+                    <li>
+                        <strong>Start the backtest</strong><br>
+                        Press <span class="code-inline">Ctrl+Shift+T</span> or click the <strong>&#9879;</strong> button
+                        in the editor title bar. The extension auto-detects your EA from the active file. If multiple
+                        EAs are found, a picker appears.
+                    </li>
+                    <li>
+                        <strong>Choose parameters</strong><br>
+                        A prompt pre-filled from <span class="code-inline">tester.ini</span> lets you confirm or
+                        override the <strong>symbol</strong> and <strong>date range</strong>. Disable prompts entirely
+                        with <span class="code-inline">mql_tools.Backtest.PromptForParameters: false</span>.
+                    </li>
+                    <li>
+                        <strong>Monitor progress</strong><br>
+                        A VS Code notification tracks elapsed time while MT5 runs the Strategy Tester in the background.
+                        Cancelling the notification stops monitoring but does <em>not</em> cancel the MT5 test itself.
+                    </li>
+                    <li>
+                        <strong>View results</strong><br>
+                        When the test finishes, the <strong>Trade Report Dashboard</strong> opens automatically with the
+                        new results (disable with <span class="code-inline">mql_tools.Backtest.AutoOpenReport:
+                            false</span>).
+                    </li>
+                </ul>
+
+                <h3>Settings Reference</h3>
+                <table>
+                    <tr>
+                        <th>Setting</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td><span class="code-inline">mql_tools.Backtest.PromptForParameters</span></td>
+                        <td><span class="code-inline">true</span></td>
+                        <td>Show symbol / date prompts before running. Set <span class="code-inline">false</span> to use
+                            <span class="code-inline">tester.ini</span> defaults silently.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-inline">mql_tools.Backtest.AutoOpenReport</span></td>
+                        <td><span class="code-inline">true</span></td>
+                        <td>Open the Trade Report Dashboard when the test completes.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-inline">mql_tools.Backtest.AutoStartServer</span></td>
+                        <td><span class="code-inline">true</span></td>
+                        <td>Auto-start TradeReportServer if it is not already running.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-inline">mql_tools.Backtest.ServerPort</span></td>
+                        <td><span class="code-inline">3002</span></td>
+                        <td>Port used by TradeReportServer.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-inline">mql_tools.ShowButton.RunBacktest</span></td>
+                        <td><span class="code-inline">true</span></td>
+                        <td>Show / hide the &#9879; toolbar button on MQL files.</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>This feature is in its early stages and your input is critical. Encountered a bug, have a feature
+                    request, or just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BBacktest%5D%20"
+                        style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open
+                        an Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button class="dismiss-btn">Got it! Dismiss for version {{version}}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+

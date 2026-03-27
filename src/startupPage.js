@@ -43,11 +43,27 @@ function showStartupPage(context, force = false) {
     );
 }
 
+const TAB_NAMES = ['debugger', 'livelog', 'backtest', 'tradereport'];
+
+function readTabPartial(extensionPath, tabName) {
+    const tabPath = path.join(extensionPath, 'media', 'tabs', `tab-${tabName}.html`);
+    try {
+        return fs.readFileSync(tabPath, 'utf8');
+    } catch (err) {
+        console.error(`[MQL Tools] Failed to read tab partial "${tabPath}": ${err.message}`);
+        return `<!-- tab-${tabName} unavailable -->`;
+    }
+}
+
 function getWebviewContent(version, extensionPath) {
     const htmlPath = path.join(extensionPath, 'media', 'startupPage.html');
     try {
         const nonce = require('crypto').randomBytes(16).toString('base64');
-        return fs.readFileSync(htmlPath, 'utf8')
+        let html = fs.readFileSync(htmlPath, 'utf8');
+        for (const tabName of TAB_NAMES) {
+            html = html.replace(`{{tab-${tabName}}}`, readTabPartial(extensionPath, tabName));
+        }
+        return html
             .replace(/\{\{version\}\}/g, version)
             .replace(/\{\{nonce\}\}/g, nonce);
     } catch (err) {
