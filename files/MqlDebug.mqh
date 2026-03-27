@@ -299,6 +299,18 @@ string MqlDebugEscape(string val) {
 #define MQLDEBUG_PAUSE_TIMEOUT_SEC 120
 
 //+------------------------------------------------------------------+
+//| Handle STOP / STOP_AND_CLOSE command logic                       |
+//+------------------------------------------------------------------+
+void MqlDebugHandleStopCmd(string trimmedCmd) {
+    MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|SESSION_END");
+    MqlDebugClose();
+    ExpertRemove();
+    if (trimmedCmd == "STOP_AND_CLOSE") {
+        TerminalClose(0);
+    }
+}
+
+//+------------------------------------------------------------------+
 //| Read the command file content (single I/O roundtrip)             |
 //+------------------------------------------------------------------+
 string MqlDebugReadCmd() {
@@ -315,22 +327,22 @@ string MqlDebugReadCmd() {
 //+------------------------------------------------------------------+
 //| Process any active commands (like STOP / STOP_AND_CLOSE)         |
 //+------------------------------------------------------------------+
-void MqlDebugProcessCmd() {
+bool MqlDebugProcessCmd() {
     if (!__dbgState.IsDebugInitialized())
-        return;
+        return false;
     string cmd = MqlDebugReadCmd();
-    if (cmd == "") return;
+    if (cmd == "") return false;
+    
+    FileDelete(MQLDEBUG_CMD_FILENAME);
+    
     string trimmedCmd = cmd;
     StringTrimLeft(trimmedCmd);
     StringTrimRight(trimmedCmd);
     if (trimmedCmd == "STOP" || trimmedCmd == "STOP_AND_CLOSE") {
-        MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|SESSION_END");
-        MqlDebugClose();
-        ExpertRemove();
-        if (trimmedCmd == "STOP_AND_CLOSE") {
-            TerminalClose(0);
-        }
+        MqlDebugHandleStopCmd(trimmedCmd);
+        return true;
     }
+    return false;
 }
 
 //+------------------------------------------------------------------+
@@ -363,22 +375,14 @@ void MqlDebugPause() {
             break;
         }
 
-        // Single file read per iteration, check both commands
+        // Check both commands
         string cmd = MqlDebugReadCmd();
 
-        // VS Code wrote STOP or STOP_AND_CLOSE → signal end, close log, and self-unload
-        // Trim whitespace and require an exact token match to avoid false
-        // positives from substrings like "NOTSTOP" or "STOPPING".
         string trimmedCmd = cmd;
         StringTrimLeft(trimmedCmd);
         StringTrimRight(trimmedCmd);
         if (trimmedCmd == "STOP" || trimmedCmd == "STOP_AND_CLOSE") {
-            MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|SESSION_END");
-            MqlDebugClose();
-            ExpertRemove();
-            if (trimmedCmd == "STOP_AND_CLOSE") {
-                TerminalClose(0);
-            }
+            MqlDebugHandleStopCmd(trimmedCmd);
             return;
         }
 
@@ -438,18 +442,21 @@ int MqlDebugInitProbes(int count) {
 //| Reload active probe IDs from the config file.                    |
 //| Format: comma-separated probe IDs, e.g. "3,17,42"               |
 //+------------------------------------------------------------------+
-void MqlDebugLoadConfig() {
+bool MqlDebugLoadConfig() {
+    // Check for STOP commands while not paused
+    if (MqlDebugProcessCmd()) return true;
+
     ArrayFill(__mqldbg_active, 0, __mqldbg_maxProbe, false);
 
     int handle = FileOpen(MQLDEBUG_BP_CONFIG,
                           FILE_READ | FILE_TXT | FILE_ANSI |
                           FILE_SHARE_READ | FILE_SHARE_WRITE);
-    if (handle == INVALID_HANDLE) return;
+    if (handle == INVALID_HANDLE) return false;
 
     string content = FileReadString(handle);
     FileClose(handle);
 
-    if (content == "") return;
+    if (content == "") return false;
 
 #ifndef __clang__
     string parts[];
@@ -468,8 +475,7 @@ void MqlDebugLoadConfig() {
             __mqldbg_active[id] = true;
     }
     
-    // Check for STOP commands while not paused
-    MqlDebugProcessCmd();
+    return false;
 }
 
 //+------------------------------------------------------------------+
@@ -482,7 +488,7 @@ bool MqlDebugProbeCheck(int id) {
     uint now = GetTickCount();
     if (now - __mqldbg_lastReload > MQLDEBUG_RELOAD_MS) {
         __mqldbg_lastReload = now;
-        MqlDebugLoadConfig();
+        if (MqlDebugLoadConfig()) return false;
     }
 
     return __mqldbg_active[id];
