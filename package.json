@@ -270,6 +270,11 @@
                         "Watch local variables, function parameters, and class members accessed near the breakpoint.",
                         "Also watch global primitive variables referenced near the breakpoint, and expand local class-typed variables into their primitive fields."
                     ]
+                },
+                "mql_tools.Debug.CloseTerminalOnExit": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "If enabled, gracefully closes the MetaTrader terminal automatically when the debug session ends."
                 }
             }
         },

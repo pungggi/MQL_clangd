@@ -293,12 +293,15 @@ class MqlDebugBridge {
         return this._outputChannel;
     }
 
-    /** Write STOP to the command file so a paused EA self-unloads via ExpertRemove(). */
+    /** Write STOP or STOP_AND_CLOSE to the command file so a paused EA self-unloads via ExpertRemove() and closes terminal if configured. */
     _sendStopCommand() {
         if (!this._mql5Root) return;
         const cmdPath = path.join(this._mql5Root, 'Files', 'MqlDebugCmd.txt');
         try {
-            fs.writeFileSync(cmdPath, 'STOP\n', 'utf-8');
+            const config = vscode.workspace.getConfiguration('mql_tools');
+            const closeTerm = config.get('Debug.CloseTerminalOnExit', true);
+            const cmd = closeTerm ? 'STOP_AND_CLOSE\n' : 'STOP\n';
+            fs.writeFileSync(cmdPath, cmd, 'utf-8');
         } catch (err) {
             console.warn('[MqlDebugBridge] Failed to write stop command:', err.message);
         }

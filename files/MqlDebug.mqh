@@ -313,6 +313,27 @@ string MqlDebugReadCmd() {
 }
 
 //+------------------------------------------------------------------+
+//| Process any active commands (like STOP / STOP_AND_CLOSE)         |
+//+------------------------------------------------------------------+
+void MqlDebugProcessCmd() {
+    if (!__dbgState.IsDebugInitialized())
+        return;
+    string cmd = MqlDebugReadCmd();
+    if (cmd == "") return;
+    string trimmedCmd = cmd;
+    StringTrimLeft(trimmedCmd);
+    StringTrimRight(trimmedCmd);
+    if (trimmedCmd == "STOP" || trimmedCmd == "STOP_AND_CLOSE") {
+        MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|SESSION_END");
+        MqlDebugClose();
+        ExpertRemove();
+        if (trimmedCmd == "STOP_AND_CLOSE") {
+            TerminalClose(0);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
 //| Check if a command is present in the command file                |
 //+------------------------------------------------------------------+
 bool MqlDebugCheckCmd(string cmd) {
@@ -345,16 +366,19 @@ void MqlDebugPause() {
         // Single file read per iteration, check both commands
         string cmd = MqlDebugReadCmd();
 
-        // VS Code wrote STOP → signal end, close log, and self-unload
+        // VS Code wrote STOP or STOP_AND_CLOSE → signal end, close log, and self-unload
         // Trim whitespace and require an exact token match to avoid false
         // positives from substrings like "NOTSTOP" or "STOPPING".
         string trimmedCmd = cmd;
         StringTrimLeft(trimmedCmd);
         StringTrimRight(trimmedCmd);
-        if (trimmedCmd == "STOP") {
+        if (trimmedCmd == "STOP" || trimmedCmd == "STOP_AND_CLOSE") {
             MqlDebugWrite("DBG|" + MqlDebugTime() + "|||0|SESSION_END");
             MqlDebugClose();
             ExpertRemove();
+            if (trimmedCmd == "STOP_AND_CLOSE") {
+                TerminalClose(0);
+            }
             return;
         }
 
@@ -443,6 +467,9 @@ void MqlDebugLoadConfig() {
         if (id >= 0 && id < __mqldbg_maxProbe)
             __mqldbg_active[id] = true;
     }
+    
+    // Check for STOP commands while not paused
+    MqlDebugProcessCmd();
 }
 
 //+------------------------------------------------------------------+
