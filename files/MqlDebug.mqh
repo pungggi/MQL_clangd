@@ -375,7 +375,7 @@ void MqlDebugPause() {
             break;
         }
 
-        // Check both commands
+        // Read the command file to check if the "STOP", "STOP_AND_CLOSE", or "CONTINUE" strings are written
         string cmd = MqlDebugReadCmd();
 
         string trimmedCmd = cmd;
@@ -440,7 +440,18 @@ int MqlDebugInitProbes(int count) {
 
 //+------------------------------------------------------------------+
 //| Reload active probe IDs from the config file.                    |
-//| Format: comma-separated probe IDs, e.g. "3,17,42"               |
+//| Format: comma-separated probe IDs, e.g. "3,17,42"                |
+//|                                                                  |
+//| Return Value:                                                    |
+//|   Returns true ONLY when MqlDebugProcessCmd() indicates a        |
+//|   "STOP" or "STOP_AND_CLOSE" shutdown sequence has occurred,     |
+//|   instructing the caller to early-exit. Returns false for normal |
+//|   operation (even if parsing MQLDEBUG_BP_CONFIG fails or the     |
+//|   file is missing).                                              |
+//|                                                                  |
+//| Side-effects:                                                    |
+//|   Parses MQLDEBUG_BP_CONFIG and populates the __mqldbg_active    |
+//|   array (bounds safeguarded by __mqldbg_maxProbe).               |
 //+------------------------------------------------------------------+
 bool MqlDebugLoadConfig() {
     // Check for STOP commands while not paused
