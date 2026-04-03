@@ -468,29 +468,34 @@ async function CreateProperties(force = false) {
         `-I${normalizePath(incPath)}`
     ];
 
-    let incDir;
-    if (workspaceVersion === 'mql4') {
-        incDir = configMql.Metaeditor.Include4Dir;
-    } else {
-        incDir = configMql.Metaeditor.Include5Dir;
+    // Resolve both include dirs for per-file correctness in mixed workspaces
+    const inc4Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include4Dir, workspacepath);
+    const inc5Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include5Dir, workspacepath);
+
+    function resolveExternalIncFlag(dir) {
+        if (!dir || dir.length === 0) return null;
+        const sub = pathModule.join(dir, 'Include');
+        if (fs.existsSync(sub)) return `-I${normalizePath(sub)}`;
+        if (fs.existsSync(dir)) return `-I${normalizePath(dir)}`;
+        return null;
     }
 
-    // Allow ${workspaceFolder} and relative paths in settings.
-    incDir = resolvePathRelativeToWorkspace(incDir, workspacepath);
+    const inc4Flag = resolveExternalIncFlag(inc4Dir);
+    const inc5Flag = resolveExternalIncFlag(inc5Dir);
+    const primaryIncFlag = workspaceVersion === 'mql4' ? inc4Flag : inc5Flag;
 
     const arrPath = [...baseFlags];
-    if (incDir && incDir.length > 0) {
-        const externalIncDir = pathModule.join(incDir, 'Include');
-        if (fs.existsSync(externalIncDir)) {
-            arrPath.push(`-I${normalizePath(externalIncDir)}`);
-        } else if (fs.existsSync(incDir)) {
-            arrPath.push(`-I${normalizePath(incDir)}`);
-        }
+    if (primaryIncFlag) {
+        arrPath.push(primaryIncFlag);
     }
 
-
-    // Update fallback flags
-    const existingFlags = config.get('clangd.fallbackFlags') || [];
+    // Filter stale extension-managed MQL flags before merging to prevent
+    // wrong defines/includes persisting when workspace version changes.
+    const staleFlags = new Set(['-D__MQL4__', '-D__MQL5__']);
+    if (inc4Flag) staleFlags.add(inc4Flag);
+    if (inc5Flag) staleFlags.add(inc5Flag);
+    const existingFlags = (config.get('clangd.fallbackFlags') || [])
+        .filter(f => !staleFlags.has(f));
     const mergedFlags = mergeFlags(existingFlags, arrPath);
     await safeConfigUpdate('clangd.fallbackFlags', mergedFlags, vscode.ConfigurationTarget.Workspace);
     // C_Cpp.intelliSenseEngine is optional - silent mode since C++ extension may not be installed
@@ -499,7 +504,16 @@ async function CreateProperties(force = false) {
     // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
     try {
         const compileCommands = targetFiles
-            .map(fileUri => buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath))
+            .map(fileUri => {
+                const ext = pathModule.extname(fileUri.fsPath).toLowerCase();
+                // Swap external include dir for files mismatching workspace version
+                const neededIncFlag = ext === '.mq4' ? inc4Flag : inc5Flag;
+                if (neededIncFlag && primaryIncFlag && neededIncFlag !== primaryIncFlag) {
+                    const fileFlags = arrPath.map(f => f === primaryIncFlag ? neededIncFlag : f);
+                    return buildCompileCommandEntry(fileUri.fsPath, fileFlags, workspacepath);
+                }
+                return buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath);
+            })
             .filter(Boolean);
 
         if (compileCommands.length > 0) {

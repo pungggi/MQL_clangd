@@ -90,9 +90,14 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
 
             const ext = pathModule.extname(filePath).toLowerCase();
             let includeDir;
-            if (ext === '.mq4' || filePath.toLowerCase().includes('mql4')) {
+            // Extension wins over path heuristic (a .mq5 under an MQL4/ dir is still MQL5)
+            if (ext === '.mq4') {
                 includeDir = include4Dir;
-            } else if (ext === '.mq5' || filePath.toLowerCase().includes('mql5')) {
+            } else if (ext === '.mq5') {
+                includeDir = include5Dir;
+            } else if (filePath.toLowerCase().includes('mql4')) {
+                includeDir = include4Dir;
+            } else if (filePath.toLowerCase().includes('mql5')) {
                 includeDir = include5Dir;
             } else {
                 includeDir = workspaceVersion === 'mql4' ? include4Dir : include5Dir;
