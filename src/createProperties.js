@@ -762,8 +762,6 @@ Hover:
 
 CompileFlags:
   Add:
-    # Compile only – ensures the driver produces exactly one compiler job
-    - -c
     # Suppress all warnings in .clangd config; targeted -Wno-* flags are already set in baseFlags
     - -Wno-everything
 

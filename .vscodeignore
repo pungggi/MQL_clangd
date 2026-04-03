@@ -13,3 +13,6 @@ package-lock.json
 *.log
 # Exclude webpack config from package
 webpack.config.js
+# Exclude compile_commands.json — this is generated per-workspace by the extension.
+# Shipping the dev workspace's copy causes clangd to load a second, stale database.
+compile_commands.json
