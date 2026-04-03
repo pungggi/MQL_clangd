@@ -113,6 +113,11 @@ function buildCompileCommandEntry(filePath, sharedFlags, workspacePath) {
             return;
         }
 
+        if (ext === '.mq5' && flag === '-D__MQL4__') {
+            args.push('-D__MQL5__');
+            return;
+        }
+
         args.push(flag);
     });
 
@@ -254,6 +259,35 @@ function detectMqlVersion(folderPath, fileName) {
     }
 
     return null;
+}
+
+/**
+ * Determines the dominant MQL version for a workspace by examining actual file extensions.
+ * Counts .mq4 vs .mq5 files and returns the majority version.
+ * Falls back to folder-path heuristic if no translation units exist.
+ * @param {Array<{fsPath: string}>} fileUris - Array of objects with fsPath property
+ * @param {string} workspacePath - The workspace folder path (used as fallback)
+ * @param {string} workspaceName - The workspace folder name (used as fallback)
+ * @returns {'mql4' | 'mql5'}
+ */
+function detectWorkspaceMqlVersion(fileUris, workspacePath, workspaceName) {
+    let mq4Count = 0;
+    let mq5Count = 0;
+
+    for (const uri of fileUris) {
+        const ext = pathModule.extname(uri.fsPath).toLowerCase();
+        if (ext === '.mq4') mq4Count++;
+        else if (ext === '.mq5') mq5Count++;
+    }
+
+    if (mq4Count > 0 || mq5Count > 0) {
+        return mq4Count > mq5Count ? 'mql4' : 'mql5';
+    }
+
+    // Fallback to path-based detection when no .mq4/.mq5 files exist
+    if (workspaceName && workspaceName.toUpperCase().includes('MQL4')) return 'mql4';
+    if (workspacePath && workspacePath.toUpperCase().includes('MQL4')) return 'mql4';
+    return 'mql5';
 }
 
 /**
@@ -401,12 +435,23 @@ async function CreateProperties(force = false) {
     const extensionPath = pathModule.join(__dirname, '..');
     const compatHeaderPath = normalizePath(pathModule.join(extensionPath, 'files', 'mql_clangd_compat.h'));
 
+    // Scan for translation units FIRST to determine workspace MQL version
+    let targetFiles = [];
+    try {
+        targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5}'));
+    } catch (err) {
+        console.error('MQL Tools: Failed to scan workspace files', err);
+    }
+
+    const workspaceVersion = detectWorkspaceMqlVersion(targetFiles, workspacepath, workspaceName);
+    const mqlDefine = workspaceVersion === 'mql4' ? '-D__MQL4__' : '-D__MQL5__';
+
     // Base flags for clangd to improve MQL support.
     const baseFlags = [
         '-xc++',
         '-std=c++17',
         '-D__MQL__',
-        '-D__MQL5__',
+        mqlDefine,
         `-include${compatHeaderPath}`,
         '-fms-extensions',           // Allow some non-standard C++ (like incomplete arrays)
         '-fms-compatibility',
@@ -423,7 +468,7 @@ async function CreateProperties(force = false) {
     ];
 
     let incDir;
-    if (workspaceName.toUpperCase().includes('MQL4') || workspacepath.toUpperCase().includes('MQL4')) {
+    if (workspaceVersion === 'mql4') {
         incDir = configMql.Metaeditor.Include4Dir;
     } else {
         incDir = configMql.Metaeditor.Include5Dir;
@@ -450,9 +495,8 @@ async function CreateProperties(force = false) {
     // C_Cpp.intelliSenseEngine is optional - silent mode since C++ extension may not be installed
     await safeConfigUpdate('C_Cpp.intelliSenseEngine', 'Disabled', vscode.ConfigurationTarget.Workspace, true);
 
-    // --- Generate compile_commands.json ---
+    // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
     try {
-        const targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5}'));
         const compileCommands = targetFiles
             .map(fileUri => buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath))
             .filter(Boolean);
@@ -847,6 +891,7 @@ module.exports = {
     isSourceExtension,
     isTranslationUnitExtension,
     detectMqlVersion,
+    detectWorkspaceMqlVersion,
     generateIncludeFlag,
     generateBaseFlags,
     generateProjectFlags,

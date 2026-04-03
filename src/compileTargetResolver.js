@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
+const { detectWorkspaceMqlVersion } = require('./createProperties');
 
 /**
  * Compile Target Resolver
@@ -73,6 +74,9 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
         maxFiles
     );
 
+    // Determine workspace MQL version from scanned files
+    const workspaceVersion = detectWorkspaceMqlVersion(files, workspaceRoot, workspaceFolder.name);
+
     for (const fileUri of files) {
         const filePath = fileUri.fsPath;
         const fileDir = pathModule.dirname(filePath);
@@ -82,7 +86,14 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
             const includes = parseIncludes(content);
 
             const ext = pathModule.extname(filePath).toLowerCase();
-            const includeDir = (ext === '.mq4' || filePath.toLowerCase().includes('mql4')) ? include4Dir : include5Dir;
+            let includeDir;
+            if (ext === '.mq4' || filePath.toLowerCase().includes('mql4')) {
+                includeDir = include4Dir;
+            } else if (ext === '.mq5' || filePath.toLowerCase().includes('mql5')) {
+                includeDir = include5Dir;
+            } else {
+                includeDir = workspaceVersion === 'mql4' ? include4Dir : include5Dir;
+            }
 
             for (const includePath of includes) {
                 const resolvedPaths = resolveIncludePath(includePath, fileDir, workspaceRoot, includeDir);

@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 
 // Import functions from createProperties
-const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry } = require('../../src/createProperties');
+const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, detectWorkspaceMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry } = require('../../src/createProperties');
 
 // Import Wine helper functions
 const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent, fromWineWindowsPath } = require('../../src/wineHelper');
@@ -134,6 +134,67 @@ suite('Pure Logic Unit Tests', () => {
         });
     });
 
+    suite('Workspace MQL Version Detection', () => {
+        function mockUri(fsPath) {
+            return { fsPath };
+        }
+
+        test('should detect MQL4 workspace from majority of .mq4 files', () => {
+            const files = [
+                mockUri('C:/Project/Experts/EA1.mq4'),
+                mockUri('C:/Project/Experts/EA2.mq4'),
+                mockUri('C:/Project/Scripts/Script1.mq5'),
+            ];
+            assert.strictEqual(detectWorkspaceMqlVersion(files, 'C:/Project', 'MyProject'), 'mql4');
+        });
+
+        test('should detect MQL5 workspace from majority of .mq5 files', () => {
+            const files = [
+                mockUri('C:/Project/Experts/EA1.mq5'),
+                mockUri('C:/Project/Experts/EA2.mq5'),
+                mockUri('C:/Project/Scripts/Script1.mq4'),
+            ];
+            assert.strictEqual(detectWorkspaceMqlVersion(files, 'C:/Project', 'MyProject'), 'mql5');
+        });
+
+        test('should default to MQL5 when equal counts', () => {
+            const files = [
+                mockUri('C:/Project/Experts/EA1.mq4'),
+                mockUri('C:/Project/Experts/EA2.mq5'),
+            ];
+            assert.strictEqual(detectWorkspaceMqlVersion(files, 'C:/Project', 'MyProject'), 'mql5');
+        });
+
+        test('should fall back to workspace name when no translation units found', () => {
+            assert.strictEqual(detectWorkspaceMqlVersion([], 'C:/Project', 'MyMQL4Project'), 'mql4');
+            assert.strictEqual(detectWorkspaceMqlVersion([], 'C:/Project', 'MyProject'), 'mql5');
+        });
+
+        test('should fall back to workspace path when name is generic', () => {
+            assert.strictEqual(detectWorkspaceMqlVersion([], 'C:/MQL4/Project', 'Project'), 'mql4');
+        });
+
+        test('should prioritize file content over folder name', () => {
+            const files = [
+                mockUri('C:/MQL5/Experts/EA1.mq4'),
+                mockUri('C:/MQL5/Experts/EA2.mq4'),
+            ];
+            assert.strictEqual(detectWorkspaceMqlVersion(files, 'C:/MQL5', 'MQL5'), 'mql4');
+        });
+
+        test('should handle empty file array with generic path', () => {
+            assert.strictEqual(detectWorkspaceMqlVersion([], 'C:/Generic', 'Generic'), 'mql5');
+        });
+
+        test('should ignore non-translation-unit extensions in file list', () => {
+            const files = [
+                mockUri('C:/Project/Include/Helper.mqh'),
+                mockUri('C:/Project/Experts/EA1.mq4'),
+            ];
+            assert.strictEqual(detectWorkspaceMqlVersion(files, 'C:/Project', 'MyProject'), 'mql4');
+        });
+    });
+
     suite('Include Path Generation', () => {
         test('should generate correct include flag format', () => {
             const includePath = 'C:/Users/Test/MQL5/Include';
@@ -255,6 +316,17 @@ suite('Pure Logic Unit Tests', () => {
         test('should skip .mqh header files so clangd can use fallback or inferred commands', () => {
             const entry = buildCompileCommandEntry('C:/Workspace/Include/Trade.mqh', generateBaseFlags(), 'C:/Workspace');
             assert.strictEqual(entry, null);
+        });
+
+        test('should swap -D__MQL4__ to -D__MQL5__ for .mq5 files in MQL4 workspaces', () => {
+            // Simulate flags from an MQL4-dominant workspace
+            const flags = ['-xc++', '-std=c++17', '-D__MQL__', '-D__MQL4__'];
+            const entry = buildCompileCommandEntry('C:/Workspace/Experts/TestEA.mq5', flags, 'C:/Workspace');
+
+            assert.ok(entry);
+            assert.ok(entry.arguments.includes('-D__MQL5__'));
+            assert.ok(!entry.arguments.includes('-D__MQL4__'));
+            assert.ok(entry.arguments.includes('-D__MQL5_BUILD__'));
         });
     });
 
