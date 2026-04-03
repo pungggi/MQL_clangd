@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.33
+
+### Bug Fixes
+- **Go to Definition for MQL4 in generic workspaces**: Fixed "Go to Definition" (F12) and include resolution failing for MQL4 projects opened from generically-named workspace folders. The extension now detects the workspace's dominant MQL version by counting actual `.mq4` vs `.mq5` files instead of relying on the folder name. This ensures correct `-D__MQL4__`/`-D__MQL5__` defines, proper include paths, and working symbol navigation regardless of workspace naming (fixes #28).
+- **Mixed-workspace include paths**: Files whose extension mismatches the workspace's dominant version (e.g. a `.mq5` file in an MQL4-dominant workspace) now get the correct external include directory and defines in `compile_commands.json`.
+- **Stale fallback flags**: Changing `Metaeditor.Include4Dir`/`Include5Dir` settings or the workspace's MQL version no longer leaves stale defines and include paths in `clangd.fallbackFlags`.
+
 ## 1.1.31
 
 ### Features
