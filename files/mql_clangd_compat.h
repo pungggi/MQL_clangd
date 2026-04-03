@@ -1,5 +1,5 @@
 /**
- * MQL Compatibility Header for Clangd (v11)
+ * MQL Compatibility Header for Clangd (v12)
  *
  * Provides type definitions, function stubs, and Standard Library stubs
  * for clangd IntelliSense support in MQL4/MQL5 projects.
@@ -1272,6 +1272,77 @@ template<typename T> string typename(const T& value);
 // ZeroMemory
 template<typename T> void ZeroMemory(T& variable);
 template<typename T> void ArrayInitialize(T array[], T value);
+
+//+------------------------------------------------------------------+
+//| MQL4-specific functions and predefined variables                 |
+//| Only available when compiling with -D__MQL4__                    |
+//+------------------------------------------------------------------+
+#ifdef __MQL4__
+
+// MQL4 predefined variables
+extern double Ask;
+extern double Bid;
+extern double Open[];
+extern double Close[];
+extern double High[];
+extern double Low[];
+extern long   Volume[];
+extern datetime Time[];
+
+// MQL4 custom indicator setup functions
+void SetIndexStyle(int index, int type, int style = EMPTY, int width = EMPTY, color clr = clrNONE);
+void SetIndexLabel(int index, string text);
+void SetIndexDrawBegin(int index, int begin);
+void SetIndexShift(int index, int shift);
+void SetIndexEmptyValue(int index, double value);
+bool IndicatorBuffers(int count);
+int  IndicatorCounted();
+void IndicatorShortName(string name);
+void IndicatorDigits(int digits);
+void SetLevelValue(int level, double value);
+void SetLevelStyle(int draw_style, int line_width, color clr);
+
+// MQL4 technical indicator functions (return double, include shift parameter)
+double iAC(string symbol, int timeframe, int shift);
+double iAD(string symbol, int timeframe, int shift);
+double iADX(string symbol, int timeframe, int period, int applied_price, int mode, int shift);
+double iAlligator(string symbol, int timeframe, int jaw_period, int jaw_shift, int teeth_period, int teeth_shift, int lips_period, int lips_shift, int ma_method, int applied_price, int mode, int shift);
+double iAO(string symbol, int timeframe, int shift);
+double iATR(string symbol, int timeframe, int period, int shift);
+double iBearsPower(string symbol, int timeframe, int period, int applied_price, int shift);
+double iBullsPower(string symbol, int timeframe, int period, int applied_price, int shift);
+double iBands(string symbol, int timeframe, int period, double deviation, int bands_shift, int applied_price, int mode, int shift);
+double iBWMFI(string symbol, int timeframe, int shift);
+double iCCI(string symbol, int timeframe, int period, int applied_price, int shift);
+double iDeMarker(string symbol, int timeframe, int period, int shift);
+double iEnvelopes(string symbol, int timeframe, int ma_period, int ma_method, int ma_shift, int applied_price, double deviation, int mode, int shift);
+double iForce(string symbol, int timeframe, int period, int ma_method, int applied_price, int shift);
+double iFractals(string symbol, int timeframe, int mode, int shift);
+double iGator(string symbol, int timeframe, int jaw_period, int jaw_shift, int teeth_period, int teeth_shift, int lips_period, int lips_shift, int ma_method, int applied_price, int mode, int shift);
+double iIchimoku(string symbol, int timeframe, int tenkan_sen, int kijun_sen, int senkou_span_b, int mode, int shift);
+double iMA(string symbol, int timeframe, int ma_period, int ma_shift, int ma_method, int applied_price, int shift);
+double iMACD(string symbol, int timeframe, int fast_ema_period, int slow_ema_period, int signal_period, int applied_price, int mode, int shift);
+double iMFI(string symbol, int timeframe, int period, int shift);
+double iMomentum(string symbol, int timeframe, int period, int applied_price, int shift);
+double iOBV(string symbol, int timeframe, int applied_price, int shift);
+double iOsMA(string symbol, int timeframe, int fast_ema_period, int slow_ema_period, int signal_period, int applied_price, int shift);
+double iRSI(string symbol, int timeframe, int period, int applied_price, int shift);
+double iRVI(string symbol, int timeframe, int period, int mode, int shift);
+double iSAR(string symbol, int timeframe, double step, double maximum, int shift);
+double iStdDev(string symbol, int timeframe, int ma_period, int ma_shift, int ma_method, int applied_price, int shift);
+double iStochastic(string symbol, int timeframe, int Kperiod, int Dperiod, int slowing, int method, int price_field, int mode, int shift);
+double iWPR(string symbol, int timeframe, int period, int shift);
+
+// MQL4 "OnArray" indicator variants
+double iMAOnArray(double array[], int total, int period, int ma_shift, int ma_method, int shift);
+double iRSIOnArray(double array[], int total, int period, int shift);
+double iCCIOnArray(double array[], int total, int period, int shift);
+double iStdDevOnArray(double array[], int total, int ma_period, int ma_shift, int ma_method, int shift);
+double iMomentumOnArray(double array[], int total, int period, int shift);
+double iBandsOnArray(double array[], int total, int period, double deviation, int bands_shift, int mode, int shift);
+double iEnvelopesOnArray(double array[], int total, int ma_period, int ma_method, int ma_shift, double deviation, int mode, int shift);
+
+#endif // __MQL4__
 
 //+------------------------------------------------------------------+
 //| MQL5 Standard Library Stubs                                      |

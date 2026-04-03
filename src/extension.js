@@ -2360,10 +2360,10 @@ function activate(context) {
                     if (fs.existsSync(clangdPath)) {
                         const content = await fs.promises.readFile(clangdPath, 'utf8');
                         if (content.includes('    - -c\n')) {
-                            let patched = content.replace(/^    # Compile only[^\n]*\n    - -c\n/m, '');
+                            let patched = content.replace(/^ {4}# Compile only[^\n]*\n {4}- -c\n/m, '');
                             if (patched === content) {
                                 // Comment was missing or edited — remove bare flag line
-                                patched = content.replace(/^    - -c\n/m, '');
+                                patched = content.replace(/^ {4}- -c\n/m, '');
                             }
                             if (patched !== content) {
                                 await fs.promises.writeFile(clangdPath, patched, 'utf8');
