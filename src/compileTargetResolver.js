@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
+const { detectWorkspaceMqlVersion } = require('./createProperties');
 
 /**
  * Compile Target Resolver
@@ -11,6 +12,9 @@ const pathModule = require('path');
 
 // In-memory cache for reverse include index per workspace
 const reverseIndexCache = new Map(); // workspaceUri -> { index: Map, dirty: boolean }
+
+// rt (run type) value for syntax-check mode — no user interaction, no compilation
+const RT_CHECK = 0;
 
 /**
  * Parse #include statements from MQL source code
@@ -73,6 +77,9 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
         maxFiles
     );
 
+    // Determine workspace MQL version from scanned files
+    const workspaceVersion = detectWorkspaceMqlVersion(files, workspaceRoot, workspaceFolder.name);
+
     for (const fileUri of files) {
         const filePath = fileUri.fsPath;
         const fileDir = pathModule.dirname(filePath);
@@ -82,7 +89,19 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
             const includes = parseIncludes(content);
 
             const ext = pathModule.extname(filePath).toLowerCase();
-            const includeDir = (ext === '.mq4' || filePath.toLowerCase().includes('mql4')) ? include4Dir : include5Dir;
+            let includeDir;
+            // Extension wins over path heuristic (a .mq5 under an MQL4/ dir is still MQL5)
+            if (ext === '.mq4') {
+                includeDir = include4Dir;
+            } else if (ext === '.mq5') {
+                includeDir = include5Dir;
+            } else if (filePath.toLowerCase().includes('mql4')) {
+                includeDir = include4Dir;
+            } else if (filePath.toLowerCase().includes('mql5')) {
+                includeDir = include5Dir;
+            } else {
+                includeDir = workspaceVersion === 'mql4' ? include4Dir : include5Dir;
+            }
 
             for (const includePath of includes) {
                 const resolvedPaths = resolveIncludePath(includePath, fileDir, workspaceRoot, includeDir);
@@ -314,7 +333,7 @@ async function resolveCompileTargets({ document, workspaceFolder, context, rt })
         return null;
     }
 
-    const skipInteraction = (rt === 0);
+    const skipInteraction = (rt === RT_CHECK);
     const headerUri = document.uri;
 
     const existingTargets = getCompileTargets(headerUri, workspaceFolder, context);
