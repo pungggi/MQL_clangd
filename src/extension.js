@@ -2342,7 +2342,7 @@ function activate(context) {
     }
 
     // Wait for environment to stabilize before migration check
-    sleep(2000).then(() => {
+    sleep(2000).then(async () => {
         if (previousVersion !== currentVersion) {
             if (currentVersion === '1.0.0' || currentVersion === '1.0.1' || currentVersion === '1.0.2') {
                 CreateProperties().then(() => {
@@ -2350,6 +2350,32 @@ function activate(context) {
                     // console.log(`MQL Tools: Migrated to v${currentVersion}`);
                 });
             }
+
+            // v1.1.35+: Remove duplicate -c from .clangd CompileFlags.Add.
+            // The flag is already in compile_commands.json entries and caused
+            // double -c with -x c++-header for inferred header commands.
+            try {
+                for (const wf of (vscode.workspace.workspaceFolders || [])) {
+                    const clangdPath = pathModule.join(wf.uri.fsPath, '.clangd');
+                    if (fs.existsSync(clangdPath)) {
+                        const content = await fs.promises.readFile(clangdPath, 'utf8');
+                        if (content.includes('    - -c\n')) {
+                            let patched = content.replace(/^    # Compile only[^\n]*\n    - -c\n/m, '');
+                            if (patched === content) {
+                                // Comment was missing or edited — remove bare flag line
+                                patched = content.replace(/^    - -c\n/m, '');
+                            }
+                            if (patched !== content) {
+                                await fs.promises.writeFile(clangdPath, patched, 'utf8');
+                                console.log('MQL Tools: Migrated .clangd — removed duplicate -c flag');
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('MQL Tools: .clangd migration failed', err);
+            }
+
             context.globalState.update('mql-tools.version', currentVersion);
         }
     });
