@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.36
+
+### Bug Fixes
+- **Fix 393 compilation errors in MQL5 stdlib stubs header**: Added Win32 type preamble (PVOID, HANDLE, FILETIME, etc.), converted base class forward declarations to minimal class definitions, and removed duplicate struct definitions that caused redefinition errors under clang. Both MQL4 and MQL5 modes now compile with zero errors.
+
 ## 1.1.35
 
 ### Bug Fixes
