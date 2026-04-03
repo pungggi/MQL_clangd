@@ -1,4 +1,5 @@
 const assert = require('assert');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -788,5 +789,54 @@ suite('inferMqlDataDirFromPath', () => {
             const result = inferMqlDataDirFromPath(path.join(base, 'mql5/script.mq5'), true);
             assert.strictEqual(result, path.join(base, 'mql5'));
         } finally { cleanup(); }
+    });
+});
+
+suite('Compat Header Compilation', () => {
+    const compatHeader = path.join(__dirname, '..', '..', 'files', 'mql_clangd_compat.h');
+
+    function findClangPP() {
+        try {
+            const out = execSync('where clang++', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            return out.trim().split(/\r?\n/)[0];
+        } catch { return null; }
+    }
+
+    function compileHeader(defines) {
+        const clang = findClangPP();
+        if (!clang) { return null; } // skip if clang++ not installed
+        const tmpFile = path.join(os.tmpdir(), '_mql_compat_test.cpp');
+        fs.writeFileSync(tmpFile, '// empty TU\n');
+        const flags = [
+            '--driver-mode=g++', '-fsyntax-only', '-xc++', '-std=c++17',
+            ...defines,
+            '-include', compatHeader,
+            '-fms-extensions', '-fms-compatibility', '-ferror-limit=0',
+            '-Wno-everything', tmpFile
+        ].map(f => `"${f}"`).join(' ');
+        try {
+            execSync(`"${clang}" ${flags}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+            return [];
+        } catch (e) {
+            const stderr = (e.stderr || '').toString();
+            return stderr.split(/\r?\n/).filter(l => l.includes('error:'));
+        } finally {
+            try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+        }
+    }
+
+    test('MQL4 mode: zero header errors', function () {
+        const errors = compileHeader(['-D__MQL__', '-D__MQL4__', '-D__MQL4_BUILD__']);
+        if (errors === null) { this.skip(); return; }
+        assert.deepStrictEqual(errors, [], `Expected 0 header errors, got ${errors.length}:\n${errors.join('\n')}`);
+    });
+
+    test('MQL5 mode: zero errors in compat header (stdlib stubs excluded)', function () {
+        // mql5_stdlib_stubs.h has known incomplete-type issues; this test
+        // verifies mql_clangd_compat.h itself is clean in MQL5 mode.
+        const errors = compileHeader(['-D__MQL__', '-D__MQL5__', '-D__MQL5_BUILD__']);
+        if (errors === null) { this.skip(); return; }
+        const headerErrors = errors.filter(l => l.includes('mql_clangd_compat.h'));
+        assert.deepStrictEqual(headerErrors, [], `Expected 0 compat header errors, got ${headerErrors.length}:\n${headerErrors.join('\n')}`);
     });
 });
