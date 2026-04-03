@@ -264,6 +264,7 @@ function detectMqlVersion(folderPath, fileName) {
 /**
  * Determines the dominant MQL version for a workspace by examining actual file extensions.
  * Counts .mq4 vs .mq5 files and returns the majority version.
+ * Ties (equal counts) default to 'mql5'.
  * Falls back to folder-path heuristic if no translation units exist.
  * @param {Array<{fsPath: string}>} fileUris - Array of objects with fsPath property
  * @param {string} workspacePath - The workspace folder path (used as fallback)
@@ -280,9 +281,9 @@ function detectWorkspaceMqlVersion(fileUris, workspacePath, workspaceName) {
         else if (ext === '.mq5') mq5Count++;
     }
 
-    if (mq4Count > 0 || mq5Count > 0) {
-        return mq4Count > mq5Count ? 'mql4' : 'mql5';
-    }
+    if (mq4Count > mq5Count) return 'mql4';
+    if (mq5Count > 0) return 'mql5';           // includes tie — mql5 wins
+    // mq4Count === 0 && mq5Count === 0 → fall through to path heuristic
 
     // Fallback to path-based detection when no .mq4/.mq5 files exist
     if (workspaceName && workspaceName.toUpperCase().includes('MQL4')) return 'mql4';

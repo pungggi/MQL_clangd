@@ -13,6 +13,9 @@ const { detectWorkspaceMqlVersion } = require('./createProperties');
 // In-memory cache for reverse include index per workspace
 const reverseIndexCache = new Map(); // workspaceUri -> { index: Map, dirty: boolean }
 
+// rt (run type) value for syntax-check mode — no user interaction, no compilation
+const RT_CHECK = 0;
+
 /**
  * Parse #include statements from MQL source code
  */
@@ -325,7 +328,7 @@ async function resolveCompileTargets({ document, workspaceFolder, context, rt })
         return null;
     }
 
-    const skipInteraction = (rt === 0);
+    const skipInteraction = (rt === RT_CHECK);
     const headerUri = document.uri;
 
     const existingTargets = getCompileTargets(headerUri, workspaceFolder, context);

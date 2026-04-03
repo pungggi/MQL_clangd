@@ -327,6 +327,7 @@ suite('Pure Logic Unit Tests', () => {
             assert.ok(entry.arguments.includes('-D__MQL5__'));
             assert.ok(!entry.arguments.includes('-D__MQL4__'));
             assert.ok(entry.arguments.includes('-D__MQL5_BUILD__'));
+            assert.ok(!entry.arguments.includes('-D__MQL4_BUILD__'));
         });
     });
 
