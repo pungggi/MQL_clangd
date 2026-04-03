@@ -831,12 +831,9 @@ suite('Compat Header Compilation', () => {
         assert.deepStrictEqual(errors, [], `Expected 0 header errors, got ${errors.length}:\n${errors.join('\n')}`);
     });
 
-    test('MQL5 mode: zero errors in compat header (stdlib stubs excluded)', function () {
-        // mql5_stdlib_stubs.h has known incomplete-type issues; this test
-        // verifies mql_clangd_compat.h itself is clean in MQL5 mode.
+    test('MQL5 mode: zero header errors', function () {
         const errors = compileHeader(['-D__MQL__', '-D__MQL5__', '-D__MQL5_BUILD__']);
         if (errors === null) { this.skip(); return; }
-        const headerErrors = errors.filter(l => l.includes('mql_clangd_compat.h'));
-        assert.deepStrictEqual(headerErrors, [], `Expected 0 compat header errors, got ${headerErrors.length}:\n${headerErrors.join('\n')}`);
+        assert.deepStrictEqual(errors, [], `Expected 0 header errors, got ${errors.length}:\n${errors.join('\n')}`);
     });
 });

@@ -10,6 +10,43 @@
 
 #ifdef __clang__
 
+// Win32 types used by WinAPI struct stubs
+#ifndef _WINDEF_
+typedef void* PVOID;
+typedef void* HANDLE;
+typedef unsigned short WORD;
+typedef unsigned long DWORD;
+typedef int BOOL;
+typedef unsigned char BYTE;
+typedef long LONG;
+typedef unsigned long ULONG;
+typedef long long LONGLONG;
+typedef unsigned long long ULONGLONG;
+typedef wchar_t WCHAR;
+typedef char CHAR;
+typedef DWORD COLORREF;
+struct FILETIME { DWORD dwLowDateTime; DWORD dwHighDateTime; };
+struct LUID { DWORD LowPart; long HighPart; };
+struct FILE_ID_128 { unsigned char Identifier[16]; };
+struct POINT { long x; long y; };
+struct RECT { long left; long top; long right; long bottom; };
+struct SIZE { long cx; long cy; };
+struct GUID { unsigned long Data1; unsigned short Data2; unsigned short Data3; unsigned char Data4[8]; };
+struct LARGE_INTEGER { long long QuadPart; };
+struct ULARGE_INTEGER { unsigned long long QuadPart; };
+#endif
+
+// MQL constants used in stdlib classes
+#ifndef OBJ_ALL_PERIODS
+#define OBJ_ALL_PERIODS 0x001FFFFF
+#endif
+#ifndef CONTROLS_INVALID_ID
+#define CONTROLS_INVALID_ID -1
+#endif
+#ifndef CL_USE_ANY
+#define CL_USE_ANY -1
+#endif
+
 // Forward declarations
 class CArray;
 class CArrayChar;
@@ -942,10 +979,11 @@ struct INPUT_TRANSFORM;
 struct MENUITEMINFO;
 struct INPUT;
 // Base classes from other headers
-class CObject;
-class CDXHandleShared;
-class CDXObjectBase;
-class CDXObject;
+// Minimal definitions for classes used as base types throughout this file
+class CObject { public: virtual ~CObject() {} };
+class CDXHandleShared { public: virtual ~CDXHandleShared() {} };
+class CDXObjectBase { public: virtual ~CDXObjectBase() {} };
+class CDXObject : public CDXObjectBase { public: virtual ~CDXObject() {} };
 
 
 
@@ -8819,25 +8857,7 @@ public:
     uchar BaseHi;
 };
 
-struct GUID {
-public:
-    ulong Data1;
-    ushort Data2;
-    ushort Data3;
-    uchar Data4;
-};
-
-struct FILETIME {
-public:
-    uint dwLowDateTime;
-    uint dwHighDateTime;
-};
-
-struct POINT {
-public:
-    int x;
-    int y;
-};
+// GUID, FILETIME, POINT defined in preamble
 
 struct POINTL {
 public:
@@ -8851,13 +8871,7 @@ public:
     short y;
 };
 
-struct RECT {
-public:
-    int left;
-    int top;
-    int right;
-    int bottom;
-};
+// RECT defined in preamble
 
 struct RECTL {
 public:
@@ -8867,11 +8881,7 @@ public:
     int bottom;
 };
 
-struct SIZE {
-public:
-    int cx;
-    int cy;
-};
+// SIZE defined in preamble
 
 struct CLAIM_SECURITY_ATTRIBUTE_V1 {
 public:
@@ -10516,21 +10526,7 @@ public:
     long HighPart;
 };
 
-struct LARGE_INTEGER {
-public:
-    long QuadPart;
-};
-
-struct ULARGE_INTEGER {
-public:
-    ulong QuadPart;
-};
-
-struct LUID {
-public:
-    uint LowPart;
-    int HighPart;
-};
+// LARGE_INTEGER, ULARGE_INTEGER, LUID defined in preamble
 
 struct LIST_ENTRY {
 public:
@@ -11843,10 +11839,7 @@ public:
     uint ThreadCount;
 };
 
-struct FILE_ID_128 {
-public:
-    uchar Identifier;
-};
+// FILE_ID_128 defined in preamble
 
 struct FILE_NOTIFY_INFORMATION {
 public:
