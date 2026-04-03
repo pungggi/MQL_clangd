@@ -489,13 +489,17 @@ async function CreateProperties(force = false) {
         arrPath.push(primaryIncFlag);
     }
 
-    // Filter stale extension-managed MQL flags before merging to prevent
-    // wrong defines/includes persisting when workspace version changes.
-    const staleFlags = new Set(['-D__MQL4__', '-D__MQL5__']);
-    if (inc4Flag) staleFlags.add(inc4Flag);
-    if (inc5Flag) staleFlags.add(inc5Flag);
+    // Filter stale extension-managed flags before merging.  Pattern-based
+    // removal catches old values (e.g. previous Include4Dir paths, old compat
+    // header locations) that exact-value checks would miss.
+    const currentFlagSet = new Set(arrPath);
     const existingFlags = (config.get('clangd.fallbackFlags') || [])
-        .filter(f => !staleFlags.has(f));
+        .filter(f => {
+            if (currentFlagSet.has(f)) return false;          // will be re-added by merge
+            if (f === '-D__MQL4__' || f === '-D__MQL5__') return false;
+            if (f.startsWith('-include') && f.includes('mql_clangd_compat')) return false;
+            return true;
+        });
     const mergedFlags = mergeFlags(existingFlags, arrPath);
     await safeConfigUpdate('clangd.fallbackFlags', mergedFlags, vscode.ConfigurationTarget.Workspace);
     // C_Cpp.intelliSenseEngine is optional - silent mode since C++ extension may not be installed
@@ -508,8 +512,9 @@ async function CreateProperties(force = false) {
                 const ext = pathModule.extname(fileUri.fsPath).toLowerCase();
                 // Swap external include dir for files mismatching workspace version
                 const neededIncFlag = ext === '.mq4' ? inc4Flag : inc5Flag;
-                if (neededIncFlag && primaryIncFlag && neededIncFlag !== primaryIncFlag) {
-                    const fileFlags = arrPath.map(f => f === primaryIncFlag ? neededIncFlag : f);
+                if (neededIncFlag !== primaryIncFlag) {
+                    const fileFlags = arrPath.filter(f => f !== primaryIncFlag);
+                    if (neededIncFlag) fileFlags.push(neededIncFlag);
                     return buildCompileCommandEntry(fileUri.fsPath, fileFlags, workspacepath);
                 }
                 return buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath);
