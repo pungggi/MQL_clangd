@@ -1342,6 +1342,36 @@ double iMomentumOnArray(double array[], int total, int period, int shift);
 double iBandsOnArray(double array[], int total, int period, double deviation, int bands_shift, int mode, int shift);
 double iEnvelopesOnArray(double array[], int total, int ma_period, int ma_method, int ma_shift, double deviation, int mode, int shift);
 
+// MQL4 state-checking functions
+bool IsTradeAllowed();
+bool IsTradeAllowed(const string symbol, datetime tested_time);
+bool IsExpertEnabled();
+bool IsTesting();
+bool IsOptimization();
+bool IsVisualMode();
+bool IsConnected();
+bool IsDllsAllowed();
+bool IsLibrariesAllowed();
+bool IsTradeContextBusy();
+bool IsDemo();
+
+// MQL4 display and utility functions
+bool PlaySound(string filename);
+int  MessageBox(string text, string caption = 0, int flags = 0);
+void HideTestIndicators(bool hide);
+
+// MQL4 string/conversion aliases (MQL5 equivalents have different names)
+#ifndef TIME_DATE
+#define TIME_DATE    1
+#define TIME_MINUTES 2
+#define TIME_SECONDS 4
+#endif
+string TimeToStr(datetime value, int mode = TIME_DATE | TIME_MINUTES);
+datetime StrToTime(string value);
+string DoubleToStr(double value, int digits);
+ushort StringGetChar(string string_value, int pos);
+string StringSetChar(string string_var, int pos, ushort value);
+
 #endif // __MQL4__
 
 //+------------------------------------------------------------------+
