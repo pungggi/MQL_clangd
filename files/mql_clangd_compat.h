@@ -1132,6 +1132,10 @@ int iBWMFI(string symbol, ENUM_TIMEFRAMES period, ENUM_APPLIED_VOLUME applied_vo
 int iCCI(string symbol, ENUM_TIMEFRAMES period, int ma_period, ENUM_APPLIED_PRICE applied_price);
 int iChaikin(string symbol, ENUM_TIMEFRAMES period, int fast_ma_period, int slow_ma_period, ENUM_MA_METHOD ma_method, ENUM_APPLIED_VOLUME applied_volume);
 int iCustom(string symbol, ENUM_TIMEFRAMES period, string name, ...);
+// Note: MQL4 iCustom returns double, but adding a separate overload would cause
+// ambiguity with the MQL5 variadic version above. The MQL5 declaration handles
+// MQL4 calls via implicit enum-to-int conversion; return type mismatch is
+// suppressed by -Wno-everything.
 int iDEMA(string symbol, ENUM_TIMEFRAMES period, int ma_period, int ma_shift, ENUM_APPLIED_PRICE applied_price);
 int iDeMarker(string symbol, ENUM_TIMEFRAMES period, int ma_period);
 int iEnvelopes(string symbol, ENUM_TIMEFRAMES period, int ma_period, int ma_shift, ENUM_MA_METHOD ma_method, ENUM_APPLIED_PRICE applied_price, double deviation);
@@ -1286,7 +1290,7 @@ extern double Open[];
 extern double Close[];
 extern double High[];
 extern double Low[];
-extern long   Volume[];
+extern long long Volume[];  // MQL4 long is 64-bit
 extern datetime Time[];
 
 // MQL4 custom indicator setup functions
@@ -1357,7 +1361,7 @@ bool IsDemo();
 
 // MQL4 display and utility functions
 bool PlaySound(string filename);
-int  MessageBox(string text, string caption = 0, int flags = 0);
+int  MessageBox(string text, string caption = "", int flags = 0);
 void HideTestIndicators(bool hide);
 
 // MQL4 string/conversion aliases (MQL5 equivalents have different names)
@@ -1368,7 +1372,7 @@ void HideTestIndicators(bool hide);
 #endif
 string TimeToStr(datetime value, int mode = TIME_DATE | TIME_MINUTES);
 datetime StrToTime(string value);
-string DoubleToStr(double value, int digits);
+string DoubleToStr(double value, int digits = 8);
 ushort StringGetChar(string string_value, int pos);
 string StringSetChar(string string_var, int pos, ushort value);
 
