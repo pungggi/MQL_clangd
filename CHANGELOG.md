@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.35
+
+### Bug Fixes
+- **Go to Definition for MQL4 indicators and Expert Advisors (#28)**: Added ~80 MQL4-specific function stubs to the compatibility header, guarded by `#ifdef __MQL4__`. This resolves clangd failing to compile every `.mq4` file due to missing declarations for MQL4 built-in functions. Includes:
+  - **Indicator setup**: `SetIndexStyle`, `SetIndexLabel`, `SetIndexDrawBegin`, `SetIndexShift`, `SetIndexEmptyValue`, `IndicatorBuffers`, `IndicatorCounted`, `IndicatorShortName`, `IndicatorDigits`, `SetLevelValue`, `SetLevelStyle`
+  - **Technical indicators**: All MQL4 indicator functions returning `double` with `shift` parameter (`iMA`, `iRSI`, `iMACD`, `iStochastic`, `iBands`, `iATR`, `iCCI`, `iADX`, and 20 more), plus 7 `OnArray` variants
+  - **Predefined variables**: `Ask`, `Bid`, `Open[]`, `Close[]`, `High[]`, `Low[]`, `Volume[]`, `Time[]`
+  - **State-checking**: `IsTradeAllowed`, `IsTesting`, `IsOptimization`, `IsVisualMode`, `IsConnected`, `IsDemo`, and more
+  - **Conversion aliases**: `TimeToStr`, `StrToTime`, `DoubleToStr`, `StringGetChar`, `StringSetChar`
+  - **Utilities**: `PlaySound`, `MessageBox`, `HideTestIndicators`
+- **`.clangd` migration**: Existing workspaces automatically have the duplicate `-c` flag removed from `.clangd` CompileFlags on extension update.
+
 ## 1.1.33
 
 ### Bug Fixes
