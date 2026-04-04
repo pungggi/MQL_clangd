@@ -21,6 +21,36 @@
 - **Standard Library Stubs**: Regenerated with improved stub generator (better template handling, forward-declaration skipping, manual extras block).
 - **Compatibility Header**: Extended `mql_clangd_compat.h` with additional MQL built-in types and macros.
 
+## 1.1.37
+
+### Features
+- **Per-header `-include` injection for Go to Definition in `.mqh` files (#28)**: Emit `compile_commands.json` entries for `.mqh` header files with `-include` flags for preceding sibling headers, preserving MQL's concatenation order. This gives clangd the same symbol visibility as the MQL compiler, fixing Go to Definition and autocomplete across headers that depend on symbols from earlier includes.
+- **Auto-regenerate `compile_commands.json`**: Automatically regenerates the compilation database when `#include` directives change in `.mq4`, `.mq5`, or `.mqh` files on save, or when `.mqh` files are created/deleted.
+
+## 1.1.36
+
+### Bug Fixes
+- **Fix 393 compilation errors in MQL5 stdlib stubs header**: Added Win32 type preamble (PVOID, HANDLE, FILETIME, etc.), converted base class forward declarations to minimal class definitions, and removed duplicate struct definitions that caused redefinition errors under clang. Both MQL4 and MQL5 modes now compile with zero errors.
+
+## 1.1.35
+
+### Bug Fixes
+- **Go to Definition for MQL4 indicators and Expert Advisors (#28)**: Added ~80 MQL4-specific function stubs to the compatibility header, guarded by `#ifdef __MQL4__`. This resolves clangd failing to compile every `.mq4` file due to missing declarations for MQL4 built-in functions. Includes:
+  - **Indicator setup**: `SetIndexStyle`, `SetIndexLabel`, `SetIndexDrawBegin`, `SetIndexShift`, `SetIndexEmptyValue`, `IndicatorBuffers`, `IndicatorCounted`, `IndicatorShortName`, `IndicatorDigits`, `SetLevelValue`, `SetLevelStyle`
+  - **Technical indicators**: All MQL4 indicator functions returning `double` with `shift` parameter (`iMA`, `iRSI`, `iMACD`, `iStochastic`, `iBands`, `iATR`, `iCCI`, `iADX`, and 20 more), plus 7 `OnArray` variants
+  - **Predefined variables**: `Ask`, `Bid`, `Open[]`, `Close[]`, `High[]`, `Low[]`, `Volume[]`, `Time[]`
+  - **State-checking**: `IsTradeAllowed`, `IsTesting`, `IsOptimization`, `IsVisualMode`, `IsConnected`, `IsDemo`, and more
+  - **Conversion aliases**: `TimeToStr`, `StrToTime`, `DoubleToStr`, `StringGetChar`, `StringSetChar`
+  - **Utilities**: `PlaySound`, `MessageBox`, `HideTestIndicators`
+- **`.clangd` migration**: Existing workspaces automatically have the duplicate `-c` flag removed from `.clangd` CompileFlags on extension update.
+
+## 1.1.33
+
+### Bug Fixes
+- **Go to Definition for MQL4 in generic workspaces**: Fixed "Go to Definition" (F12) and include resolution failing for MQL4 projects opened from generically-named workspace folders. The extension now detects the workspace's dominant MQL version by counting actual `.mq4` vs `.mq5` files instead of relying on the folder name. This ensures correct `-D__MQL4__`/`-D__MQL5__` defines, proper include paths, and working symbol navigation regardless of workspace naming (fixes #28).
+- **Mixed-workspace include paths**: Files whose extension mismatches the workspace's dominant version (e.g. a `.mq5` file in an MQL4-dominant workspace) now get the correct external include directory and defines in `compile_commands.json`.
+- **Stale fallback flags**: Changing `Metaeditor.Include4Dir`/`Include5Dir` settings or the workspace's MQL version no longer leaves stale defines and include paths in `clangd.fallbackFlags`.
+
 ## 1.1.31
 
 ### Features

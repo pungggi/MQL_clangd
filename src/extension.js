@@ -2324,14 +2324,16 @@ function findExpertsDir() {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const version = (logTailer.detectMqlVersion ? logTailer.detectMqlVersion() : null) || 'mql5';
     const settingKey = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
-    let rawIncDir = config.get(`Metaeditor.${settingKey}`);
+    const rawIncDir = config.get(`Metaeditor.${settingKey}`);
     if (rawIncDir) {
         const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-        rawIncDir = rawIncDir.replace(/\$\{workspaceFolder\}/g, wsFolder);
-        let base = rawIncDir;
-        if (pathModule.basename(base).toLowerCase() === 'include') base = pathModule.dirname(base);
-        const d = pathModule.join(base, 'Experts');
-        if (fs.existsSync(d)) return d;
+        const resolvedIncDir = resolvePathRelativeToWorkspace(rawIncDir, wsFolder);
+        if (resolvedIncDir) {
+            let base = resolvedIncDir;
+            if (pathModule.basename(base).toLowerCase() === 'include') base = pathModule.dirname(base);
+            const d = pathModule.join(base, 'Experts');
+            if (fs.existsSync(d)) return d;
+        }
     }
 
     // Strategy 3: Scan MetaQuotes AppData — find all terminal data folders
@@ -2450,7 +2452,7 @@ function activate(context) {
     }
 
     // Wait for environment to stabilize before migration check
-    sleep(2000).then(() => {
+    sleep(2000).then(async () => {
         if (previousVersion !== currentVersion) {
             if (currentVersion === '1.0.0' || currentVersion === '1.0.1' || currentVersion === '1.0.2') {
                 CreateProperties().then(() => {
@@ -2458,6 +2460,32 @@ function activate(context) {
                     // console.log(`MQL Tools: Migrated to v${currentVersion}`);
                 });
             }
+
+            // v1.1.35+: Remove duplicate -c from .clangd CompileFlags.Add.
+            // The flag is already in compile_commands.json entries and caused
+            // double -c with -x c++-header for inferred header commands.
+            try {
+                for (const wf of (vscode.workspace.workspaceFolders || [])) {
+                    const clangdPath = pathModule.join(wf.uri.fsPath, '.clangd');
+                    if (fs.existsSync(clangdPath)) {
+                        const content = await fs.promises.readFile(clangdPath, 'utf8');
+                        if (content.includes('    - -c\n')) {
+                            let patched = content.replace(/^ {4}# Compile only[^\n]*\n {4}- -c\n/m, '');
+                            if (patched === content) {
+                                // Comment was missing or edited — remove bare flag line
+                                patched = content.replace(/^ {4}- -c\n/m, '');
+                            }
+                            if (patched !== content) {
+                                await fs.promises.writeFile(clangdPath, patched, 'utf8');
+                                console.log('MQL Tools: Migrated .clangd — removed duplicate -c flag');
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('MQL Tools: .clangd migration failed', err);
+            }
+
             context.globalState.update('mql-tools.version', currentVersion);
         }
     });
@@ -2673,7 +2701,7 @@ function activate(context) {
 
     // Run Backtest — launch MT5 Strategy Tester via TradeReportServer
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.runBacktest', () => {
-        runBacktest(context, {
+        return runBacktest(context, {
             findMql5Root,
             resolveCompileTargets,
         });
@@ -2940,11 +2968,11 @@ function activate(context) {
     fileWatcher.onDidDelete(debouncedStructuralChange);
     context.subscriptions.push({ dispose: () => { if (mqhStructuralTimer) clearTimeout(mqhStructuralTimer); } });
 
-    // Auto-regenerate when #include directives change in entry-point files
+    // Auto-regenerate when #include directives change in MQL source files
     context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (document) => {
         if (internalSaveDepth > 0) return;
         const ext = pathModule.extname(document.fileName).toLowerCase();
-        if (ext !== '.mq4' && ext !== '.mq5') return;
+        if (ext !== '.mq4' && ext !== '.mq5' && ext !== '.mqh') return;
 
         try {
             const changed = await haveIncludesChanged(document.fileName);

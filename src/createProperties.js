@@ -86,9 +86,9 @@ function isTranslationUnitExtension(ext) {
 }
 
 /**
- * Recursively walk the #include tree of an entry-point file in DFS pre-order
- * (matching MQL's concatenation order) and return, for each header, the list
- * of headers that precede it in that order.
+ * Recursively walk the #include tree of an entry-point file in DFS post-order
+ * (matching MQL's inline concatenation: a header's own includes appear before
+ * it) and return, for each header, the list of headers that precede it.
  *
  * @param {string} entryPointPath  Absolute path to the .mq4/.mq5 file
  * @param {string} workspaceRoot   Workspace root directory
@@ -118,8 +118,8 @@ async function buildIncludeChain(entryPointPath, workspaceRoot, includeDir) {
             const norm = pathModule.normalize(resolved).toLowerCase();
             if (visited.has(norm)) continue;
             visited.add(norm);
-            // Recurse into the header first (DFS pre-order — its own includes
-            // come before the next sibling in the parent)
+            // Recurse into the header first (post-order — a header's own
+            // includes appear before it, matching MQL's inline concatenation)
             await walk(resolved);
             flatOrder.push(resolved);
         }
@@ -167,9 +167,13 @@ function buildHeaderCompileEntry(headerPath, sharedFlags, precedingHeaders, work
             continue;
         }
 
-        // Swap MQL version defines when parent entry point is MQL4
+        // Swap MQL version defines to match the parent entry point
         if (isMql4 && flag === '-D__MQL5__') {
             args.push('-D__MQL4__');
+            continue;
+        }
+        if (!isMql4 && flag === '-D__MQL4__') {
+            args.push('-D__MQL5__');
             continue;
         }
 
@@ -297,6 +301,11 @@ function buildCompileCommandEntry(filePath, sharedFlags, workspacePath) {
 
         if (ext === '.mq4' && flag === '-D__MQL5__') {
             args.push('-D__MQL4__');
+            return;
+        }
+
+        if (ext === '.mq5' && flag === '-D__MQL4__') {
+            args.push('-D__MQL5__');
             return;
         }
 
@@ -444,6 +453,36 @@ function detectMqlVersion(folderPath, fileName) {
 }
 
 /**
+ * Determines the dominant MQL version for a workspace by examining actual file extensions.
+ * Counts .mq4 vs .mq5 files and returns the majority version.
+ * Ties (equal counts) default to 'mql5'.
+ * Falls back to folder-path heuristic if no translation units exist.
+ * @param {Array<{fsPath: string}>} fileUris - Array of objects with fsPath property
+ * @param {string} workspacePath - The workspace folder path (used as fallback)
+ * @param {string} workspaceName - The workspace folder name (used as fallback)
+ * @returns {'mql4' | 'mql5'}
+ */
+function detectWorkspaceMqlVersion(fileUris, workspacePath, workspaceName) {
+    let mq4Count = 0;
+    let mq5Count = 0;
+
+    for (const uri of fileUris) {
+        const ext = pathModule.extname(uri.fsPath).toLowerCase();
+        if (ext === '.mq4') mq4Count++;
+        else if (ext === '.mq5') mq5Count++;
+    }
+
+    if (mq4Count > mq5Count) return 'mql4';
+    if (mq5Count > 0) return 'mql5';           // includes tie — mql5 wins
+    // mq4Count === 0 && mq5Count === 0 → fall through to path heuristic
+
+    // Fallback to path-based detection when no .mq4/.mq5 files exist
+    if (workspaceName && workspaceName.toUpperCase().includes('MQL4')) return 'mql4';
+    if (workspacePath && workspacePath.toUpperCase().includes('MQL4')) return 'mql4';
+    return 'mql5';
+}
+
+/**
  * Merges new flags into existing ones, avoiding duplicates and empty strings.
  * @param {string[]} currentFlags 
  * @param {string[]} newFlags 
@@ -588,12 +627,23 @@ async function CreateProperties(force = false) {
     const extensionPath = pathModule.join(__dirname, '..');
     const compatHeaderPath = normalizePath(pathModule.join(extensionPath, 'files', 'mql_clangd_compat.h'));
 
+    // Scan for translation units FIRST to determine workspace MQL version
+    let targetFiles = [];
+    try {
+        targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5}'));
+    } catch (err) {
+        console.error('MQL Tools: Failed to scan workspace files', err);
+    }
+
+    const workspaceVersion = detectWorkspaceMqlVersion(targetFiles, workspacepath, workspaceName);
+    const mqlDefine = workspaceVersion === 'mql4' ? '-D__MQL4__' : '-D__MQL5__';
+
     // Base flags for clangd to improve MQL support.
     const baseFlags = [
         '-xc++',
         '-std=c++17',
         '-D__MQL__',
-        '-D__MQL5__',
+        mqlDefine,
         `-include${compatHeaderPath}`,
         '-fms-extensions',           // Allow some non-standard C++ (like incomplete arrays)
         '-fms-compatibility',
@@ -609,48 +659,66 @@ async function CreateProperties(force = false) {
         `-I${normalizePath(incPath)}`
     ];
 
-    let incDir;
-    if (workspaceName.toUpperCase().includes('MQL4') || workspacepath.toUpperCase().includes('MQL4')) {
-        incDir = configMql.Metaeditor.Include4Dir;
-    } else {
-        incDir = configMql.Metaeditor.Include5Dir;
+    // Resolve both include dirs for per-file correctness in mixed workspaces
+    const inc4Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include4Dir, workspacepath);
+    const inc5Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include5Dir, workspacepath);
+
+    function resolveExternalIncFlag(dir) {
+        if (!dir || dir.length === 0) return null;
+        const sub = pathModule.join(dir, 'Include');
+        if (fs.existsSync(sub)) return `-I${normalizePath(sub)}`;
+        if (fs.existsSync(dir)) return `-I${normalizePath(dir)}`;
+        return null;
     }
 
-    // Allow ${workspaceFolder} and relative paths in settings.
-    incDir = resolvePathRelativeToWorkspace(incDir, workspacepath);
+    const inc4Flag = resolveExternalIncFlag(inc4Dir);
+    const inc5Flag = resolveExternalIncFlag(inc5Dir);
+    const primaryIncFlag = workspaceVersion === 'mql4' ? inc4Flag : inc5Flag;
 
     const arrPath = [...baseFlags];
-    if (incDir && incDir.length > 0) {
-        const externalIncDir = pathModule.join(incDir, 'Include');
-        if (fs.existsSync(externalIncDir)) {
-            arrPath.push(`-I${normalizePath(externalIncDir)}`);
-        } else if (fs.existsSync(incDir)) {
-            arrPath.push(`-I${normalizePath(incDir)}`);
-        }
+    if (primaryIncFlag) {
+        arrPath.push(primaryIncFlag);
     }
 
-
-    // Update fallback flags
-    const existingFlags = config.get('clangd.fallbackFlags') || [];
+    // Filter stale extension-managed flags before merging.  Pattern-based
+    // removal catches old values (e.g. previous Include4Dir paths, old compat
+    // header locations) that exact-value checks would miss.
+    const currentFlagSet = new Set(arrPath);
+    const existingFlags = (config.get('clangd.fallbackFlags') || [])
+        .filter(f => {
+            if (currentFlagSet.has(f)) return false;          // will be re-added by merge
+            if (f === '-D__MQL4__' || f === '-D__MQL5__') return false;
+            if (f.startsWith('-include') && f.includes('mql_clangd_compat')) return false;
+            return true;
+        });
     const mergedFlags = mergeFlags(existingFlags, arrPath);
     await safeConfigUpdate('clangd.fallbackFlags', mergedFlags, vscode.ConfigurationTarget.Workspace);
     // C_Cpp.intelliSenseEngine is optional - silent mode since C++ extension may not be installed
     await safeConfigUpdate('C_Cpp.intelliSenseEngine', 'Disabled', vscode.ConfigurationTarget.Workspace, true);
 
     // Resolve external include directory for include-chain resolution
-    let resolvedExternalIncDir;
-    if (incDir && incDir.length > 0) {
-        const candidate = pathModule.join(incDir, 'Include');
-        resolvedExternalIncDir = fs.existsSync(candidate) ? candidate : (fs.existsSync(incDir) ? incDir : undefined);
+    function resolveExternalIncDir(dir) {
+        if (!dir || dir.length === 0) return undefined;
+        const sub = pathModule.join(dir, 'Include');
+        return fs.existsSync(sub) ? sub : (fs.existsSync(dir) ? dir : undefined);
     }
+    const resolvedExternalIncDir = resolveExternalIncDir(workspaceVersion === 'mql4' ? inc4Dir : inc5Dir);
 
-    // --- Generate compile_commands.json ---
+    // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
     try {
-        const targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5}'));
-
         // 1. Build TU entries (existing behavior)
         const tuEntries = targetFiles
-            .map(fileUri => buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath))
+            .map(fileUri => {
+                const ext = pathModule.extname(fileUri.fsPath).toLowerCase();
+                // Swap external include dir for files mismatching workspace version
+                const neededIncFlag = ext === '.mq4' ? inc4Flag : inc5Flag;
+                if (neededIncFlag !== primaryIncFlag) {
+                    const fileFlags = arrPath.filter(f => f !== primaryIncFlag);
+                    if (neededIncFlag) fileFlags.push(neededIncFlag);
+                    return buildCompileCommandEntry(fileUri.fsPath, fileFlags, workspacepath);
+                }
+                return buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath);
+            })
             .filter(Boolean);
 
         // 2. Build header entries with -include injection for preceding siblings
@@ -675,16 +743,27 @@ async function CreateProperties(force = false) {
         }
 
         // Populate include snapshot cache for change detection
+        // Seed entry-point files (.mq4/.mq5) from targetFiles
         for (const fileUri of targetFiles) {
             const snapshot = await snapshotIncludes(fileUri.fsPath);
             const norm = pathModule.normalize(fileUri.fsPath).toLowerCase();
             includeSnapshotCache.set(norm, snapshot);
+        }
+        // Seed .mqh headers discovered during include-chain building
+        for (const entry of headerEntries) {
+            const absPath = entry.file; // already absolute, forward-slashed
+            const norm = pathModule.normalize(absPath).toLowerCase();
+            if (!includeSnapshotCache.has(norm)) {
+                const snapshot = await snapshotIncludes(absPath);
+                includeSnapshotCache.set(norm, snapshot);
+            }
         }
     } catch (err) {
         console.error('MQL Tools: Failed to generate compile_commands.json', err);
     }
 
     const associations = { '*.mqh': 'cpp', '*.mq4': 'cpp', '*.mq5': 'cpp' };
+    await safeConfigUpdate('mql_tools.context', true, vscode.ConfigurationTarget.Workspace);
     await safeConfigUpdate('files.associations', associations, vscode.ConfigurationTarget.Workspace);
 
     // --- Generate .clangd file for direct diagnostic suppression ---
@@ -910,8 +989,6 @@ Hover:
 
 CompileFlags:
   Add:
-    # Compile only – ensures the driver produces exactly one compiler job
-    - -c
     # Suppress all warnings in .clangd config; targeted -Wno-* flags are already set in baseFlags
     - -Wno-everything
 
@@ -1059,6 +1136,7 @@ module.exports = {
     isSourceExtension,
     isTranslationUnitExtension,
     detectMqlVersion,
+    detectWorkspaceMqlVersion,
     generateIncludeFlag,
     generateBaseFlags,
     generateProjectFlags,
