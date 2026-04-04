@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.37
+
+### Features
+- **Per-header `-include` injection for Go to Definition in `.mqh` files (#28)**: Emit `compile_commands.json` entries for `.mqh` header files with `-include` flags for preceding sibling headers, preserving MQL's concatenation order. This gives clangd the same symbol visibility as the MQL compiler, fixing Go to Definition and autocomplete across headers that depend on symbols from earlier includes.
+- **Auto-regenerate `compile_commands.json`**: Automatically regenerates the compilation database when `#include` directives change in `.mq4`, `.mq5`, or `.mqh` files on save, or when `.mqh` files are created/deleted.
+
 ## 1.1.36
 
 ### Bug Fixes
