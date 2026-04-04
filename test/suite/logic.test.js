@@ -1013,6 +1013,16 @@ suite('buildHeaderCompileEntry', () => {
         assert.ok(entry.arguments.includes('-D__MQL4_BUILD__'), 'Should contain -D__MQL4_BUILD__');
         assert.ok(!entry.arguments.includes('-D__MQL5_BUILD__'), 'Should NOT contain -D__MQL5_BUILD__');
     });
+
+    test('swaps MQL4 to MQL5 defines in mixed workspace (reciprocal)', () => {
+        const entry = buildHeaderCompileEntry('C:/Workspace/test.mqh', [
+            '-xc++', '-D__MQL4__', '-std=c++17'
+        ], [], 'C:/Workspace', 'mql5');
+        assert.ok(entry.arguments.includes('-D__MQL5__'), 'Should contain -D__MQL5__');
+        assert.ok(!entry.arguments.includes('-D__MQL4__'), 'Should NOT contain -D__MQL4__');
+        assert.ok(entry.arguments.includes('-D__MQL5_BUILD__'), 'Should contain -D__MQL5_BUILD__');
+        assert.ok(!entry.arguments.includes('-D__MQL4_BUILD__'), 'Should NOT contain -D__MQL4_BUILD__');
+    });
 });
 
 suite('buildAllHeaderEntries', () => {

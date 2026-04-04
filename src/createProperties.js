@@ -86,9 +86,9 @@ function isTranslationUnitExtension(ext) {
 }
 
 /**
- * Recursively walk the #include tree of an entry-point file in DFS pre-order
- * (matching MQL's concatenation order) and return, for each header, the list
- * of headers that precede it in that order.
+ * Recursively walk the #include tree of an entry-point file in DFS post-order
+ * (matching MQL's inline concatenation: a header's own includes appear before
+ * it) and return, for each header, the list of headers that precede it.
  *
  * @param {string} entryPointPath  Absolute path to the .mq4/.mq5 file
  * @param {string} workspaceRoot   Workspace root directory
@@ -118,8 +118,8 @@ async function buildIncludeChain(entryPointPath, workspaceRoot, includeDir) {
             const norm = pathModule.normalize(resolved).toLowerCase();
             if (visited.has(norm)) continue;
             visited.add(norm);
-            // Recurse into the header first (DFS pre-order — its own includes
-            // come before the next sibling in the parent)
+            // Recurse into the header first (post-order — a header's own
+            // includes appear before it, matching MQL's inline concatenation)
             await walk(resolved);
             flatOrder.push(resolved);
         }
@@ -167,9 +167,13 @@ function buildHeaderCompileEntry(headerPath, sharedFlags, precedingHeaders, work
             continue;
         }
 
-        // Swap MQL version defines when parent entry point is MQL4
+        // Swap MQL version defines to match the parent entry point
         if (isMql4 && flag === '-D__MQL5__') {
             args.push('-D__MQL4__');
+            continue;
+        }
+        if (!isMql4 && flag === '-D__MQL4__') {
+            args.push('-D__MQL5__');
             continue;
         }
 

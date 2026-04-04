@@ -2748,11 +2748,11 @@ function activate(context) {
     fileWatcher.onDidDelete(debouncedStructuralChange);
     context.subscriptions.push({ dispose: () => { if (mqhStructuralTimer) clearTimeout(mqhStructuralTimer); } });
 
-    // Auto-regenerate when #include directives change in entry-point files
+    // Auto-regenerate when #include directives change in MQL source files
     context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (document) => {
         if (internalSaveDepth > 0) return;
         const ext = pathModule.extname(document.fileName).toLowerCase();
-        if (ext !== '.mq4' && ext !== '.mq5') return;
+        if (ext !== '.mq4' && ext !== '.mq5' && ext !== '.mqh') return;
 
         try {
             const changed = await haveIncludesChanged(document.fileName);
