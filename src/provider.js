@@ -132,12 +132,6 @@ function clearSymbolCache(uri) {
     _symbolCache.delete(uri);
 }
 
-/**
- * Clear all document symbol caches
- */
-function clearAllSymbolCache() {
-    _symbolCache.clear();
-}
 
 
 /**
@@ -1108,6 +1102,5 @@ module.exports = {
     MQLDocumentSymbolProvider,
     getObjItems,
     extractDocumentSymbols,
-    clearSymbolCache,
-    clearAllSymbolCache
+    clearSymbolCache
 };

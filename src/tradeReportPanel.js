@@ -230,13 +230,19 @@ class TradeReportPanel {
         if (sourceFiles.size === 0) return;
 
         // Resolve each filename to its workspace path and copy
+        const MAX_SNAPSHOT_FILES = 500;
+        const MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024; // 50 MB total
         try {
             await fs.promises.mkdir(snapDir, { recursive: true });
             let copied = 0;
+            let totalBytes = 0;
             for (const filename of sourceFiles) {
+                if (copied >= MAX_SNAPSHOT_FILES) break;
                 const uri = this._resolveUri(filename);
                 if (!uri) continue;
-                try { await fs.promises.access(uri.fsPath); } catch { continue; }
+                let stat;
+                try { stat = await fs.promises.stat(uri.fsPath); } catch { continue; }
+                if (totalBytes + stat.size > MAX_SNAPSHOT_BYTES) continue;
 
                 // Sanitize to retain folder structure without path traversal
                 const sanitized = this._sanitizeRelativePath(filename);
@@ -249,6 +255,7 @@ class TradeReportPanel {
                 await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
                 await fs.promises.copyFile(uri.fsPath, destPath);
                 copied++;
+                totalBytes += stat.size;
             }
             if (copied > 0) {
                 this._snapshotDir = snapDir;

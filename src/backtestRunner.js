@@ -54,6 +54,8 @@ function isValidDate(v) {
  * @param {number} port
  * @returns {Promise<{statusCode: number, data: any}>}
  */
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB safety cap
+
 function httpRequest(method, urlPath, body = null, port = DEFAULT_PORT) {
     return new Promise((resolve, reject) => {
         const payload = body ? JSON.stringify(body) : null;
@@ -69,7 +71,16 @@ function httpRequest(method, urlPath, body = null, port = DEFAULT_PORT) {
 
         const req = http.request(options, (res) => {
             let raw = '';
-            res.on('data', (chunk) => raw += chunk);
+            let totalBytes = 0;
+            res.on('data', (chunk) => {
+                totalBytes += chunk.length;
+                if (totalBytes > MAX_RESPONSE_BYTES) {
+                    res.destroy();
+                    reject(new Error(`Response exceeded ${MAX_RESPONSE_BYTES} bytes`));
+                    return;
+                }
+                raw += chunk;
+            });
             res.on('end', () => {
                 let data;
                 try { data = JSON.parse(raw); } catch { data = raw; }
