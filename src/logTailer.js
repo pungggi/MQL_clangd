@@ -270,6 +270,19 @@ class MqlLogTailer {
         }
     }
 
+    /** Dispose all VS Code resources. Call from extension deactivate(). */
+    dispose() {
+        this.stop();
+        if (this.outputChannel) {
+            this.outputChannel.dispose();
+            this.outputChannel = null;
+        }
+        if (this.statusBarItem) {
+            this.statusBarItem.dispose();
+            this.statusBarItem = null;
+        }
+    }
+
     /**
      * Logic to detect MQL version from active state.
      */

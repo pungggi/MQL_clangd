@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 
 // Import functions from createProperties
-const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry } = require('../../src/createProperties');
+const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry, buildIncludeChain, buildHeaderCompileEntry, buildAllHeaderEntries, haveIncludesChanged, includeSnapshotCache } = require('../../src/createProperties');
 
 // Import Wine helper functions
 const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent, fromWineWindowsPath } = require('../../src/wineHelper');
@@ -714,6 +714,322 @@ suite('inferMqlDataDirFromPath', () => {
         try {
             const result = inferMqlDataDirFromPath(path.join(base, 'mql5/script.mq5'), true);
             assert.strictEqual(result, path.join(base, 'mql5'));
+        } finally { cleanup(); }
+    });
+});
+
+// Helper to create temp directory trees for include-chain tests
+function makeTmpProject(structure) {
+    const base = path.join(os.tmpdir(), `mql-chain-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    for (const [rel, content] of Object.entries(structure)) {
+        const full = path.join(base, rel);
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, content);
+    }
+    return { base, cleanup: () => fs.rmSync(base, { recursive: true, force: true }) };
+}
+
+suite('buildIncludeChain', () => {
+    test('simple linear chain: main→a→b', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '#include "a.mqh"\n',
+            'a.mqh': '#include "b.mqh"\n',
+            'b.mqh': '// leaf\n'
+        });
+        try {
+            const chain = await buildIncludeChain(path.join(base, 'main.mq5'), base, '');
+            // DFS pre-order: b first (leaf of a), then a
+            const keys = Array.from(chain.keys());
+            assert.strictEqual(keys.length, 2);
+            assert.ok(keys[0].includes('b.mqh'), 'b.mqh should be first (leaf)');
+            assert.ok(keys[1].includes('a.mqh'), 'a.mqh should be second');
+
+            // b has no predecessors, a has b as predecessor
+            const bPreceding = chain.get(keys[0]);
+            assert.strictEqual(bPreceding.length, 0);
+            const aPreceding = chain.get(keys[1]);
+            assert.strictEqual(aPreceding.length, 1);
+            assert.ok(aPreceding[0].includes('b.mqh'));
+        } finally { cleanup(); }
+    });
+
+    test('nested includes: main→a(→a1)→b', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '#include "a.mqh"\n#include "b.mqh"\n',
+            'a.mqh': '#include "a1.mqh"\n',
+            'a1.mqh': '// leaf\n',
+            'b.mqh': '// leaf\n'
+        });
+        try {
+            const chain = await buildIncludeChain(path.join(base, 'main.mq5'), base, '');
+            const keys = Array.from(chain.keys());
+            // DFS pre-order: a1 (leaf of a), a, b
+            assert.strictEqual(keys.length, 3);
+            assert.ok(keys[0].includes('a1.mqh'));
+            assert.ok(keys[1].includes('a.mqh'));
+            assert.ok(keys[2].includes('b.mqh'));
+
+            // b should have a1 and a as predecessors
+            const bPreceding = chain.get(keys[2]);
+            assert.strictEqual(bPreceding.length, 2);
+        } finally { cleanup(); }
+    });
+
+    test('diamond dependency: shared.mqh included by both a and b, appears once at first encounter', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '#include "a.mqh"\n#include "b.mqh"\n',
+            'a.mqh': '#include "shared.mqh"\n',
+            'b.mqh': '#include "shared.mqh"\n',
+            'shared.mqh': '// shared\n'
+        });
+        try {
+            const chain = await buildIncludeChain(path.join(base, 'main.mq5'), base, '');
+            const keys = Array.from(chain.keys());
+            // shared appears once (via a), then a, then b
+            assert.strictEqual(keys.length, 3);
+            assert.ok(keys[0].includes('shared.mqh'));
+            assert.ok(keys[1].includes('a.mqh'));
+            assert.ok(keys[2].includes('b.mqh'));
+        } finally { cleanup(); }
+    });
+
+    test('circular include protection: no infinite loop', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '#include "a.mqh"\n',
+            'a.mqh': '#include "b.mqh"\n',
+            'b.mqh': '#include "a.mqh"\n' // circular
+        });
+        try {
+            const chain = await buildIncludeChain(path.join(base, 'main.mq5'), base, '');
+            const keys = Array.from(chain.keys());
+            assert.strictEqual(keys.length, 2);
+        } finally { cleanup(); }
+    });
+
+    test('empty includes: returns empty map', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '// no includes\nvoid OnStart() {}\n'
+        });
+        try {
+            const chain = await buildIncludeChain(path.join(base, 'main.mq5'), base, '');
+            assert.strictEqual(chain.size, 0);
+        } finally { cleanup(); }
+    });
+
+    test('unresolved include is skipped gracefully', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '#include "missing.mqh"\n#include "exists.mqh"\n',
+            'exists.mqh': '// ok\n'
+        });
+        try {
+            const chain = await buildIncludeChain(path.join(base, 'main.mq5'), base, '');
+            assert.strictEqual(chain.size, 1);
+            const keys = Array.from(chain.keys());
+            assert.ok(keys[0].includes('exists.mqh'));
+        } finally { cleanup(); }
+    });
+});
+
+suite('buildHeaderCompileEntry', () => {
+    const sharedFlags = [
+        '-xc++',
+        '-std=c++17',
+        '-includec:/ext/files/mql_clangd_compat.h',
+        '-IC:/Workspace',
+        '-IC:/Workspace/Include'
+    ];
+
+    test('replaces -xc++ with -xc++-header', () => {
+        const entry = buildHeaderCompileEntry('C:/Workspace/test.mqh', sharedFlags, [], 'C:/Workspace');
+        assert.ok(entry.arguments.includes('-xc++-header'), 'Should contain -xc++-header');
+        assert.ok(!entry.arguments.includes('-xc++'), 'Should NOT contain -xc++');
+    });
+
+    test('inserts -include flags for preceding headers after compat header', () => {
+        const preceding = ['C:/Workspace/a.mqh', 'C:/Workspace/b.mqh'];
+        const entry = buildHeaderCompileEntry('C:/Workspace/c.mqh', sharedFlags, preceding, 'C:/Workspace');
+
+        const compatIdx = entry.arguments.findIndex(a => a.includes('mql_clangd_compat.h'));
+        const aIdx = entry.arguments.findIndex(a => a === '-includeC:/Workspace/a.mqh');
+        const bIdx = entry.arguments.findIndex(a => a === '-includeC:/Workspace/b.mqh');
+
+        assert.ok(compatIdx >= 0, 'Compat header should be present');
+        assert.ok(aIdx > compatIdx, '-include a.mqh should come after compat header');
+        assert.ok(bIdx > aIdx, '-include b.mqh should come after a.mqh');
+    });
+
+    test('compat header stays first -include (before sibling includes)', () => {
+        const preceding = ['C:/Workspace/x.mqh'];
+        const entry = buildHeaderCompileEntry('C:/Workspace/y.mqh', sharedFlags, preceding, 'C:/Workspace');
+
+        const firstInclude = entry.arguments.find(a => a.startsWith('-include'));
+        assert.ok(firstInclude.includes('mql_clangd_compat.h'), 'First -include should be the compat header');
+    });
+
+    test('-c flag and file path at end', () => {
+        const entry = buildHeaderCompileEntry('C:/Workspace/test.mqh', sharedFlags, [], 'C:/Workspace');
+        const args = entry.arguments;
+        assert.strictEqual(args[args.length - 1], 'C:/Workspace/test.mqh');
+        assert.strictEqual(args[args.length - 2], '-c');
+    });
+
+    test('directory is normalized workspace path', () => {
+        const entry = buildHeaderCompileEntry('C:\\Workspace\\test.mqh', sharedFlags, [], 'C:\\Workspace');
+        assert.strictEqual(entry.directory, 'C:/Workspace');
+    });
+
+    test('adds -D__MQL5_BUILD__ for .mqh files by default', () => {
+        const entry = buildHeaderCompileEntry('C:/Workspace/test.mqh', sharedFlags, [], 'C:/Workspace');
+        assert.ok(entry.arguments.includes('-D__MQL5_BUILD__'));
+        assert.ok(!entry.arguments.includes('-D__MQL4_BUILD__'));
+    });
+
+    test('swaps to MQL4 defines when mqlVersion is mql4', () => {
+        const entry = buildHeaderCompileEntry('C:/Workspace/test.mqh', [
+            '-xc++', '-D__MQL5__', '-std=c++17'
+        ], [], 'C:/Workspace', 'mql4');
+        assert.ok(entry.arguments.includes('-D__MQL4__'), 'Should contain -D__MQL4__');
+        assert.ok(!entry.arguments.includes('-D__MQL5__'), 'Should NOT contain -D__MQL5__');
+        assert.ok(entry.arguments.includes('-D__MQL4_BUILD__'), 'Should contain -D__MQL4_BUILD__');
+        assert.ok(!entry.arguments.includes('-D__MQL5_BUILD__'), 'Should NOT contain -D__MQL5_BUILD__');
+    });
+});
+
+suite('buildAllHeaderEntries', () => {
+    test('multiple entry points: most-context-wins', async () => {
+        // main1 includes a then b; main2 includes only b
+        // b should get a as predecessor (from main1 which gives more context)
+        const { base, cleanup } = makeTmpProject({
+            'main1.mq5': '#include "a.mqh"\n#include "b.mqh"\n',
+            'main2.mq5': '#include "b.mqh"\n',
+            'a.mqh': '// a\n',
+            'b.mqh': '// b\n'
+        });
+        try {
+            const flags = ['-xc++', '-std=c++17'];
+            const entries = await buildAllHeaderEntries(
+                [path.join(base, 'main1.mq5'), path.join(base, 'main2.mq5')],
+                flags,
+                base,
+                ''
+            );
+
+            // Should have entries for both a.mqh and b.mqh
+            assert.strictEqual(entries.length, 2);
+
+            const bEntry = entries.find(e => e.file.includes('b.mqh'));
+            assert.ok(bEntry, 'Should have entry for b.mqh');
+            // b.mqh from main1 has a.mqh as predecessor — most context wins
+            const includeFlags = bEntry.arguments.filter(a => a.startsWith('-include') && a.includes('a.mqh'));
+            assert.strictEqual(includeFlags.length, 1, 'b.mqh should have -include for a.mqh (most-context-wins)');
+        } finally { cleanup(); }
+    });
+
+    test('returns empty array when no entry points have includes', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '// no includes\n'
+        });
+        try {
+            const entries = await buildAllHeaderEntries(
+                [path.join(base, 'main.mq5')],
+                ['-xc++'],
+                base,
+                ''
+            );
+            assert.strictEqual(entries.length, 0);
+        } finally { cleanup(); }
+    });
+});
+
+suite('haveIncludesChanged', () => {
+    test('first check returns false (baseline)', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'test_snap.mq5': '#include "a.mqh"\n',
+            'a.mqh': '// a\n'
+        });
+        try {
+            includeSnapshotCache.clear();
+            const filePath = path.join(base, 'test_snap.mq5');
+            const result = await haveIncludesChanged(filePath);
+            assert.strictEqual(result, false);
+        } finally { cleanup(); }
+    });
+
+    test('same file returns false (no change)', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'test_snap2.mq5': '#include "a.mqh"\n',
+            'a.mqh': '// a\n'
+        });
+        try {
+            includeSnapshotCache.clear();
+            const filePath = path.join(base, 'test_snap2.mq5');
+            await haveIncludesChanged(filePath); // baseline
+            const result = await haveIncludesChanged(filePath);
+            assert.strictEqual(result, false);
+        } finally { cleanup(); }
+    });
+
+    test('added include returns true', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'test_snap3.mq5': '#include "a.mqh"\n',
+            'a.mqh': '// a\n',
+            'b.mqh': '// b\n'
+        });
+        try {
+            includeSnapshotCache.clear();
+            const filePath = path.join(base, 'test_snap3.mq5');
+            await haveIncludesChanged(filePath); // baseline
+            // Modify the file to add an include
+            fs.writeFileSync(filePath, '#include "a.mqh"\n#include "b.mqh"\n');
+            const result = await haveIncludesChanged(filePath);
+            assert.strictEqual(result, true);
+        } finally { cleanup(); }
+    });
+
+    test('removed include returns true', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'test_snap4.mq5': '#include "a.mqh"\n#include "b.mqh"\n',
+            'a.mqh': '// a\n',
+            'b.mqh': '// b\n'
+        });
+        try {
+            includeSnapshotCache.clear();
+            const filePath = path.join(base, 'test_snap4.mq5');
+            await haveIncludesChanged(filePath); // baseline
+            fs.writeFileSync(filePath, '#include "a.mqh"\n');
+            const result = await haveIncludesChanged(filePath);
+            assert.strictEqual(result, true);
+        } finally { cleanup(); }
+    });
+
+    test('reordered includes returns true', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'test_snap5.mq5': '#include "a.mqh"\n#include "b.mqh"\n',
+            'a.mqh': '// a\n',
+            'b.mqh': '// b\n'
+        });
+        try {
+            includeSnapshotCache.clear();
+            const filePath = path.join(base, 'test_snap5.mq5');
+            await haveIncludesChanged(filePath); // baseline
+            fs.writeFileSync(filePath, '#include "b.mqh"\n#include "a.mqh"\n');
+            const result = await haveIncludesChanged(filePath);
+            assert.strictEqual(result, true);
+        } finally { cleanup(); }
+    });
+
+    test('non-include changes return false', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'test_snap6.mq5': '#include "a.mqh"\nvoid OnStart() {}\n',
+            'a.mqh': '// a\n'
+        });
+        try {
+            includeSnapshotCache.clear();
+            const filePath = path.join(base, 'test_snap6.mq5');
+            await haveIncludesChanged(filePath); // baseline
+            fs.writeFileSync(filePath, '#include "a.mqh"\nvoid OnStart() { Print("hello"); }\n');
+            const result = await haveIncludesChanged(filePath);
+            assert.strictEqual(result, false);
         } finally { cleanup(); }
     });
 });

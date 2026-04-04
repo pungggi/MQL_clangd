@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
+const { parseIncludes, resolveIncludePath } = require('./compileTargetResolver');
 
 /**
  * Normalizes paths for clangd (forward slashes).
@@ -82,6 +83,192 @@ function isTranslationUnitExtension(ext) {
     if (!ext) return false;
     const normalized = ext.toLowerCase();
     return normalized === '.mq4' || normalized === '.mq5';
+}
+
+/**
+ * Recursively walk the #include tree of an entry-point file in DFS pre-order
+ * (matching MQL's concatenation order) and return, for each header, the list
+ * of headers that precede it in that order.
+ *
+ * @param {string} entryPointPath  Absolute path to the .mq4/.mq5 file
+ * @param {string} workspaceRoot   Workspace root directory
+ * @param {string} [includeDir]    External MetaEditor Include directory
+ * @returns {Promise<Map<string, string[]>>} normalizedHeaderPath → preceding header abs paths
+ */
+async function buildIncludeChain(entryPointPath, workspaceRoot, includeDir) {
+    const flatOrder = [];
+    const visited = new Set();
+    const entryNorm = pathModule.normalize(entryPointPath).toLowerCase();
+    visited.add(entryNorm);
+
+    async function walk(filePath) {
+        let content;
+        try {
+            content = await fs.promises.readFile(filePath, 'utf8');
+        } catch {
+            return; // file unreadable — skip
+        }
+        const includes = parseIncludes(content);
+        const fileDir = pathModule.dirname(filePath);
+
+        for (const inc of includes) {
+            const candidates = resolveIncludePath(inc, fileDir, workspaceRoot, includeDir);
+            if (candidates.length === 0) continue;
+            const resolved = candidates[0];
+            const norm = pathModule.normalize(resolved).toLowerCase();
+            if (visited.has(norm)) continue;
+            visited.add(norm);
+            // Recurse into the header first (DFS pre-order — its own includes
+            // come before the next sibling in the parent)
+            await walk(resolved);
+            flatOrder.push(resolved);
+        }
+    }
+
+    await walk(entryPointPath);
+
+    // Build the result: for each header, preceding = everything before it in flatOrder
+    const result = new Map();
+    const precedingSoFar = [];
+    for (let i = 0; i < flatOrder.length; i++) {
+        const norm = normalizePath(flatOrder[i]);
+        result.set(norm, [...precedingSoFar]);
+        precedingSoFar.push(norm);
+    }
+    return result;
+}
+
+/**
+ * Build a compile_commands.json entry for a .mqh header file with
+ * -include flags for all preceding sibling headers from its parent TU.
+ *
+ * @param {string} headerPath         Absolute path to the .mqh file
+ * @param {string[]} sharedFlags      Base compiler flags (same as TU entries)
+ * @param {string[]} precedingHeaders Abs paths of headers preceding this one
+ * @param {string} workspacePath      Workspace root path
+ * @param {'mql4'|'mql5'} [mqlVersion='mql5']  MQL version of the parent entry point
+ * @returns {{directory: string, arguments: string[], file: string}}
+ */
+function buildHeaderCompileEntry(headerPath, sharedFlags, precedingHeaders, workspacePath, mqlVersion) {
+    const normalizedPath = normalizePath(headerPath);
+    const isMql4 = mqlVersion === 'mql4';
+    const args = ['clang++'];
+    const flags = Array.isArray(sharedFlags) ? sharedFlags : [];
+
+    // Find where the compat header -include flag ends up so we insert
+    // sibling -include flags after it
+    let compatInserted = false;
+    for (const flag of flags) {
+        if (!flag) continue;
+
+        // Replace -xc++ with -xc++-header for header files
+        if (flag === '-xc++') {
+            args.push('-xc++-header');
+            continue;
+        }
+
+        // Swap MQL version defines when parent entry point is MQL4
+        if (isMql4 && flag === '-D__MQL5__') {
+            args.push('-D__MQL4__');
+            continue;
+        }
+
+        args.push(flag);
+
+        // After the compat header -include, insert sibling -include flags
+        if (!compatInserted && flag.startsWith('-include')) {
+            compatInserted = true;
+            for (const h of precedingHeaders) {
+                args.push(`-include${normalizePath(h)}`);
+            }
+        }
+    }
+
+    // If no compat header was found (unlikely), append sibling includes at end
+    if (!compatInserted) {
+        for (const h of precedingHeaders) {
+            args.push(`-include${normalizePath(h)}`);
+        }
+    }
+
+    args.push(isMql4 ? '-D__MQL4_BUILD__' : '-D__MQL5_BUILD__');
+    args.push('-c');
+    args.push(normalizedPath);
+
+    return {
+        directory: normalizePath(workspacePath),
+        arguments: args,
+        file: normalizedPath
+    };
+}
+
+/**
+ * For all entry-point files, build include chains and emit compile entries
+ * for every .mqh file encountered.  When multiple entry points include the
+ * same header, the entry providing the most preceding context wins.
+ *
+ * @param {string[]} entryPointPaths  Absolute paths of .mq4/.mq5 files
+ * @param {string[]} sharedFlags      Base compiler flags
+ * @param {string} workspacePath      Workspace root
+ * @param {string} [includeDir]       External include directory
+ * @returns {Promise<Array<{directory: string, arguments: string[], file: string}>>}
+ */
+async function buildAllHeaderEntries(entryPointPaths, sharedFlags, workspacePath, includeDir) {
+    // Map<normalizedHeaderPath, { precedingHeaders: string[], mqlVersion: string }>
+    const bestContext = new Map();
+
+    for (const ep of entryPointPaths) {
+        const epVersion = pathModule.extname(ep).toLowerCase() === '.mq4' ? 'mql4' : 'mql5';
+        const chain = await buildIncludeChain(ep, workspacePath, includeDir);
+        for (const [headerNorm, preceding] of chain) {
+            const existing = bestContext.get(headerNorm);
+            if (!existing || preceding.length > existing.precedingHeaders.length) {
+                bestContext.set(headerNorm, { precedingHeaders: preceding, mqlVersion: epVersion });
+            }
+        }
+    }
+
+    const entries = [];
+    for (const [headerNorm, ctx] of bestContext) {
+        entries.push(buildHeaderCompileEntry(headerNorm, sharedFlags, ctx.precedingHeaders, workspacePath, ctx.mqlVersion));
+    }
+    return entries;
+}
+
+// --- Include-change detection for auto-regeneration ---
+
+/** @type {Map<string, string>} normalizedPath → JSON fingerprint of #include list */
+const includeSnapshotCache = new Map();
+
+/**
+ * Quick-scan a file for #include directives and return a fingerprint string.
+ * @param {string} filePath  Absolute path
+ * @returns {Promise<string>} JSON array of include paths (order-preserved), or '' on error
+ */
+async function snapshotIncludes(filePath) {
+    try {
+        const content = await fs.promises.readFile(filePath, 'utf8');
+        return JSON.stringify(parseIncludes(content));
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Check whether the #include directives in a file have changed since the
+ * last snapshot.  Updates the cache as a side effect.
+ * First call for a given file returns false (establishes baseline).
+ *
+ * @param {string} filePath  Absolute path to the entry-point file
+ * @returns {Promise<boolean>} true if includes changed
+ */
+async function haveIncludesChanged(filePath) {
+    const norm = pathModule.normalize(filePath).toLowerCase();
+    const current = await snapshotIncludes(filePath);
+    const previous = includeSnapshotCache.get(norm);
+    includeSnapshotCache.set(norm, current);
+    if (previous === undefined) return false; // first check — baseline
+    return current !== previous;
 }
 
 /**
@@ -450,12 +637,31 @@ async function CreateProperties(force = false) {
     // C_Cpp.intelliSenseEngine is optional - silent mode since C++ extension may not be installed
     await safeConfigUpdate('C_Cpp.intelliSenseEngine', 'Disabled', vscode.ConfigurationTarget.Workspace, true);
 
+    // Resolve external include directory for include-chain resolution
+    let resolvedExternalIncDir;
+    if (incDir && incDir.length > 0) {
+        const candidate = pathModule.join(incDir, 'Include');
+        resolvedExternalIncDir = fs.existsSync(candidate) ? candidate : (fs.existsSync(incDir) ? incDir : undefined);
+    }
+
     // --- Generate compile_commands.json ---
     try {
         const targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5}'));
-        const compileCommands = targetFiles
+
+        // 1. Build TU entries (existing behavior)
+        const tuEntries = targetFiles
             .map(fileUri => buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath))
             .filter(Boolean);
+
+        // 2. Build header entries with -include injection for preceding siblings
+        const headerEntries = await buildAllHeaderEntries(
+            targetFiles.map(f => f.fsPath),
+            arrPath,
+            workspacepath,
+            resolvedExternalIncDir
+        );
+
+        const compileCommands = [...tuEntries, ...headerEntries];
 
         if (compileCommands.length > 0) {
             const dbPath = pathModule.join(workspacepath, 'compile_commands.json');
@@ -466,6 +672,13 @@ async function CreateProperties(force = false) {
             if (fs.existsSync(legacyFlags)) {
                 await fs.promises.unlink(legacyFlags).catch(() => { });
             }
+        }
+
+        // Populate include snapshot cache for change detection
+        for (const fileUri of targetFiles) {
+            const snapshot = await snapshotIncludes(fileUri.fsPath);
+            const norm = pathModule.normalize(fileUri.fsPath).toLowerCase();
+            includeSnapshotCache.set(norm, snapshot);
         }
     } catch (err) {
         console.error('MQL Tools: Failed to generate compile_commands.json', err);
@@ -851,6 +1064,11 @@ module.exports = {
     generateProjectFlags,
     generatePortableSwitch,
     buildCompileCommandEntry,
+    buildIncludeChain,
+    buildHeaderCompileEntry,
+    buildAllHeaderEntries,
+    haveIncludesChanged,
+    includeSnapshotCache,
     parseClangdSuppressions,
     mergeClangdSuppressions,
     safeConfigUpdate

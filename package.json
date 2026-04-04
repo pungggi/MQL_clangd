@@ -597,7 +597,7 @@
         "keybindings": [
             {
                 "command": "mql_tools.compileFile",
-                "key": "ctrl+shift+b",
+                "key": "ctrl+shift+x",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             },
             {
@@ -637,7 +637,7 @@
             },
             {
                 "command": "mql_tools.openTradingTerminal",
-                "key": "ctrl+F4",
+                "key": "F4",
                 "when": "resourceExtname == .mq4 || resourceExtname == .mq5 || resourceExtname == .mqh"
             },
             {

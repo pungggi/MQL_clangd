@@ -35,6 +35,7 @@ class MqlDebugLogReader {
         this.timer        = null;
         this.renameTimer  = null;
         this._buf         = Buffer.allocUnsafe(65536);
+        this._partial     = '';  // buffered incomplete trailing line
 
         /** Preferred: called with all events in a file chunk at once. @type {((events: DebugEvent[]) => void) | null} */
         this.onBatch     = null;
@@ -56,6 +57,7 @@ class MqlDebugLogReader {
         if (this.isRunning) return;
         this.isRunning = true;
         this.lastSize  = 0;
+        this._partial  = '';
 
         this._log(`start() — watching: ${this.filePath}`);
 
@@ -188,8 +190,15 @@ class MqlDebugLogReader {
 
             if (totalRead > 0) {
                 this.lastSize += totalRead;
-                const text = Buffer.concat(chunks).toString('utf8');
+                const text = this._partial + Buffer.concat(chunks).toString('utf8');
                 const lines = text.split(/\r?\n/);
+                // If the chunk doesn't end with a newline, the last element is
+                // an incomplete line — buffer it for the next read.
+                if (!text.endsWith('\n') && !text.endsWith('\r\n')) {
+                    this._partial = lines.pop();
+                } else {
+                    this._partial = '';
+                }
                 const events = [];
                 for (const line of lines) {
                     if (line.startsWith('DBG|')) {

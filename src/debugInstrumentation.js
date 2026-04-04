@@ -13,6 +13,38 @@ try {
 const INCLUDE_LINE = '#include <MqlDebug.mqh>';
 
 /**
+ * Count net brace depth change for a line, skipping braces inside
+ * string literals (single- and double-quoted) and comments.
+ *
+ * @param {string} line
+ * @param {boolean} inBlockComment  Whether we start inside a block comment
+ * @returns {{ delta: number, inBlockComment: boolean }}
+ */
+function braceDepthDelta(line, inBlockComment = false) {
+    let delta = 0;
+    let inStr = false;
+    let strCh = '';
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inBlockComment) {
+            if (ch === '*' && line[i + 1] === '/') { inBlockComment = false; i++; }
+            continue;
+        }
+        if (inStr) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === strCh) inStr = false;
+            continue;
+        }
+        if (ch === '/' && line[i + 1] === '/') break; // line comment — rest is ignored
+        if (ch === '/' && line[i + 1] === '*') { inBlockComment = true; i++; continue; }
+        if (ch === '"' || ch === '\'') { inStr = true; strCh = ch; continue; }
+        if (ch === '{') delta++;
+        else if (ch === '}') delta--;
+    }
+    return { delta, inBlockComment };
+}
+
+/**
  * A simple line-classification state machine for MQL5 source.
  * Determines whether a given line is safe to inject a macro after.
  */
@@ -457,22 +489,18 @@ function parseLocalsInScope(lines, bpLine) {
     if (idx < 0 || idx >= lines.length) return [];
 
     // Walk backwards to find the function start (opening brace at depth 0)
+    // We accumulate brace deltas forward then scan backward using them.
     let braceDepth = 0;
     let funcBodyStart = -1;
     for (let i = idx; i >= 0; i--) {
-        const line = lines[i];
-        // Count braces (simplified — ignores braces in strings/comments)
-        for (let c = line.length - 1; c >= 0; c--) {
-            if (line[c] === '}') braceDepth++;
-            else if (line[c] === '{') {
-                braceDepth--;
-                if (braceDepth < 0) {
-                    funcBodyStart = i;
-                    break;
-                }
-            }
+        const r = braceDepthDelta(lines[i]);
+        // Walking backward: subtract delta (closing braces increase depth going up)
+        braceDepth -= r.delta;
+        if (braceDepth > 0) {
+            // We've passed more opening braces than closing — found the function start
+            funcBodyStart = i;
+            break;
         }
-        if (funcBodyStart >= 0) break;
     }
 
     if (funcBodyStart < 0) return [];
@@ -609,25 +637,24 @@ function parseClassDefinitions(lines) {
         if (braceIdx < 0) continue;
 
         // Find matching closing brace
-        let depth = 0, endIdx = -1;
+        let depth = 0, endIdx = -1, inBC = false;
         for (let j = braceIdx; j < lines.length; j++) {
-            for (const ch of lines[j]) {
-                if (ch === '{') depth++;
-                else if (ch === '}') { depth--; if (depth === 0) { endIdx = j; break; } }
-            }
-            if (endIdx >= 0) break;
+            const r = braceDepthDelta(lines[j], inBC);
+            inBC = r.inBlockComment;
+            depth += r.delta;
+            if (depth === 0 && r.delta !== 0) { endIdx = j; break; }
         }
         if (endIdx < 0) continue;
 
         // Scan member declarations at class body depth (depth 1)
         const members = [];
         let bodyDepth = 0;
+        let inBC2 = false;
         for (let j = braceIdx; j <= endIdx; j++) {
             const prevDepth = bodyDepth;
-            for (const ch of lines[j]) {
-                if (ch === '{') bodyDepth++;
-                else if (ch === '}') bodyDepth--;
-            }
+            const r = braceDepthDelta(lines[j], inBC2);
+            inBC2 = r.inBlockComment;
+            bodyDepth += r.delta;
             if (prevDepth !== 1) continue;
 
             const trimmed = lines[j].trimStart();
@@ -668,12 +695,12 @@ function parseGlobalDeclarations(lines) {
     // Uses module-level NON_TYPE_KEYWORDS / NON_VARNAME_KEYWORDS
 
     let depth = 0;
+    let inBC = false;
     for (let i = 0; i < lines.length; i++) {
         const prevDepth = depth;
-        for (const ch of lines[i]) {
-            if (ch === '{') depth++;
-            else if (ch === '}') depth--;
-        }
+        const r = braceDepthDelta(lines[i], inBC);
+        inBC = r.inBlockComment;
+        depth += r.delta;
         if (prevDepth !== 0) continue;
 
         const trimmed = lines[i].trimStart();
@@ -1298,18 +1325,15 @@ function findFunctionBoundaries(lines) {
         // Find the matching closing brace
         let depth = 0;
         let endIdx = -1;
+        let inBC = false;
         for (let j = braceIdx; j < lines.length; j++) {
-            for (const ch of lines[j]) {
-                if (ch === '{') depth++;
-                else if (ch === '}') {
-                    depth--;
-                    if (depth === 0) {
-                        endIdx = j;
-                        break;
-                    }
-                }
+            const r = braceDepthDelta(lines[j], inBC);
+            inBC = r.inBlockComment;
+            depth += r.delta;
+            if (depth === 0 && r.delta !== 0) {
+                endIdx = j;
+                break;
             }
-            if (endIdx >= 0) break;
         }
 
         if (endIdx > braceIdx) {
@@ -1861,5 +1885,6 @@ module.exports = {
         parseFunctionParams,
         sanitizeLabel,
         sanitizeCondition,
+        braceDepthDelta,
     }
 };

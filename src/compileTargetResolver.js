@@ -359,6 +359,8 @@ module.exports = {
     setCompileTargets,
     resetCompileTargets,
     markIndexDirty,
-    getCompileTargets
+    getCompileTargets,
+    parseIncludes,
+    resolveIncludePath
 };
 
