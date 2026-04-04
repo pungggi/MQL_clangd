@@ -36,7 +36,7 @@ const { IconsInstallation } = require('./addIcon');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider } = require('./provider');
 const { obj_items } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
-const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
+const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged } = require('./createProperties');
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
 const {
     toWineWindowsPath,
@@ -2723,10 +2723,45 @@ function activate(context) {
     };
 
     fileWatcher.onDidChange(debouncedMarkDirty);
-    fileWatcher.onDidCreate(debouncedMarkDirty);
-    fileWatcher.onDidDelete(debouncedMarkDirty);
     context.subscriptions.push(fileWatcher);
 
+    // --- Auto-regenerate compile_commands.json when include graph changes ---
+
+    let mqhStructuralTimer = null;
+    const MQH_STRUCTURAL_DEBOUNCE_MS = 2000;
+
+    const debouncedStructuralChange = (uri) => {
+        debouncedMarkDirty(uri); // still invalidate the reverse index
+        const ext = pathModule.extname(uri.fsPath).toLowerCase();
+        if (ext === '.mqh') {
+            if (mqhStructuralTimer) clearTimeout(mqhStructuralTimer);
+            mqhStructuralTimer = setTimeout(() => {
+                mqhStructuralTimer = null;
+                CreateProperties().catch(err => {
+                    console.error('MQL Tools: Failed to auto-regenerate after .mqh change', err);
+                });
+            }, MQH_STRUCTURAL_DEBOUNCE_MS);
+        }
+    };
+
+    fileWatcher.onDidCreate(debouncedStructuralChange);
+    fileWatcher.onDidDelete(debouncedStructuralChange);
+    context.subscriptions.push({ dispose: () => { if (mqhStructuralTimer) clearTimeout(mqhStructuralTimer); } });
+
+    // Auto-regenerate when #include directives change in entry-point files
+    context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (document) => {
+        if (internalSaveDepth > 0) return;
+        const ext = pathModule.extname(document.fileName).toLowerCase();
+        if (ext !== '.mq4' && ext !== '.mq5') return;
+
+        try {
+            const changed = await haveIncludesChanged(document.fileName);
+            if (!changed) return;
+            await CreateProperties();
+        } catch (err) {
+            console.error('MQL Tools: Failed to auto-regenerate compile_commands.json', err);
+        }
+    }));
 
 }
 
