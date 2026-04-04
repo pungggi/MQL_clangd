@@ -209,7 +209,7 @@ function IconsInstallation() {
         },
     ];
 
-    vscode.window.showQuickPick(options, { placeHolder: lg['s_i_t'] }).then((item) => {
+    vscode.window.showQuickPick(options, { placeHolder: lg['s_i_t'], title: 'MQL: Add Icons to Theme' }).then((item) => {
         if (!item)
             return undefined;
 

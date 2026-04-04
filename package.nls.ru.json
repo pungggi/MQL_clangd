@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "Путь к \"metaeditor.exe\": MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "Путь к \"terminal.exe\": MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "Путь к \"terminal64.exe\": MQL5",
-    "mql_tools.configuration.Include4Dir.description": "Путь к папке \"Include\": MQL4 (необязательно)",
-    "mql_tools.configuration.Include5Dir.description": "Путь к папке \"Include\": MQL5 (необязательно)",
+    "mql_tools.configuration.Include4Dir.description": "Путь к папке данных MQL4 (содержит Include, Logs и т.д.). Необходим для заголовочных файлов библиотек и Live Runtime Logs. Определяется автоматически, если не заполнено.",
+    "mql_tools.configuration.Include5Dir.description": "Путь к папке данных MQL5 (содержит Include, Logs и т.д.). Необходим для заголовочных файлов библиотек и Live Runtime Logs. Определяется автоматически, если не заполнено.",
     "mql_tools.configuration.Portable4.description": "Включить портативный режим для MetaTrader 4 (использует ключ /portable)",
     "mql_tools.configuration.Portable5.description": "Включить портативный режим для MetaTrader 5 (использует ключ /portable)",
     "mql_tools.configuration.ShowButtonCompile.description": "Отображать кнопку компиляции",
@@ -26,6 +26,7 @@
     "mql_tools.commands.Addicon.title": "Добавить иконки в тему",
     "mql_tools.commands.Showfiles.title": "Показать/скрыть 'ex4/ex5' файлы",
     "mql_tools.commands.InsNameMQL.title": "Вставить имя файла mq4/mq5 в \"mqh\" документ",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "Вставить MQH в виде #include",
     "mql_tools.commands.InsResource.title": "Вставить BMP/WAV в виде #resource",
     "mql_tools.commands.InsImport.title": "Вставить DLL/EX5 в виде #import",
@@ -34,5 +35,9 @@
     "mql_tools.commands.openInME.title": "Открыть в 'MetaEditor'",
     "mql_tools.commands.openTradingTerminal.title": "Открыть торговый терминал",
     "mql_tools.commands.createCommentary.title": "Создать комментарий к функции",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Сообщить о шумной диагностике clangd"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Сообщить о шумной диагностике clangd",
+    "mql_tools.commands.runBacktest.title": "Запустить бэктест",
+    "mql_tools.commands.startDebugging.title": "Начать сеанс отладки MQL",
+    "mql_tools.commands.stopDebugging.title": "Остановить сеанс отладки MQL",
+    "mql_tools.commands.showStartupPage.title": "Показать стартовую страницу"
 }

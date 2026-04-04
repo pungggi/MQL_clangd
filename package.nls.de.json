@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "Pfad zu \"metaeditor.exe\": MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "Pfad zu \"terminal.exe\": MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "Pfad zu \"terminal64.exe\": MQL5",
-    "mql_tools.configuration.Include4Dir.description": "Pfad zum \"Include\"-Ordner: MQL4 (optional)",
-    "mql_tools.configuration.Include5Dir.description": "Pfad zum \"Include\"-Ordner: MQL5 (optional)",
+    "mql_tools.configuration.Include4Dir.description": "Pfad zum MQL4-Datenordner (enthält Include, Logs usw.). Unverzichtbar für Bibliotheks-Header und Live-Laufzeitprotokolle. Wird automatisch ermittelt, wenn es leer gelassen wird.",
+    "mql_tools.configuration.Include5Dir.description": "Pfad zum MQL5-Datenordner (enthält Include, Logs usw.). Unverzichtbar für Bibliotheks-Header und Live-Laufzeitprotokolle. Wird automatisch ermittelt, wenn es leer gelassen wird.",
     "mql_tools.configuration.Portable4.description": "Portablen Modus für MetaTrader 4 aktivieren (verwendet /portable-Schalter)",
     "mql_tools.configuration.Portable5.description": "Portablen Modus für MetaTrader 5 aktivieren (verwendet /portable-Schalter)",
     "mql_tools.configuration.ShowButtonCompile.description": "Kompilierungsschaltfläche anzeigen",
@@ -27,6 +27,7 @@
     "mql_tools.commands.Addicon.title": "Symbole zum Design hinzufügen",
     "mql_tools.commands.Showfiles.title": "ex4/ex5-Dateien anzeigen/ausblenden",
     "mql_tools.commands.InsNameMQL.title": "Dateinamen 'mq4/mq5' in \"mqh\"-Dokument einfügen",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "MQH als #include einfügen",
     "mql_tools.commands.InsResource.title": "BMP/WAV als #resource einfügen",
     "mql_tools.commands.InsImport.title": "DLL/EX5 als #import einfügen",
@@ -35,5 +36,9 @@
     "mql_tools.commands.openInME.title": "In 'MetaEditor' öffnen",
     "mql_tools.commands.openTradingTerminal.title": "Handelsterminal öffnen",
     "mql_tools.commands.createCommentary.title": "Funktionskommentar erstellen",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Störende clangd-Diagnose melden"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Störende clangd-Diagnose melden",
+    "mql_tools.commands.runBacktest.title": "Backtest ausführen",
+    "mql_tools.commands.startDebugging.title": "MQL-Debug-Sitzung starten",
+    "mql_tools.commands.stopDebugging.title": "MQL-Debug-Sitzung beenden",
+    "mql_tools.commands.showStartupPage.title": "Willkommensseite anzeigen"
 }

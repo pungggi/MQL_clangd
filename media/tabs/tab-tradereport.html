@@ -1,0 +1,112 @@
+        <!-- ─── Tab 4: Trade Report Dashboard ─── -->
+        <div id="tab-tradereport" class="tab-panel" role="tabpanel" aria-labelledby="btn-tradereport"
+            aria-hidden="true">
+
+            <div class="card">
+                <h2>Trade Report Dashboard <span class="badge"
+                        style="background-color: var(--vscode-testing-iconPassed);">Pre-Release</span></h2>
+
+                <p>Analyze your Strategy Tester results <strong>directly in VS Code</strong> — no more digging through
+                    MetaTrader's UI or raw log files.</p>
+
+                <div class="highlight-box">
+                    <strong>How to get the most out of it?</strong> The Trade Report Dashboard provides maximum value
+                    when used together with the <strong>Run Backtest</strong> feature and the <strong>LiveLog</strong>
+                    library. The dashboard parses MT5 tester log files and presents trades, P&amp;L statistics, and log
+                    entries in an interactive webview — but paired with LiveLog, it unlocks
+                    <strong>click-to-source</strong> navigation directly back to your MQL code.
+                </div>
+
+                <h3>How to Use It</h3>
+                <p>The Trade Report Dashboard works with <strong>any standard MetaTrader 5 backtest</strong>. You can
+                    use it in two ways:</p>
+                <ul class="step-list">
+                    <li>
+                        <strong>Standalone (Manual):</strong> Run a normal backtest directly within MetaTrader 5's
+                        Strategy Tester. When finished, switch to VS Code and run <span class="code-inline">MQL: Open
+                            Trade Report Dashboard</span> from the Command Palette. The dashboard will automatically
+                        parse your standard MT5 tester log files into an interactive visualization.
+                    </li>
+                    <li>
+                        <strong>Integrated (Recommended):</strong> Trigger the backtest directly from VS Code using the
+                        <strong>Run Backtest</strong> feature (<span class="code-inline">Ctrl+Shift+T</span>). When the
+                        test completes, the dashboard opens automatically with your new results.
+                    </li>
+                </ul>
+
+                <h3>What the Dashboard Shows</h3>
+                <table>
+                    <tr>
+                        <th>Section</th>
+                        <th>Details</th>
+                    </tr>
+                    <tr>
+                        <td>Trade Summary</td>
+                        <td>Total trades, net P&amp;L, win rate, gross profit &amp; loss, commissions</td>
+                    </tr>
+                    <tr>
+                        <td>Trade Table</td>
+                        <td>Entry/exit prices, SL, TP, lot size, exit reason per trade</td>
+                    </tr>
+                    <tr>
+                        <td>Log Viewer</td>
+                        <td>Filterable by level: ALL / TRADE / INFO / WARN / DEBUG / ERROR</td>
+                    </tr>
+                </table>
+
+                <h3>Click-to-Source Navigation</h3>
+                <p>When your EA uses <strong>LiveLog</strong>'s level-prefixed logging macros, each log entry and trade
+                    automatically carries a source location. In the dashboard these appear as clickable badges that jump
+                    straight to the originating line in your MQL file.</p>
+                <p>Just add to your EA:</p>
+                <pre
+                    style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">#include &lt;LiveLog.mqh&gt;
+
+void OnTick()
+{
+    LogInfo("Checking for entry signal");
+    if (buySignal)
+        LogTrade("SIMULATED BUY MARKET");
+}</pre>
+                <p>The <span class="code-inline">LogDebug</span>, <span class="code-inline">LogInfo</span>, <span
+                        class="code-inline">LogWarn</span>, <span class="code-inline">LogError</span>, and <span
+                        class="code-inline">LogTrade</span> macros embed <span
+                        class="code-inline">{File:Function:Line}</span>
+                    tags automatically — no extra setup needed.</p>
+
+                <h3>Source Snapshots</h3>
+                <p>Because source tags reference specific line numbers, editing your EA after a test run can make links
+                    point to
+                    the wrong lines. Enable <strong>Source Snapshots</strong> to freeze a copy of all referenced files
+                    alongside
+                    each log:</p>
+                <pre
+                    style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">"mql_tools.TradeReport.SnapshotSources": true</pre>
+                <p>When a snapshot exists, each source badge shows two links: a <strong>green (snapshot)</strong> one
+                    for the
+                    frozen snapshot and a <strong>yellow (live)</strong> one for the current live file.</p>
+
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>This feature is in its early stages and your input is critical. Encountered a bug, have a feature
+                    request, or
+                    just want to tell us it's working well?</p>
+                <p>Please let us know on our GitHub issues page:</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BTrade%20Report%5D%20"
+                        style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open
+                        an
+                        Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button class="dismiss-btn">Got it! Dismiss for version {{version}}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>
+

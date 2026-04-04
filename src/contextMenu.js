@@ -2,9 +2,10 @@
 const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const pathModule = require('path');
 const lg = require('./language');
-const { tf } = require('./extension');
+const { tf } = require('./timeUtils');
 const { generatePortableSwitch, resolvePathRelativeToWorkspace } = require('./createProperties');
 const {
     toWineWindowsPath,
@@ -20,6 +21,17 @@ const {
 } = require('./wineHelper');
 
 const BATCH_FILE_CLEANUP_DELAY_MS = 5000;
+const TERMINAL_KILL_DELAY_MS = 1500;
+const STARTUP_INI_CLEANUP_DELAY_MS = 60_000;
+
+let _mqlDebugChannel = null;
+
+function getMqlDebugChannel() {
+    if (!_mqlDebugChannel) {
+        _mqlDebugChannel = vscode.window.createOutputChannel('MQL Debug', { log: false });
+    }
+    return _mqlDebugChannel;
+}
 
 /**
  * Executes a Wine batch file with consistent error handling and cleanup
@@ -311,7 +323,82 @@ async function OpenFileInMetaEditor(uri) {
     }
 }
 
-async function OpenTradingTerminal() {
+/** Check if a terminal process is already running (Windows only). */
+function _isTerminalRunning(exeName) {
+    return new Promise(resolve => {
+        if (!/^[A-Za-z0-9._-]+$/.test(exeName)) {
+            resolve(false);
+            return;
+        }
+        childProcess.execFile(
+            'tasklist',
+            ['/FI', `IMAGENAME eq ${exeName}`, '/NH'],
+            { encoding: 'utf-8', timeout: 3000 },
+            (err, stdout) => {
+                if (err) { resolve(false); return; }
+                resolve(stdout.toLowerCase().includes(exeName.toLowerCase()));
+            }
+        );
+    });
+}
+
+/** Kill a running terminal process by image name (Windows only). */
+function _killTerminal(exeName) {
+    return new Promise(resolve => {
+        if (!/^[A-Za-z0-9._-]+$/.test(exeName)) {
+            resolve();
+            return;
+        }
+        childProcess.execFile(
+            'taskkill',
+            ['/IM', exeName, '/F'],
+            { encoding: 'utf-8', timeout: 5000 },
+            () => resolve() // resolve regardless of success
+        );
+    });
+}
+
+/**
+ * Build a startup INI file so MetaTrader auto-attaches an EA on launch.
+ *
+ * @param {string} eaPath   Absolute path to the compiled .ex5/.ex4 binary
+ * @param {string} mql5Root MQL5 root directory (contains Experts/, Files/, …)
+ * @returns {string|null}   Path to the generated INI file, or null if the EA
+ *                          is not inside the Experts tree.
+ */
+function buildStartupIni(eaPath, mql5Root) {
+    const expertsDir = pathModule.join(mql5Root, 'Experts');
+    const relative = pathModule.relative(expertsDir, eaPath);
+
+    // If the EA lives outside the Experts tree, relative will start with ".."
+    if (relative.startsWith('..') || pathModule.isAbsolute(relative)) return null;
+
+    // Expert= expects a backslash-separated path without extension
+    const expertValue = relative
+        .replace(/\.[^.]+$/, '')       // strip .ex5 / .ex4
+        .replace(/\//g, '\\');         // normalise to backslashes
+
+    // [Startup] section must match MT5 docs casing.
+    // Symbol/Period are omitted so MT5 uses whatever chart is already open.
+    const iniContent = `[Startup]\r\nExpert=${expertValue}\r\n`;
+    const iniPath = pathModule.join(os.tmpdir(), `mql_debug_startup_${Date.now()}.ini`);
+    try {
+        fs.writeFileSync(iniPath, iniContent, 'utf-8');
+    } catch (err) {
+        throw new Error(`Failed to create startup INI at ${iniPath}: ${err.message}`, { cause: err });
+    }
+    return iniPath;
+}
+
+/**
+ * Open the MetaTrader trading terminal.
+ *
+ * @param {string} [eaPath]   Optional absolute path to a compiled EA (.ex5/.ex4).
+ *                             When provided the terminal is launched with a startup
+ *                             config that auto-attaches the EA to a chart.
+ * @param {string} [mql5Root] MQL5 root directory — required when eaPath is given.
+ */
+async function OpenTradingTerminal(eaPath, mql5Root) {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const editor = vscode.window.activeTextEditor;
 
@@ -371,8 +458,60 @@ async function OpenTradingTerminal() {
             });
     }
 
+    // Build optional startup INI when an EA path is provided
+    let iniPath = null;
+    if (eaPath && mql5Root) {
+        try {
+            iniPath = buildStartupIni(eaPath, mql5Root);
+            if (!iniPath) {
+                console.warn('[OpenTradingTerminal] EA is not inside MQL5/Experts; skipping auto-attach.');
+            }
+        } catch (err) {
+            // Log but don't abort — the terminal can still open without auto-attach
+            console.error('[OpenTradingTerminal] Failed to build startup INI:', err.message);
+        }
+    }
+
     const portableSwitch = generatePortableSwitch(portableMode);
     const useWine = isWineEnabled(config);
+
+    // Grab the MQL output channel for visible diagnostics
+    const _oc = getMqlDebugChannel();
+
+    if (iniPath) {
+        let iniContent = '';
+        try {
+            iniContent = fs.readFileSync(iniPath, 'utf-8');
+        } catch (err) {
+            console.warn(`[Auto-attach] Failed to read INI file at ${iniPath}:`, err);
+        }
+        _oc.appendLine(`[Auto-attach] INI path: ${iniPath}`);
+        _oc.appendLine(`[Auto-attach] INI content:\n${iniContent}`);
+        _oc.show(true);
+
+        // /config: is ignored when MT5 is already running — the second process
+        // just focuses the existing window.  Detect this and let the user decide.
+        if (!useWine) {
+            const running = await _isTerminalRunning(lowNm);
+            if (running) {
+                const choice = await vscode.window.showWarningMessage(
+                    'MetaTrader is already running. Auto-attach via /config: only works on a fresh launch.',
+                    'Close & Relaunch', 'Attach Manually'
+                );
+                if (choice === 'Close & Relaunch') {
+                    await _killTerminal(lowNm);
+                    // Small delay so the OS releases the process handle
+                    await new Promise(r => setTimeout(r, TERMINAL_KILL_DELAY_MS));
+                } else {
+                    // User chose manual attach or dismissed — skip INI
+                    iniPath = null;
+                }
+            }
+        }
+    } else if (eaPath) {
+        _oc.appendLine(`[Auto-attach] No INI created — eaPath=${eaPath}, mql5Root=${mql5Root}`);
+        _oc.show(true);
+    }
 
     try {
         if (useWine) {
@@ -394,11 +533,22 @@ async function OpenTradingTerminal() {
 
             const args = [];
             if (portableSwitch) args.push(portableSwitch);
+            if (iniPath) {
+                const iniResult = await toWineWindowsPath(iniPath, wineBinary, winePrefix);
+                if (iniResult.success) {
+                    args.push(`/config:${iniResult.path}`);
+                } else {
+                    console.warn(`[OpenTradingTerminal] Wine conversion of INI path failed; skipping auto-attach. iniPath=${iniPath}, error=${iniResult.error || 'unknown'}`);
+                }
+            }
 
             await execWineBatch(terminalWinPath, args, wineBinary, winePrefix, wineEnv, lg['err_open_terminal']);
         } else {
             const args = [];
             if (portableSwitch) args.push(portableSwitch);
+            if (iniPath) args.push(`/config:${iniPath}`);
+            _oc.appendLine(`[Auto-attach] Spawning: "${TerminalDir}" ${args.join(' ')}`);
+            _oc.show(true);
             const proc = childProcess.spawn(TerminalDir, args, { detached: true, stdio: 'ignore' });
             proc.on('error', (err) => {
                 console.error('Terminal launch error:', err);
@@ -409,6 +559,16 @@ async function OpenTradingTerminal() {
     }
     catch (e) {
         return vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
+    }
+    finally {
+        // Clean up the temporary INI after MT5 has had time to start and read it.
+        // MT5 can take 10-30s to initialise; BATCH_FILE_CLEANUP_DELAY_MS (5s) is
+        // too short, so use STARTUP_INI_CLEANUP_DELAY_MS for startup INIs.
+        if (iniPath) {
+            setTimeout(() => {
+                try { fs.unlinkSync(iniPath); } catch (_) { /* best-effort */ }
+            }, STARTUP_INI_CLEANUP_DELAY_MS);
+        }
     }
 }
 
