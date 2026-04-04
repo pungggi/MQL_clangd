@@ -743,10 +743,20 @@ async function CreateProperties(force = false) {
         }
 
         // Populate include snapshot cache for change detection
+        // Seed entry-point files (.mq4/.mq5) from targetFiles
         for (const fileUri of targetFiles) {
             const snapshot = await snapshotIncludes(fileUri.fsPath);
             const norm = pathModule.normalize(fileUri.fsPath).toLowerCase();
             includeSnapshotCache.set(norm, snapshot);
+        }
+        // Seed .mqh headers discovered during include-chain building
+        for (const entry of headerEntries) {
+            const absPath = entry.file; // already absolute, forward-slashed
+            const norm = pathModule.normalize(absPath).toLowerCase();
+            if (!includeSnapshotCache.has(norm)) {
+                const snapshot = await snapshotIncludes(absPath);
+                includeSnapshotCache.set(norm, snapshot);
+            }
         }
     } catch (err) {
         console.error('MQL Tools: Failed to generate compile_commands.json', err);
