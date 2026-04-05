@@ -1,6 +1,7 @@
 'use strict';
 const vscode = require('vscode');
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 
 // LiveLog configuration
@@ -19,6 +20,7 @@ class MqlLogTailer {
         this.statusBarItem = null;
         this.mode = 'livelog'; // 'standard' or 'livelog' - default to livelog for real-time updates
         this.basePath = null; // Base MQL folder path
+        this.isChecking = false; // Guard against concurrent checkForNewContent() calls
     }
 
     /**
@@ -238,12 +240,10 @@ class MqlLogTailer {
 
         try {
             // Ensure Include directory exists
-            if (!fs.existsSync(includeDir)) {
-                fs.mkdirSync(includeDir, { recursive: true });
-            }
+            await fsPromises.mkdir(includeDir, { recursive: true });
 
             // Copy file
-            fs.copyFileSync(sourcePath, targetPath);
+            await fsPromises.copyFile(sourcePath, targetPath);
             this.outputChannel?.appendLine(`[Info] Installed LiveLog.mqh to: ${targetPath}`);
             return true;
         } catch (err) {
@@ -267,6 +267,19 @@ class MqlLogTailer {
         }
         if (this.outputChannel) {
             this.outputChannel.appendLine('--- Tail Stopped ---');
+        }
+    }
+
+    /** Dispose all VS Code resources. Call from extension deactivate(). */
+    dispose() {
+        this.stop();
+        if (this.outputChannel) {
+            this.outputChannel.dispose();
+            this.outputChannel = null;
+        }
+        if (this.statusBarItem) {
+            this.statusBarItem.dispose();
+            this.statusBarItem = null;
         }
     }
 
@@ -376,10 +389,18 @@ class MqlLogTailer {
                 ? new vscode.ThemeColor('statusBarItem.prominentBackground')
                 : new vscode.ThemeColor('statusBarItem.warningBackground');
             this.statusBarItem.tooltip = `Click to stop log tailing (${this.mode === 'livelog' ? 'Real-time mode' : 'Standard journal'})`;
+            this.statusBarItem.accessibilityInformation = {
+                label: `MQL Log tailing active, ${this.mode === 'livelog' ? 'real-time mode' : 'standard journal'}, click to stop`,
+                role: 'button'
+            };
         } else {
             this.statusBarItem.text = '$(primitive-square) MQL Log: Off';
             this.statusBarItem.backgroundColor = undefined;
             this.statusBarItem.tooltip = 'Click to start live MQL log tailing';
+            this.statusBarItem.accessibilityInformation = {
+                label: 'MQL Log tailing off, click to start',
+                role: 'button'
+            };
         }
         this.statusBarItem.show();
     }
@@ -419,23 +440,27 @@ class MqlLogTailer {
     /**
      * Checks for new content in the log file.
      */
-    checkForNewContent() {
+    async checkForNewContent() {
         if (!this.isTailing) return;
+        if (this.isChecking) return;
 
+        this.isChecking = true;
         try {
-            if (fs.existsSync(this.currentFilePath)) {
-                const stats = fs.statSync(this.currentFilePath);
+            const stats = await fsPromises.stat(this.currentFilePath);
 
-                if (stats.size > this.lastSize) {
-                    this.readNewLines(stats.size);
-                } else if (stats.size < this.lastSize) {
-                    // File was truncated or cleared
-                    this.lastSize = 0;
-                    this.outputChannel.appendLine('[Info] Log file truncated. Refreshing...');
-                }
+            if (stats.size > this.lastSize) {
+                this.readNewLines(stats.size);
+            } else if (stats.size < this.lastSize) {
+                // File was truncated or cleared
+                this.lastSize = 0;
+                this.outputChannel.appendLine('[Info] Log file truncated. Refreshing...');
             }
         } catch (err) {
-            console.error('MQL Tailer content check error:', err);
+            if (err.code !== 'ENOENT') {
+                console.error('MQL Tailer content check error:', err);
+            }
+        } finally {
+            this.isChecking = false;
         }
     }
 
@@ -443,7 +468,7 @@ class MqlLogTailer {
      * Backup polling loop for edge cases (file rotation, watcher not set up).
      * Runs less frequently since watcher handles most updates.
      */
-    poll() {
+    async poll() {
         if (!this.isTailing) return;
 
         try {
@@ -460,12 +485,17 @@ class MqlLogTailer {
             }
 
             // Ensure watcher is running (recreate if file now exists or watcher died)
-            if (!this.watcher && fs.existsSync(this.currentFilePath)) {
-                this.setupWatcher();
+            if (!this.watcher) {
+                try {
+                    await fsPromises.access(this.currentFilePath);
+                    this.setupWatcher();
+                } catch {
+                    // File doesn't exist yet, skip
+                }
             }
 
             // Also check for content in case watcher missed something
-            this.checkForNewContent();
+            await this.checkForNewContent();
         } catch (err) {
             console.error('MQL Tailer poll error:', err);
         }
@@ -479,29 +509,39 @@ class MqlLogTailer {
      * LiveLog files are ANSI (utf8), standard MQL logs are UTF-16LE.
      */
     readNewLines(newSize) {
-        const fd = fs.openSync(this.currentFilePath, 'r');
-        const length = newSize - this.lastSize;
-        const buffer = Buffer.alloc(length);
+        let fd;
+        try {
+            fd = fs.openSync(this.currentFilePath, 'r');
+            const length = newSize - this.lastSize;
+            const buffer = Buffer.alloc(length);
 
-        fs.readSync(fd, buffer, 0, length, this.lastSize);
-        fs.closeSync(fd);
+            fs.readSync(fd, buffer, 0, length, this.lastSize);
 
-        // LiveLog uses ANSI/UTF-8, standard MetaTrader logs use UTF-16LE
-        let content;
-        if (this.mode === 'livelog') {
-            content = buffer.toString('utf8');
-        } else {
-            content = buffer.toString('utf16le');
+            // LiveLog uses ANSI/UTF-8, standard MetaTrader logs use UTF-16LE
+            let content;
+            if (this.mode === 'livelog') {
+                content = buffer.toString('utf8');
+            } else {
+                content = buffer.toString('utf16le');
+            }
+
+            // Trim BOM if present in the middle of a stream (unlikely but safe)
+            const cleanContent = content.replace(/\uFEFF/g, '');
+
+            if (cleanContent) {
+                this.outputChannel.append(cleanContent);
+            }
+
+            this.lastSize = newSize;
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                console.error('MQL Tailer read error:', err);
+            }
+        } finally {
+            if (fd !== undefined) {
+                try { fs.closeSync(fd); } catch { /* ignore close errors */ }
+            }
         }
-
-        // Trim BOM if present in the middle of a stream (unlikely but safe)
-        const cleanContent = content.replace(/\uFEFF/g, '');
-
-        if (cleanContent) {
-            this.outputChannel.append(cleanContent);
-        }
-
-        this.lastSize = newSize;
     }
 }
 

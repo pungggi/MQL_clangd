@@ -112,7 +112,8 @@ On non-Windows platforms you can run MetaEditor through Wine while keeping the s
 
    ```json
    {
-       "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../drive_c/Program Files/MetaTrader 5/MetaEditor64.exe"   }
+       "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../drive_c/Program Files/MetaTrader 5/MetaEditor64.exe"
+   }
    ```
 
 3. Enable the Wine wrapper and (optionally) configure the Wine binary:
@@ -161,17 +162,20 @@ MetaTrader's standard `Print()` function buffers output and doesn't flush to dis
    #include <LiveLog.mqh>
    ```
 
-3. **Use `PrintLive()` instead of `Print()`**:
+3. **Use `PrintLive()` or the level-prefixed log functions**:
    ```mql5
    PrintLive("Hello, World!");
    PrintFormatLive("Value: %d, Price: %.5f", 42, 1.23456);
-   
-   // Or use the convenience functions:
-   LogDebugLive("Debug message");
-   LogInfoLive("Info message");
-   LogWarnLive("Warning message");
-   LogErrorLive("Error message");
+
+   // Level-prefixed logging (automatically includes source location for Trade Report):
+   LogDebug("Debug message");
+   LogInfo("Info message");
+   LogWarn("Warning message");
+   LogError("Error message");
+   LogTrade("SIMULATED BUY MARKET");
    ```
+
+   The `Log*()` functions automatically embed `{File:Function:Line}` tags, enabling **click-to-source** navigation in the Trade Report (see below).
 
 4. **Optional - Redirect all Print() calls automatically**:
    Add `#define LIVELOG_REDIRECT` **before** the include to automatically redirect all `Print()` and `PrintFormat()` calls:
@@ -208,7 +212,180 @@ MetaTrader's standard `Print()` function buffers output and doesn't flush to dis
 
 ---
 
+### Trade Report Dashboard
 
+Analyze your Strategy Tester results directly in VS Code. The Trade Report parses MT5 tester log files and displays trades, P&L, and log entries in an interactive dashboard.
+
+**Command:** `MQL: Open Trade Report Dashboard`
+
+**Features:**
+- Auto-discovers EAs with test runs under `MQL5/Experts/`
+- Shows trade summary: count, net P&L, win rate, gross profit/loss, commissions
+- Individual trade table with entry/exit prices, SL, TP, lots, and exit reason
+- Filterable log viewer (ALL, TRADE, INFO, WARN, DEBUG, ERROR)
+- Click any log line number to jump to that line in the `.log` file
+
+#### Source Code Navigation (Click-to-Source)
+
+When using **LiveLog** `Log*()` functions, each log entry and trade automatically includes a source location tag. In the Trade Report, these appear as clickable yellow badges that jump straight to the corresponding line in your MQL source code.
+
+**Setup:** Just use LiveLog's level-prefixed functions — source tags are embedded automatically:
+
+```mql5
+#include <LiveLog.mqh>
+
+void OnTick()
+{
+    LogInfo("Checking for entry signal");
+
+    if (buySignal)
+    {
+        LogTrade("SIMULATED BUY MARKET");
+        LogInfo("Entry: " + DoubleToString(price, 5) + " | SL: " + DoubleToString(sl, 5) + " | TP: " + DoubleToString(tp, 5) + " | Lots: 0.10");
+    }
+}
+```
+
+The Trade Report will show:
+- **Source column** in the trades table with clickable entry/exit source links
+- **Yellow source badges** on each log entry (e.g. `OnTick:12`) that open the file at that line
+
+> **Note:** Source navigation requires LiveLog. Without it, trades and log entries still appear but without clickable source links.
+
+#### Source Snapshots
+
+Because `{File:Function:Line}` tags reference specific line numbers, modifying your EA source code after a test run can make those links point to the wrong lines. **Source Snapshots** solve this by copying all referenced MQL source files into a `snapshot/` folder next to the log file the first time you open a report.
+
+**Enable it:**
+
+```jsonc
+// settings.json
+"mql_tools.TradeReport.SnapshotSources": true
+```
+
+When a snapshot exists the Trade Report shows **two clickable badges** per source location:
+- **Green badge** — opens the **snapshot** (frozen copy from test time, line numbers always match)
+- **Yellow badge** — opens the **current** (live) file in your workspace
+
+The dashboard also marks runs that have a snapshot with a small **snapshot** label.
+
+> **Warning:** Enabling this setting increases disk usage because a full copy of every referenced source file is stored per run. If you run many tests the extra space can add up — disable the setting or delete `snapshot/` folders you no longer need.
+
+---
+
+### Run Backtest
+
+Launch an MT5 Strategy Tester run for your EA directly from VS Code — without touching the MetaTrader UI.
+
+**Requires:** TradeReportServer running (or auto-started) and a `tester.ini` file in the EA's folder.
+
+**How to use:**
+
+1. Open any `.mq5`, `.mq4`, or `.mqh` file belonging to your EA.
+2. Press `Ctrl+Alt+T`, click the **⚗ Run Backtest** button in the editor title bar, or run `MQL: Run Backtest` from the Command Palette.
+3. Select the EA (auto-detected from your current file, or pick from a list).
+4. Choose the symbol and date range (pre-filled from `tester.ini`).
+5. MT5 launches the Strategy Tester in the background. A progress notification tracks elapsed time.
+6. When the test finishes, the **Trade Report Dashboard** opens automatically with the new results.
+
+**Settings:**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mql_tools.Backtest.PromptForParameters` | `true` | Show symbol/date prompts before running. Set `false` to use `tester.ini` defaults silently. |
+| `mql_tools.Backtest.AutoOpenReport` | `true` | Open the Trade Report Dashboard when the test completes. |
+| `mql_tools.Backtest.AutoStartServer` | `true` | Auto-start TradeReportServer if it isn't already running. |
+| `mql_tools.Backtest.ServerPort` | `3002` | Port used by TradeReportServer. |
+| `mql_tools.ShowButton.RunBacktest` | `true` | Show/hide the toolbar button on MQL files. |
+
+**Notes:**
+- The test runs fully inside MT5 — cancelling the VS Code progress notification only stops monitoring, not the MT5 test itself.
+- A `tester.ini` file must exist in the EA's folder (e.g. `Experts/Trading/MyEA/tester.ini`) for the server to know the default test configuration.
+
+---
+
+### MQL Debugger (Real-Time Variable Inspection)
+
+Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The extension automatically injects telemetry code at your VS Code breakpoints, compiles a temporary instrumented build, and streams variable states back to a live debug dashboard — no MetaEditor debugger required.
+
+**How to use:**
+
+1. Open the `.mq5`, `.mq4`, or `.mqh` file you want to debug.
+2. Place breakpoints in the editor margin (click to the left of the line numbers) where you want to inspect variables.
+3. Click the **Start Debugging** (bug icon) button in the editor title bar, or press `Ctrl+Alt+D`, or run `MQL: Start Debugging` from the Command Palette.
+   - *Starting from an `.mqh` file automatically resolves dependencies and asks which main EA to instrument.*
+4. The extension will automatically:
+   - Deploy `MqlDebug.mqh` to your MetaTrader `Include/` folder (always up to date).
+   - Instrument all relevant source files (main EA + included headers with breakpoints).
+   - Compile a temporary `*.mql_dbg_build.ex5` file without touching your original `.ex5`.
+   - Start watching the debug log file.
+   - Open the **MQL Debug panel** in VS Code.
+5. In MetaTrader, attach the newly compiled EA/Script to a chart.
+6. As the EA executes and hits breakpoints, variables populate and update in real-time in the debug dashboard.
+7. When finished, click **Stop Session** in the notification or run `MQL: Stop Debugging`.
+
+#### What variables are automatically watched
+
+At each breakpoint the extension automatically collects variables into two tiers depending on the `mql_tools.Debug.DetailLevel` setting:
+
+**Default mode** (always active):
+
+| Source | Example |
+|--------|---------|
+| Function parameters | `double price`, `int magic` |
+| Local variables declared before the breakpoint | `int bar = 0;` |
+| Member access expressions used in the function | `g_timers.lastTime`, `this.m_count`, `a.b.c` |
+| Implicit class members referenced near the breakpoint | `m_lotSize` used inside a class method |
+
+**Deep Analysis mode** (`mql_tools.Debug.DetailLevel: deepAnalysis`) — additionally:
+
+| Source | Example |
+|--------|---------|
+| Global primitive variables referenced within ±15 lines | `g_spread`, `g_signal` |
+| `input` / `sinput` parameter variables (always, no proximity filter) | `InpLotSize`, `InpMaxOrders` |
+| Primitive fields of local class-typed variables | `order.lots`, `order.openPrice` |
+
+**Supported types:** `int`, `uint`, `short`, `ushort`, `char`, `uchar`, `long`, `ulong`, `double`, `float`, `string`, `bool`, `datetime`, `color`, common `ENUM_*` types, and arrays of numeric types.
+
+#### Manual watch annotations
+
+Add a `// @watch` comment near any breakpoint to explicitly name variables that should be watched, even if the auto-detector would miss them:
+
+```mql5
+// @watch myVar otherVar
+SomeFunction();  // ← breakpoint here
+```
+
+Multiple variables can be listed on one line. Annotated variables are always watched first.
+
+#### Breakpoint conditions
+
+VS Code conditional breakpoints are fully supported. Set a condition in the breakpoint editor and the injected code wraps the telemetry in an `if` block — the EA only pauses when the condition is true.
+
+#### Pause / Continue (blocking breakpoints)
+
+Each breakpoint also injects a `MQL_DBG_PAUSE` call, which spin-waits until VS Code sends a **Continue** command (by stopping the debug session or using the Stop button). This lets you inspect a frozen state before the EA resumes.
+
+> **Warning:** The EA thread is fully blocked while paused. No `OnTick`/`OnTimer` events fire. Use only on demo accounts or in the Strategy Tester.
+> Auto-resumes after 120 seconds as a safety failsafe.
+
+#### Call stack tracking
+
+Functions containing breakpoints automatically get `ENTER`/`EXIT` instrumentation injected, so the debug dashboard shows a live call stack as functions are entered and returned.
+
+#### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mql_tools.Debug.DetailLevel` | `default` | `default`: locals + member access. `deepAnalysis`: also global primitives, `input` vars, and class field expansion. |
+| `mql_tools.ShowButton.StartDebugging` | `true` | Show/hide the toolbar bug button on MQL files. |
+
+**Notes:**
+- Class-typed variables are not serialized directly (would cause compile errors). Only their primitive/enum fields are watched.
+- If an injection point is unsafe (e.g. inside a braceless single-line block), the debugger warns and skips that line. Use `// @watch` or add a statement to create a safe injection point.
+- The instrumented build uses `.mql_dbg_build` in the filename — never commit or deploy these files.
+
+---
 
 ### Troubleshooting clangd diagnostics (MQL-specific)
 

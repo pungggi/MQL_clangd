@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "Chemin vers \"metaeditor.exe\" : MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "Chemin vers \"terminal.exe\" : MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "Chemin vers \"terminal64.exe\" : MQL5",
-    "mql_tools.configuration.Include4Dir.description": "Chemin vers le dossier \"Include\" : MQL4 (facultatif)",
-    "mql_tools.configuration.Include5Dir.description": "Chemin vers le dossier \"Include\" : MQL5 (facultatif)",
+    "mql_tools.configuration.Include4Dir.description": "Chemin vers le dossier de données MQL4 (contenant Include, Logs, etc.). Essentiel pour les en-têtes de bibliothèque et les journaux d'exécution en direct. Automatiquement déduit si laissé vide.",
+    "mql_tools.configuration.Include5Dir.description": "Chemin vers le dossier de données MQL5 (contenant Include, Logs, etc.). Essentiel pour les en-têtes de bibliothèque et les journaux d'exécution en direct. Automatiquement déduit si laissé vide.",
     "mql_tools.configuration.Portable4.description": "Activer le mode portable pour MetaTrader 4 (utilise le commutateur /portable)",
     "mql_tools.configuration.Portable5.description": "Activer le mode portable pour MetaTrader 5 (utilise le commutateur /portable)",
     "mql_tools.configuration.ShowButtonCompile.description": "Afficher le bouton de compilation",
@@ -27,6 +27,7 @@
     "mql_tools.commands.Addicon.title": "Ajouter des icônes au thème",
     "mql_tools.commands.Showfiles.title": "Afficher/masquer les fichiers ex4/ex5",
     "mql_tools.commands.InsNameMQL.title": "Insérer le nom de fichier 'mq4/mq5' dans le document \"mqh\"",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "Insérer MQH comme #include",
     "mql_tools.commands.InsResource.title": "Insérer BMP/WAV comme #resource",
     "mql_tools.commands.InsImport.title": "Insérer DLL/EX5 comme #import",
@@ -35,5 +36,9 @@
     "mql_tools.commands.openInME.title": "Ouvrir dans 'MetaEditor'",
     "mql_tools.commands.openTradingTerminal.title": "Ouvrir le terminal de trading",
     "mql_tools.commands.createCommentary.title": "Créer un commentaire de fonction",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Signaler un diagnostic clangd bruyant"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Signaler un diagnostic clangd bruyant",
+    "mql_tools.commands.runBacktest.title": "Exécuter le backtest",
+    "mql_tools.commands.startDebugging.title": "Démarrer la session de débogage MQL",
+    "mql_tools.commands.stopDebugging.title": "Arrêter la session de débogage MQL",
+    "mql_tools.commands.showStartupPage.title": "Afficher la page d'accueil"
 }

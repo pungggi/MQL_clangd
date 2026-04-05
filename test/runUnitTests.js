@@ -23,6 +23,8 @@ const mocha = new Mocha({
 });
 
 // Add the test files
+mocha.addFile(path.resolve(__dirname, 'repro_log_parser.test.js'));
+mocha.addFile(path.resolve(__dirname, 'debugInstrumentation.test.js'));
 mocha.addFile(path.resolve(__dirname, 'suite/logic.test.js'));
 mocha.addFile(path.resolve(__dirname, 'suite/extension.test.js'));
 

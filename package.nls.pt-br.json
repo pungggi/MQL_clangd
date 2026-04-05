@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "Caminho para \"metaeditor.exe\": MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "Caminho para \"terminal.exe\": MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "Caminho para \"terminal64.exe\": MQL5",
-    "mql_tools.configuration.Include4Dir.description": "Caminho para a pasta \"Include\": MQL4 (opcional)",
-    "mql_tools.configuration.Include5Dir.description": "Caminho para a pasta \"Include\": MQL5 (opcional)",
+    "mql_tools.configuration.Include4Dir.description": "Caminho para a Pasta de Dados MQL4 (contendo Include, Logs, etc.). Essencial para cabeçalhos de biblioteca e Live Runtime Logs. Inferido automaticamente se deixado em branco.",
+    "mql_tools.configuration.Include5Dir.description": "Caminho para a Pasta de Dados MQL5 (contendo Include, Logs, etc.). Essencial para cabeçalhos de biblioteca e Live Runtime Logs. Inferido automaticamente se deixado em branco.",
     "mql_tools.configuration.Portable4.description": "Habilitar modo portátil para MetaTrader 4 (usa a opção /portable)",
     "mql_tools.configuration.Portable5.description": "Habilitar modo portátil para MetaTrader 5 (usa a opção /portable)",
     "mql_tools.configuration.ShowButtonCompile.description": "Mostrar botão de compilação",
@@ -27,6 +27,7 @@
     "mql_tools.commands.Addicon.title": "Adicionar ícones ao tema",
     "mql_tools.commands.Showfiles.title": "Mostrar/ocultar arquivos ex4/ex5",
     "mql_tools.commands.InsNameMQL.title": "Inserir nome do arquivo 'mq4/mq5' no documento \"mqh\"",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "Inserir MQH como #include",
     "mql_tools.commands.InsResource.title": "Inserir BMP/WAV como #resource",
     "mql_tools.commands.InsImport.title": "Inserir DLL/EX5 como #import",
@@ -35,5 +36,9 @@
     "mql_tools.commands.openInME.title": "Abrir no 'MetaEditor'",
     "mql_tools.commands.openTradingTerminal.title": "Abrir terminal de negociação",
     "mql_tools.commands.createCommentary.title": "Criar comentário de função",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "Relatar diagnóstico clangd ruidoso"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "Relatar diagnóstico clangd ruidoso",
+    "mql_tools.commands.runBacktest.title": "Executar Backtest",
+    "mql_tools.commands.startDebugging.title": "Iniciar sessão de depuração MQL",
+    "mql_tools.commands.stopDebugging.title": "Parar sessão de depuração MQL",
+    "mql_tools.commands.showStartupPage.title": "Mostrar página de boas-vindas"
 }

@@ -13,7 +13,7 @@ function getLightweightDiagnostics() {
 
 // Debounce timers per document
 const diagnosticTimers = new Map();
-const DEBOUNCE_DELAY = 300; // ms
+const DEBOUNCE_DELAY = 600; // ms
 
 /**
  * Analyze document and return lightweight diagnostics

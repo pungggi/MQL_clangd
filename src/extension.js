@@ -3,6 +3,7 @@ const url = require('url');
 const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const pathModule = require('path');
 
 const sleep = require('util').promisify(setTimeout);
@@ -30,11 +31,11 @@ let autoCheckDocVersions = new Map(); // Track document versions to ignore our o
 // Guard to prevent CheckOnSave from re-triggering itself when Compile() saves files.
 let internalSaveDepth = 0;
 const lg = require('./language');
+const { tf } = require('./timeUtils');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
-const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider } = require('./provider');
-const { obj_items } = require('./provider');
+const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged } = require('./createProperties');
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
@@ -56,6 +57,17 @@ const {
     cleanupBatchFile
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
+const { TradeReportDashboard } = require('./tradeReportDashboard');
+const { runBacktest, stopServer: stopBacktestServer } = require('./backtestRunner');
+const {
+    bridge: debugBridge,
+    COMPILE_MODE_CHECK,
+    COMPILE_MODE_COMPILE,
+    COMPILE_MODE_SCRIPT
+} = require('./debugBridge');
+const { MqlDebugAdapter } = require('./debugAdapter');
+const { store: debugStore } = require('./debugStateStore');
+const { showStartupPage } = require('./startupPage');
 
 
 // =============================================================================
@@ -65,7 +77,7 @@ const logTailer = require('./logTailer');
 let spellcheckIndex = null;
 
 /**
- * Build and cache the spellcheck index from obj_items
+ * Build and cache the spellcheck index from items.json
  * Filters to group=2 (functions) and indexes by first character for fast lookup
  * @returns {{ byFirstChar: Object<string, string[]>, all: Set<string> }}
  */
@@ -74,10 +86,11 @@ function getSpellcheckIndex() {
 
     const byFirstChar = {};
     const all = new Set();
+    const items = getObjItems();
 
-    for (const name in obj_items) {
+    for (const name in items) {
         // Only include functions (group 2) with reasonable length
-        if (obj_items[name].group === 2 && name.length >= 3) {
+        if (items[name].group === 2 && name.length >= 3) {
             all.add(name);
             const firstChar = name[0].toUpperCase();
             if (!byFirstChar[firstChar]) byFirstChar[firstChar] = [];
@@ -337,8 +350,14 @@ function inferMqlDataDirFromPath(filePath, isMql5) {
 }
 
 /**
- * Compile a single file path
- * Extracted from Compile() to support compiling multiple targets
+ * Compile a single file path.
+ *
+ * @param {number} rt           - Compile mode (COMPILE_MODE_CHECK, COMPILE_MODE_COMPILE, COMPILE_MODE_SCRIPT)
+ * @param {string} pathToCompile - Absolute path to the MQL source file
+ * @param {object} _context      - VS Code extension context
+ * @returns {Promise<boolean|string>} - Returns false/null on success, true for generic compilation
+ *                                      errors (logged to output/problems), or a string for specific
+ *                                      setup/environment errors.
  */
 async function compilePath(rt, pathToCompile, _context) {
     const config = vscode.workspace.getConfiguration('mql_tools');
@@ -386,7 +405,7 @@ async function compilePath(rt, pathToCompile, _context) {
             }
         }
     } else {
-        return undefined;
+        return `Unsupported file extension: ${extension}`;
     }
 
     if (isMql5) {
@@ -408,23 +427,23 @@ async function compilePath(rt, pathToCompile, _context) {
 
     // Set teq label based on operation type
     switch (rt) {
-        case 0: teq = lg['checking'];
+        case COMPILE_MODE_CHECK: teq = lg['checking'];
             break;
-        case 1: teq = lg['compiling'];
+        case COMPILE_MODE_COMPILE: teq = lg['compiling'];
             break;
-        case 2: teq = lg['comp_usi_script'];
+        case COMPILE_MODE_SCRIPT: teq = lg['comp_usi_script'];
             break;
     }
 
     // Early validation - before Promise
     if (!fs.existsSync(MetaDir)) {
         vscode.window.showErrorMessage(CommM);
-        return undefined;
+        return CommM;
     }
 
     if (incDir && !fs.existsSync(incDir)) {
         vscode.window.showErrorMessage(CommI);
-        return undefined;
+        return CommI;
     }
 
     const portableSwitch = generatePortableSwitch(portableMode);
@@ -445,8 +464,9 @@ async function compilePath(rt, pathToCompile, _context) {
         // Validate MetaEditor path format (must be Unix path, not Windows path)
         const pathValidation = validateWinePath(MetaDir);
         if (!pathValidation.valid) {
-            vscode.window.showErrorMessage(`Wine Configuration Error: ${pathValidation.error}`);
-            return undefined;
+            const wineErr = `Wine Configuration Error: ${pathValidation.error}`;
+            vscode.window.showErrorMessage(wineErr);
+            return wineErr;
         }
 
         // When no Include dir is configured, try to infer the MQL data folder
@@ -512,8 +532,9 @@ async function compilePath(rt, pathToCompile, _context) {
         // We do this here (after other conversions) to ensure we have it for buildWineCmd
         const metaResult = await toWineWindowsPath(MetaDir, wineBinary, winePrefix);
         if (!metaResult.success) {
-            outputChannel.appendLine(`[Wine] MetaEditor path conversion failed: ${metaResult.error}`);
-            return undefined;
+            const wineMetaErr = `[Wine] MetaEditor path conversion failed: ${metaResult.error}`;
+            outputChannel.appendLine(wineMetaErr);
+            return wineMetaErr;
         }
         metaEditorWinPath = metaResult.path;
 
@@ -528,7 +549,7 @@ async function compilePath(rt, pathToCompile, _context) {
         } catch (batchErr) {
             outputChannel.appendLine(`[Error] Failed to create Wine batch file: ${batchErr.message}`);
             vscode.window.showErrorMessage(`Wine compilation setup failed: ${batchErr.message}`);
-            return undefined;
+            return batchErr.message || String(batchErr);
         }
         const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
         command = wineCmd.executable;
@@ -580,8 +601,10 @@ async function compilePath(rt, pathToCompile, _context) {
 
                 data = await fsPromises.readFile(logFile, 'ucs-2');
             } catch (err) {
+                const readErr = `${lg['err_read_log']} ${err.message}`;
                 outputChannel.appendLine(`[Error] Failed to read log file: ${err.message}`);
-                return vscode.window.showErrorMessage(`${lg['err_read_log']} ${err.message}`), resolve();
+                vscode.window.showErrorMessage(readErr);
+                return resolve(readErr);
             }
 
             config.LogFile.DeleteLog && fs.unlink(logFile, (err) => {
@@ -590,7 +613,7 @@ async function compilePath(rt, pathToCompile, _context) {
 
             // Pass the Wine prefix so replaceLog can convert Windows paths from
             // MetaEditor output to valid Linux paths when running under Wine.
-            log = replaceLog(data, rt === 0, useWine ? winePrefix : '');
+            log = replaceLog(data, rt === COMPILE_MODE_CHECK, useWine ? winePrefix : '');
 
             // Publish MetaEditor diagnostics to the Problems panel
             if (log.diagnostics.length > 0) {
@@ -620,7 +643,7 @@ async function compilePath(rt, pathToCompile, _context) {
 
             outputChannel.appendLine(`[${time}] ${teq} ${targetLabel} [${timeCompile}s]`);
 
-            if (rt === 2 && !log.error) {
+            if (rt === COMPILE_MODE_SCRIPT && !log.error) {
                 if (useWine) {
                     try {
                         const wineEnv = getWineEnv(config);
@@ -632,30 +655,33 @@ async function compilePath(rt, pathToCompile, _context) {
 
                         childProcess.spawn(wineCmd.executable, wineCmd.args, buildSpawnOptions({ env: wineEnv }))
                             .on('error', (error) => {
-                                outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
+                                const startErr = `${lg['err_start_script']}: ${error.message}`;
+                                outputChannel.appendLine(`[Error]  ${startErr}`);
                                 cleanupBatchFile(rt2BatFile.unixPath);
-                                resolve();
+                                resolve(startErr);
                             })
                             .on('close', () => {
                                 outputChannel.appendLine(String(log.text + lg['info_log_compile']));
                                 cleanupBatchFile(rt2BatFile.unixPath);
-                                resolve();
+                                resolve(false);
                             });
                     } catch (batchErr) {
-                        outputChannel.appendLine(`[Error] Failed to create Wine batch file for script execution: ${batchErr.message}`);
-                        resolve();
+                        const batchFailErr = `Failed to create Wine batch file for script execution: ${batchErr.message}`;
+                        outputChannel.appendLine(`[Error] ${batchFailErr}`);
+                        resolve(batchFailErr);
                     }
                 } else {
                     // Direct execution on Windows – windowsVerbatimArguments keeps quotes intact (fixes #6)
                     const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
                     childProcess.spawn(executable, args, { shell: false, windowsVerbatimArguments: true })
                         .on('error', (error) => {
-                            outputChannel.appendLine(`[Error]  ${lg['err_start_script']}: ${error.message}`);
-                            resolve();
+                            const startErr = `${lg['err_start_script']}: ${error.message}`;
+                            outputChannel.appendLine(`[Error]  ${startErr}`);
+                            resolve(startErr);
                         })
                         .on('close', () => {
                             outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                            resolve();
+                            resolve(false);
                         });
                 }
             } else {
@@ -709,6 +735,7 @@ async function compilePath(rt, pathToCompile, _context) {
         });
     });
 }
+
 
 function shouldFocusProblemsPanel(hasErrors, options = {}) {
     return Boolean(hasErrors) && !options.background;
@@ -773,13 +800,13 @@ async function Compile(rt, context, options = {}) {
             if (magicPath && fs.existsSync(magicPath)) {
                 pathsToCompile = [magicPath];
             } else {
-                // If rt === 0 (checking), we can't fall back to current file for headers effectively
+                // If rt === COMPILE_MODE_CHECK (checking), we can't fall back to current file for headers effectively
                 // but we should check if we should allow checking the header itself or just warn.
-                // Existing behavior for rt !== 0 was to warn.
-                if (rt !== 0) {
+                // Existing behavior for rt !== COMPILE_MODE_CHECK was to warn.
+                if (rt !== COMPILE_MODE_CHECK) {
                     return vscode.window.showWarningMessage(lg['mqh']);
                 } else {
-                    // For rt === 0, if no target found, just check the header itself as a fallback
+                    // For rt === COMPILE_MODE_CHECK, if no target found, just check the header itself as a fallback
                     pathsToCompile = [document.fileName];
                 }
             }
@@ -801,7 +828,7 @@ async function Compile(rt, context, options = {}) {
 
     // const startT = new Date();
     // const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
-    const teq = rt === 0 ? lg['checking'] : (rt === 1 ? lg['compiling'] : lg['comp_usi_script']);
+    const teq = rt === COMPILE_MODE_CHECK ? lg['checking'] : (rt === COMPILE_MODE_COMPILE ? lg['compiling'] : lg['comp_usi_script']);
 
 
     let progressTitle = buildCompileProgressTitle(teq);
@@ -1008,20 +1035,6 @@ function FindParentFile() {
     } else {
         return undefined;
     }
-}
-
-function tf(date, t, d) {
-
-    switch (t) {
-        case 'Y': d = date.getFullYear(); break;
-        case 'M': d = date.getMonth() + 1; break;
-        case 'D': d = date.getDate(); break;
-        case 'h': d = date.getHours(); break;
-        case 'm': d = date.getMinutes(); break;
-        case 's': d = date.getSeconds(); break;
-    }
-
-    return d < 10 ? '0' + d.toString() : d.toString();
 }
 
 function extractPropertyVersion(text) {
@@ -2292,10 +2305,107 @@ class MqlCodeActionProvider {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Shared MQL path helpers (used by openTradeReport and runBacktest)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the MQL Experts/ folder via multiple strategies.
+ * @returns {string|null}
+ */
+function findExpertsDir() {
+    // Strategy 1: logTailer already resolved basePath (Live Log was used)
+    if (logTailer.basePath) {
+        const d = pathModule.join(logTailer.basePath, 'Experts');
+        if (fs.existsSync(d)) return d;
+    }
+
+    // Strategy 2: User-configured Include dir setting
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    const version = (logTailer.detectMqlVersion ? logTailer.detectMqlVersion() : null) || 'mql5';
+    const settingKey = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
+    const rawIncDir = config.get(`Metaeditor.${settingKey}`);
+    if (rawIncDir) {
+        const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const resolvedIncDir = resolvePathRelativeToWorkspace(rawIncDir, wsFolder);
+        if (resolvedIncDir) {
+            let base = resolvedIncDir;
+            if (pathModule.basename(base).toLowerCase() === 'include') base = pathModule.dirname(base);
+            const d = pathModule.join(base, 'Experts');
+            if (fs.existsSync(d)) return d;
+        }
+    }
+
+    // Strategy 3: Scan MetaQuotes AppData — find all terminal data folders
+    const appData = process.env.APPDATA || pathModule.join(os.homedir(), 'AppData', 'Roaming');
+    const mqRoot = pathModule.join(appData, 'MetaQuotes', 'Terminal');
+    if (fs.existsSync(mqRoot)) {
+        const mqlDir = version === 'mql4' ? 'MQL4' : 'MQL5';
+        let candidates = [];
+        try {
+            for (const termId of fs.readdirSync(mqRoot)) {
+                try {
+                    const d = pathModule.join(mqRoot, termId, mqlDir, 'Experts');
+                    if (fs.existsSync(d)) candidates.push(d);
+                } catch (err) {
+                    if (outputChannel) {
+                        outputChannel.appendLine(`Error checking path for termId ${termId} in ${mqRoot} (${mqlDir}): ${err.message}`);
+                    }
+                }
+            }
+        } catch (err) {
+            if (outputChannel) {
+                outputChannel.appendLine(`Error reading MetaQuotes root directory ${mqRoot}: ${err.message}`);
+            }
+        }
+        // Pick the one with the most recently modified Experts subfolder
+        if (candidates.length === 1) return candidates[0];
+        if (candidates.length > 1) {
+            candidates.sort((a, b) => {
+                try { return fs.statSync(b).mtime - fs.statSync(a).mtime; } catch (err) {
+                    if (outputChannel) {
+                        outputChannel.appendLine(`Error comparing modification times for candidates ${a} and ${b}: ${err.message}`);
+                    }
+                    return 0;
+                }
+            });
+            return candidates[0];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Derive the MQL5 (or MQL4) root from the Experts dir.
+ * 
+ * ASSUMPTION: This assumes the 'Experts/' directory is a direct child of the 
+ * MQL root (e.g., MQL5/Experts). Since findExpertsDir() only searches standard 
+ * terminal/data paths, this function returns pathModule.dirname(expertsDir).
+ * This may be inaccurate for non-standard or deeply nested layouts; callers 
+ * should validate the returned path if strict accuracy is required.
+ * 
+ * @returns {string|null}
+ */
+function findMql5Root() {
+    const expertsDir = findExpertsDir();
+    if (!expertsDir) return null;
+    return pathModule.dirname(expertsDir); // Experts -> MQL5
+}
+
 function activate(context) {
     // Initialize VS Code API-dependent variables (must be inside activate, not at module level)
     diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
     outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
+
+    // Show Startup Page PoC
+    showStartupPage(context);
+
+
+    // Clear symbol cache when a document is closed
+    context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((document) => {
+        clearSymbolCache(document.uri.toString());
+    }));
 
     const extensionId = 'ngsoftware.mql-tools';
     const currentVersion = vscode.extensions.getExtension(extensionId)?.packageJSON.version;
@@ -2380,10 +2490,11 @@ function activate(context) {
         }
     });
 
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(0, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => Compile(1, context)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFileAndOpenTerminal', () => Compile(1, context, { onSuccess: OpenTradingTerminal })));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => Compile(2, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.showStartupPage', () => showStartupPage(context, true)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(COMPILE_MODE_CHECK, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFile', () => Compile(COMPILE_MODE_COMPILE, context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileFileAndOpenTerminal', () => Compile(COMPILE_MODE_COMPILE, context, { onSuccess: OpenTradingTerminal })));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.compileScript', () => Compile(COMPILE_MODE_SCRIPT, context)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.help', (keyword, version) => Help(keyword, version)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.offlineHelp', () => OfflineHelp()));
 
@@ -2505,7 +2616,7 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsTime', () => InsertTime()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.InsIcon', () => InsertIcon()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => OpenFileInMetaEditor(uri)));
-    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', () => OpenTradingTerminal()));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', (eaPath, mql5Root) => OpenTradingTerminal(eaPath, mql5Root)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));
 
@@ -2548,7 +2659,8 @@ function activate(context) {
         ];
 
         const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: `Current: ${current === 'livelog' ? 'LiveLog (Real-time)' : 'Standard Journal'}`
+            placeHolder: `Current: ${current === 'livelog' ? 'LiveLog (Real-time)' : 'Standard Journal'}`,
+            title: 'MQL: Switch Log Tail Mode'
         });
 
         if (selected && selected.mode !== current) {
@@ -2563,6 +2675,114 @@ function activate(context) {
     }));
 
     logTailer.initStatusBar();
+
+    // Trade Report Dashboard — discover EAs and their test runs
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradeReport', () => {
+        const expertsDir = findExpertsDir();
+        if (!expertsDir) {
+            vscode.window.showErrorMessage(
+                'Cannot find MQL Experts folder. Please configure your MQL Include directory setting.',
+                'Configure'
+            ).then(sel => {
+                if (sel === 'Configure') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Metaeditor');
+                }
+            });
+            return;
+        }
+
+        try {
+            TradeReportDashboard.createOrShow(context, expertsDir);
+        } catch (error) {
+            console.error('Failed to create or show Trade Report Dashboard:', error);
+            vscode.window.showErrorMessage(`Failed to open Trade Report Dashboard: ${error.message}`);
+        }
+    }));
+
+    // Run Backtest — launch MT5 Strategy Tester via TradeReportServer
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.runBacktest', () => {
+        return runBacktest(context, {
+            findMql5Root,
+            resolveCompileTargets,
+        });
+    }));
+
+    // MQL Debugger Bridge — DAP adapter shim
+    context.subscriptions.push(
+        vscode.debug.registerDebugAdapterDescriptorFactory('mql5', {
+            createDebugAdapterDescriptor(session) {
+                const cfg = session.configuration;
+                const adapter = new MqlDebugAdapter(
+                    debugStore,
+                    debugBridge,
+                    cfg.program,
+                    cfg._mql5Root,
+                    compilePath,
+                    context,
+                    cfg._originalPath
+                );
+                return new vscode.DebugAdapterInlineImplementation(adapter);
+            }
+        })
+    );
+
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.startDebugging', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('MQL Debug: Open an MQL source file first.');
+            return;
+        }
+        let sourcePath = editor.document.uri.fsPath;
+        const ext = pathModule.extname(sourcePath).toLowerCase();
+        if (!['.mq4', '.mq5', '.mqh'].includes(ext)) {
+            vscode.window.showErrorMessage('MQL Debug: The active file must be an .mq5, .mq4, or .mqh EA/script/header.');
+            return;
+        }
+
+        if (ext === '.mqh') {
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+            if (!workspaceFolder) {
+                vscode.window.showErrorMessage('MQL Debug: .mqh file must be inside a workspace folder to resolve its compile target.');
+                return;
+            }
+            const targets = await resolveCompileTargets({
+                document: editor.document,
+                workspaceFolder,
+                context,
+                rt: COMPILE_MODE_COMPILE
+            });
+            if (!targets || targets.length === 0) {
+                return; // User cancelled or no targets
+            }
+            if (targets.length > 1) {
+                vscode.window.showInformationMessage(`MQL Debug: Multiple targets found. Debugging the first one: ${pathModule.basename(targets[0])}`);
+            }
+            sourcePath = targets[0];
+        }
+
+        const mql5Root = findMql5Root();
+        if (!mql5Root) {
+            vscode.window.showErrorMessage('MQL Debug: Cannot determine MQL5 root folder. Set Include5Dir in settings.');
+            return;
+        }
+
+        const originalPath = editor.document.uri.fsPath;
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri)
+            || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]);
+
+        await vscode.debug.startDebugging(workspaceFolder, {
+            type: 'mql5',
+            request: 'launch',
+            name: 'MQL Debug',
+            program: sourcePath,
+            _mql5Root: mql5Root,
+            _originalPath: originalPath,
+        });
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.stopDebugging', () => {
+        vscode.debug.stopDebugging();
+    }));
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider('mql-output', DefinitionProvider()));
@@ -2617,7 +2837,7 @@ function activate(context) {
             const checkingUri = activeDoc?.uri.toString();
 
             try {
-                await Compile(0, context, { background: true }); // Syntax check (no compilation)
+                await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check (no compilation)
             } finally {
                 // Record the final document version after our edits complete
                 // This prevents re-triggering from FixFormatting or save changes
@@ -2661,7 +2881,7 @@ function activate(context) {
 
         isAutoCheckRunning = true;
         try {
-            await Compile(0, context, { background: true }); // Syntax check
+            await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check
         } finally {
             isAutoCheckRunning = false;
         }
@@ -2677,7 +2897,7 @@ function activate(context) {
             if (['.mq4', '.mq5', '.mqh'].includes(ext)) {
                 isAutoCheckRunning = true;
                 try {
-                    await Compile(0, context, { background: true }); // Syntax check on startup
+                    await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check on startup
                 } finally {
                     isAutoCheckRunning = false;
                 }
@@ -2766,7 +2986,31 @@ function activate(context) {
 }
 
 function deactivate() {
-    logTailer.stop();
+    try {
+        logTailer.dispose();
+    } catch (error) {
+        console.error('Error during logTailer.dispose():', error);
+    }
+
+    try {
+        const mql5Root = findMql5Root();
+        const serverDir = mql5Root ? pathModule.join(mql5Root, 'Tools', 'TradeReportServer') : null;
+        stopBacktestServer(undefined, serverDir);
+    } catch (error) {
+        console.error('Error during stopBacktestServer():', error);
+    }
+
+    try {
+        debugBridge.stop();
+    } catch (error) {
+        console.error('Error during debugBridge.stop():', error);
+    }
+
+    try {
+        debugBridge.dispose();
+    } catch (error) {
+        console.error('Error during debugBridge.dispose():', error);
+    }
 }
 
 

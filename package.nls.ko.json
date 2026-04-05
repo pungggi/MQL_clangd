@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" 경로: MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" 경로: MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" 경로: MQL5",
-    "mql_tools.configuration.Include4Dir.description": "\"Include\" 폴더 경로: MQL4 (선택사항)",
-    "mql_tools.configuration.Include5Dir.description": "\"Include\" 폴더 경로: MQL5 (선택사항)",
+    "mql_tools.configuration.Include4Dir.description": "MQL4 데이터 폴더 경로 (Include, Logs 등 포함). 라이브러리 헤더 및 실시간 런타임 로그에 필수적입니다. 비워 두면 자동으로 추정됩니다.",
+    "mql_tools.configuration.Include5Dir.description": "MQL5 데이터 폴더 경로 (Include, Logs 등 포함). 라이브러리 헤더 및 실시간 런타임 로그에 필수적입니다. 비워 두면 자동으로 추정됩니다.",
     "mql_tools.configuration.Portable4.description": "MetaTrader 4 휴대용 모드 활성화 (/portable 스위치 사용)",
     "mql_tools.configuration.Portable5.description": "MetaTrader 5 휴대용 모드 활성화 (/portable 스위치 사용)",
     "mql_tools.configuration.ShowButtonCompile.description": "컴파일 버튼 표시",
@@ -27,6 +27,7 @@
     "mql_tools.commands.Addicon.title": "테마에 아이콘 추가",
     "mql_tools.commands.Showfiles.title": "ex4/ex5 파일 표시/숨기기",
     "mql_tools.commands.InsNameMQL.title": "\"mqh\" 문서에 'mq4/mq5' 파일 이름 삽입",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "MQH를 #include로 삽입",
     "mql_tools.commands.InsResource.title": "BMP/WAV를 #resource로 삽입",
     "mql_tools.commands.InsImport.title": "DLL/EX5를 #import로 삽입",
@@ -35,5 +36,9 @@
     "mql_tools.commands.openInME.title": "'MetaEditor'에서 열기",
     "mql_tools.commands.openTradingTerminal.title": "트레이딩 터미널 열기",
     "mql_tools.commands.createCommentary.title": "함수 주석 생성",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "시끄러운 clangd 진단 보고"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "시끄러운 clangd 진단 보고",
+    "mql_tools.commands.runBacktest.title": "백테스트 실행",
+    "mql_tools.commands.startDebugging.title": "MQL 디버그 세션 시작",
+    "mql_tools.commands.stopDebugging.title": "MQL 디버그 세션 중지",
+    "mql_tools.commands.showStartupPage.title": "시작 페이지 표시"
 }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.32 (pre-release)
+
+### Features
+- **MQL Debugger** (`Ctrl+Alt+D`): Set breakpoints in VS Code, then debug live MQL EAs/Scripts without leaving the editor. Auto-instruments source files, compiles a debug build, and streams variable state to a live dashboard. → [Full guide](media/tabs/tab-debugger.html)
+  - Auto-watches locals, parameters, and class members; `// @watch` annotations for manual additions; conditional breakpoints; call stack tracking; 120 s auto-resume safety.
+  - Breakpoint probes reload from config every ~200 ms — no recompile needed when breakpoints change.
+  - EA auto-attaches to the first chart when the source is inside `MQL5\Experts\`.
+  - New settings: `mql_tools.Debug.DetailLevel` (`default` | `deepAnalysis`), `mql_tools.Debug.CloseTerminalOnExit` (default: `true`).
+- **Trade Report Dashboard**: Interactive webview for MT5 Strategy Tester results — trade summary, P&L, trade table, and filterable log viewer. Click-to-source navigation via LiveLog tags; source snapshots keep links accurate after edits. → [Full guide](media/tabs/tab-tradereport.html)
+- **Run Backtest** (`Ctrl+Alt+T`): Trigger MT5 Strategy Tester from VS Code, monitor progress, and auto-open the Trade Report on completion. → [Full guide](media/tabs/tab-backtest.html)
+  - New settings: `mql_tools.Backtest.ServerPort`, `AutoStartServer`, `PromptForParameters`, `AutoOpenReport`, `mql_tools.ShowButton.RunBacktest`.
+- **LiveLog — Source Location Tags**: `LogDebug/Info/Warn/Error/Trade` macros now embed `{File:Function:Line}` tags for click-to-source in the Trade Report. → [Full guide](media/tabs/tab-livelog.html)
+- **Welcome Page**: Opens on first launch of each version with feature guides. Re-open via `MQL: Open Welcome Page`.
+
+### Snippets
+- Added `LogInfo`, `LogDebug`, `LogWarn`, `LogError`, `LogTrade` snippets.
+
+### Improvements
+- **Standard Library Stubs**: Regenerated with improved stub generator (better template handling, forward-declaration skipping, manual extras block).
+- **Compatibility Header**: Extended `mql_clangd_compat.h` with additional MQL built-in types and macros.
+
 ## 1.1.37
 
 ### Features

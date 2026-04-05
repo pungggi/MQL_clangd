@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to MQL Extension</title>
+    <style>
+        :root {
+            --primary-color: var(--vscode-button-background);
+            --primary-hover: var(--vscode-button-hoverBackground);
+            --text-color: var(--vscode-editor-foreground);
+            --bg-color: var(--vscode-editor-background);
+            --card-bg: var(--vscode-editorWidget-background);
+            --border-color: var(--vscode-widget-border);
+            --accent-color: var(--vscode-textLink-foreground);
+        }
+
+        body {
+            font-family: var(--vscode-font-family), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            font-weight: 300;
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 0;
+        }
+
+        .badge {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: var(--vscode-button-foreground);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        /* Tab navigation */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border-color);
+            margin-bottom: 30px;
+            gap: 4px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            padding: 10px 20px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            color: var(--vscode-descriptionForeground);
+            border-radius: 4px 4px 0 0;
+            transition: color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-color);
+            background-color: var(--vscode-list-hoverBackground);
+        }
+
+        .tab-btn.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+            background: none;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--accent-color);
+            font-size: 1.8em;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        h3 {
+            font-size: 1.3em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+
+        .step-list {
+            list-style-type: none;
+            padding-left: 0;
+            counter-reset: step-counter;
+        }
+
+        .step-list li {
+            position: relative;
+            padding-left: 45px;
+            margin-bottom: 25px;
+        }
+
+        .step-list li::before {
+            content: counter(step-counter);
+            counter-increment: step-counter;
+            position: absolute;
+            left: 0;
+            top: -2px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: var(--vscode-button-foreground);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .code-inline {
+            background-color: var(--vscode-textCodeBlock-background);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: var(--vscode-editor-font-family), monospace;
+            font-size: 0.9em;
+        }
+
+        .highlight-box {
+            background-color: color-mix(in srgb, var(--accent-color) 10%, transparent);
+            border-left: 4px solid var(--accent-color);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .warn-box {
+            border-left: 4px solid var(--vscode-editorWarning-foreground);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+            background-color: color-mix(in srgb, var(--vscode-editorWarning-foreground) 8%, transparent);
+        }
+
+        .actions {
+            margin-top: 40px;
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 0.9em;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 0.95em;
+        }
+
+        th {
+            background-color: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            text-align: left;
+            padding: 8px 12px;
+        }
+
+        td {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        button:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>MQL Clangd <span class="badge">v{{version}}</span></h1>
+            <p class="subtitle">Bringing modern development tools to MetaTrader</p>
+        </header>
+        <!-- Tab buttons -->
+        <nav class="tabs" role="tablist">
+            <button class="tab-btn active" id="btn-debugger" data-tab="debugger" role="tab" aria-selected="true"
+                aria-controls="tab-debugger" tabindex="0">MQL Debugger</button>
+            <button class="tab-btn" id="btn-livelog" data-tab="livelog" role="tab" aria-selected="false"
+                aria-controls="tab-livelog" tabindex="-1">Live Log</button>
+            <button class="tab-btn" id="btn-backtest" data-tab="backtest" role="tab" aria-selected="false"
+                aria-controls="tab-backtest" tabindex="-1">Run Backtest</button>
+            <button class="tab-btn" id="btn-tradereport" data-tab="tradereport" role="tab" aria-selected="false"
+                aria-controls="tab-tradereport" tabindex="-1">Trade Report</button>
+        </nav>
+
+        {{tab-debugger}}
+        {{tab-livelog}}
+        {{tab-backtest}}
+        {{tab-tradereport}}
+
+    </div>
+
+    <script nonce="{{nonce}}">
+        const vscode = acquireVsCodeApi();
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                    b.setAttribute('tabindex', '-1');
+                });
+                document.querySelectorAll('.tab-panel').forEach(p => {
+                    p.classList.remove('active');
+                    p.setAttribute('aria-hidden', 'true');
+                });
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                btn.setAttribute('tabindex', '0');
+                const panel = document.getElementById('tab-' + btn.dataset.tab);
+                if (panel) {
+                    panel.classList.add('active');
+                    panel.setAttribute('aria-hidden', 'false');
+                }
+            });
+        });
+
+        // Dismiss buttons (all tabs)
+        document.querySelectorAll('.dismiss-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                vscode.postMessage({ command: 'dismiss' });
+            });
+        });
+
+        // Arrow-key navigation for tabs (ARIA tabs pattern)
+        const tablist = document.querySelector('[role="tablist"]');
+        if (tablist) {
+            tablist.addEventListener('keydown', (e) => {
+                const tabs = [...document.querySelectorAll('[role="tab"]')];
+                const idx = tabs.indexOf(e.target);
+                if (idx === -1) return;
+                let next;
+                if (e.key === 'ArrowRight') next = tabs[(idx + 1) % tabs.length];
+                else if (e.key === 'ArrowLeft') next = tabs[(idx - 1 + tabs.length) % tabs.length];
+                else if (e.key === 'Home') next = tabs[0];
+                else if (e.key === 'End') next = tabs[tabs.length - 1];
+                if (next) {
+                    e.preventDefault();
+                    next.focus();
+                    next.click();
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

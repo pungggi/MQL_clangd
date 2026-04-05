@@ -4,8 +4,8 @@
     "mql_tools.configuration.Metaeditor5Dir.description": "\"metaeditor.exe\" 路径：MQL5",
     "mql_tools.configuration.Terminal4Dir.description": "\"terminal.exe\" 路径：MQL4",
     "mql_tools.configuration.Terminal5Dir.description": "\"terminal64.exe\" 路径：MQL5",
-    "mql_tools.configuration.Include4Dir.description": "\"Include\" 文件夹路径：MQL4（可选）",
-    "mql_tools.configuration.Include5Dir.description": "\"Include\" 文件夹路径：MQL5（可选）",
+    "mql_tools.configuration.Include4Dir.description": "MQL4 数据文件夹路径（包含 Include、Logs 等）。对于库头文件和实时运行时日志至关重要。如果留空，将自动推导。",
+    "mql_tools.configuration.Include5Dir.description": "MQL5 数据文件夹路径（包含 Include、Logs 等）。对于库头文件和实时运行时日志至关重要。如果留空，将自动推导。",
     "mql_tools.configuration.Portable4.description": "启用 MetaTrader 4 便携模式（使用 /portable 开关）",
     "mql_tools.configuration.Portable5.description": "启用 MetaTrader 5 便携模式（使用 /portable 开关）",
     "mql_tools.configuration.ShowButtonCompile.description": "显示编译按钮",
@@ -26,6 +26,7 @@
     "mql_tools.commands.Addicon.title": "添加图标到主题",
     "mql_tools.commands.Showfiles.title": "显示/隐藏 ex4/ex5 文件",
     "mql_tools.commands.InsNameMQL.title": "在 \"mqh\" 文档中插入 'mq4/mq5' 文件名",
+    "mql_tools.commands.InsMQL.title": "Insert MQ4/MQ5 as #include in MQH",
     "mql_tools.commands.InsNameMQH.title": "以 #include 形式插入 MQH",
     "mql_tools.commands.InsResource.title": "以 #resource 形式插入 BMP/WAV",
     "mql_tools.commands.InsImport.title": "以 #import 形式插入 DLL/EX5",
@@ -34,5 +35,9 @@
     "mql_tools.commands.openInME.title": "在 'MetaEditor' 中打开",
     "mql_tools.commands.openTradingTerminal.title": "打开交易终端",
     "mql_tools.commands.createCommentary.title": "创建函数注释",
-    "mql_tools.commands.reportNoisyDiagnostic.title": "报告嘈杂的 clangd 诊断"
+    "mql_tools.commands.reportNoisyDiagnostic.title": "报告嘈杂的 clangd 诊断",
+    "mql_tools.commands.runBacktest.title": "运行回测",
+    "mql_tools.commands.startDebugging.title": "启动 MQL 调试会话",
+    "mql_tools.commands.stopDebugging.title": "停止 MQL 调试会话",
+    "mql_tools.commands.showStartupPage.title": "显示欢迎页面"
 }

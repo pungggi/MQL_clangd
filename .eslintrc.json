@@ -4,6 +4,7 @@
         "es2022": true,
         "mocha": true
     },
+    "ignorePatterns": ["dist/", "node_modules/"],
     "extends": "eslint:recommended",
     "parserOptions": {
         "ecmaVersion": "latest",
