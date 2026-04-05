@@ -1379,7 +1379,6 @@ string StringSetChar(string string_var, int pos, ushort value);
 //| that cause 393 hard errors — not needed for MQL4 IntelliSense)   |
 //+------------------------------------------------------------------+
 #ifndef __MQL4__
-#include "mql5_stdlib_stubs.h"
 #endif
 
 #endif
