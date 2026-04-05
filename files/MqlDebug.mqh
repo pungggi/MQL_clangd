@@ -25,6 +25,7 @@
 //|   DBG|{ts}|{file}|{func}|{line}|BREAK|{label}                    |
 //|   DBG|{ts}|{file}|{func}|{line}|ENTER                            |
 //|   DBG|{ts}|{file}|{func}|{line}|EXIT                             |
+//|   DBG|{ts}|{file}|{func}|{line}|LOG|{message}                    |
 //+------------------------------------------------------------------+
 
 // Configuration
@@ -411,8 +412,16 @@ void MqlDebugPause() {
 
 #ifndef __clang__
 bool   __mqldbg_active[];
+int    __mqldbg_hitcount[];
+int    __mqldbg_hitcond_op[];   // 0=none, 1==, 2=>, 3=>=, 4=<, 5=<=, 6=%
+int    __mqldbg_hitcond_val[];
+bool   __mqldbg_logpoint[];
 #else
 bool   *__mqldbg_active = nullptr;
+int    *__mqldbg_hitcount = nullptr;
+int    *__mqldbg_hitcond_op = nullptr;
+int    *__mqldbg_hitcond_val = nullptr;
+bool   *__mqldbg_logpoint = nullptr;
 #endif
 int    __mqldbg_maxProbe = 0;
 uint   __mqldbg_lastReload = 0;
@@ -429,18 +438,32 @@ int MqlDebugInitProbes(int count) {
         __mqldbg_maxProbe = 0;
         return 0;
     }
-    if (ArrayResize(__mqldbg_active, count) < count) {
+    if (ArrayResize(__mqldbg_active, count) < count ||
+        ArrayResize(__mqldbg_hitcount, count) < count ||
+        ArrayResize(__mqldbg_hitcond_op, count) < count ||
+        ArrayResize(__mqldbg_hitcond_val, count) < count ||
+        ArrayResize(__mqldbg_logpoint, count) < count) {
         __mqldbg_maxProbe = 0;
         return -1;
     }
     ArrayFill(__mqldbg_active, 0, count, false);
+    ArrayFill(__mqldbg_hitcount, 0, count, 0);
+    ArrayFill(__mqldbg_hitcond_op, 0, count, 0);
+    ArrayFill(__mqldbg_hitcond_val, 0, count, 0);
+    ArrayFill(__mqldbg_logpoint, 0, count, false);
     __mqldbg_maxProbe = count;
     return 0;
 }
 
 //+------------------------------------------------------------------+
 //| Reload active probe IDs from the config file.                    |
-//| Format: comma-separated probe IDs, e.g. "3,17,42"                |
+//| Extended format: comma-separated entries, each is                 |
+//|   id[h<op><val>][L]                                              |
+//| where:                                                           |
+//|   id     = probe index (integer)                                 |
+//|   h<op><val> = hit condition:  op is =, >, G(>=), <, S(<=), %   |
+//|   L      = logpoint flag (log only, no pause)                    |
+//| Examples: "3,17h>5,42L,9h%3L"                                    |
 //|                                                                  |
 //| Return Value:                                                    |
 //|   Returns true ONLY when MqlDebugProcessCmd() indicates a        |
@@ -448,16 +471,19 @@ int MqlDebugInitProbes(int count) {
 //|   instructing the caller to early-exit. Returns false for normal |
 //|   operation (even if parsing MQLDEBUG_BP_CONFIG fails or the     |
 //|   file is missing).                                              |
-//|                                                                  |
-//| Side-effects:                                                    |
-//|   Parses MQLDEBUG_BP_CONFIG and populates the __mqldbg_active    |
-//|   array (bounds safeguarded by __mqldbg_maxProbe).               |
 //+------------------------------------------------------------------+
 bool MqlDebugLoadConfig() {
     // Check for STOP commands while not paused
     if (MqlDebugProcessCmd()) return true;
 
     ArrayFill(__mqldbg_active, 0, __mqldbg_maxProbe, false);
+    ArrayFill(__mqldbg_hitcond_op, 0, __mqldbg_maxProbe, 0);
+    ArrayFill(__mqldbg_hitcond_val, 0, __mqldbg_maxProbe, 0);
+    ArrayFill(__mqldbg_logpoint, 0, __mqldbg_maxProbe, false);
+    // NOTE: __mqldbg_hitcount is intentionally NOT reset here.
+    // Hit counts persist across config reloads so that changing a
+    // hit condition (e.g. "> 5" → "> 10") evaluates against the
+    // running total, matching standard DAP adapter behavior.
 
     int handle = FileOpen(MQLDEBUG_BP_CONFIG,
                           FILE_READ | FILE_TXT | FILE_ANSI |
@@ -478,19 +504,63 @@ bool MqlDebugLoadConfig() {
     for (int i = 0; i < cnt; i++) {
         StringTrimLeft(parts[i]);
         StringTrimRight(parts[i]);
-        if (parts[i] == "" || StringGetCharacter(parts[i], 0) < '0' ||
-            StringGetCharacter(parts[i], 0) > '9')
+        string token = parts[i];
+        int len = StringLen(token);
+        if (len == 0 || StringGetCharacter(token, 0) < '0' ||
+            StringGetCharacter(token, 0) > '9')
           continue;
-        int id = (int)StringToInteger(parts[i]);
-        if (id >= 0 && id < __mqldbg_maxProbe)
-            __mqldbg_active[id] = true;
+
+        // Parse probe ID (leading digits)
+        int pos = 0;
+        while (pos < len && StringGetCharacter(token, pos) >= '0' &&
+               StringGetCharacter(token, pos) <= '9')
+            pos++;
+        int id = (int)StringToInteger(StringSubstr(token, 0, pos));
+        if (id < 0 || id >= __mqldbg_maxProbe)
+            continue;
+        __mqldbg_active[id] = true;
+
+        // Parse optional modifiers
+        while (pos < len) {
+            ushort ch = StringGetCharacter(token, pos);
+            if (ch == 'h' || ch == 'H') {
+                // Hit condition: h<op><val>
+                pos++;
+                if (pos >= len) break;
+                ushort opCh = StringGetCharacter(token, pos);
+                int op = 0;
+                pos++;
+                if (opCh == '=')             op = 1; // ==
+                else if (opCh == '>')        op = 2; // >
+                else if (opCh == 'G' || opCh == 'g') op = 3; // >= (G for Greater-or-equal)
+                else if (opCh == '<')        op = 4; // <
+                else if (opCh == 'S' || opCh == 's') op = 5; // <= (S for Smaller-or-equal)
+                else if (opCh == '%')        op = 6; // modulo
+                // Read the value digits
+                int valStart = pos;
+                while (pos < len && StringGetCharacter(token, pos) >= '0' &&
+                       StringGetCharacter(token, pos) <= '9')
+                    pos++;
+                int val = (pos > valStart)
+                    ? (int)StringToInteger(StringSubstr(token, valStart, pos - valStart))
+                    : 0;
+                __mqldbg_hitcond_op[id] = op;
+                __mqldbg_hitcond_val[id] = val;
+            } else if (ch == 'L' || ch == 'l') {
+                __mqldbg_logpoint[id] = true;
+                pos++;
+            } else {
+                pos++; // skip unknown char
+            }
+        }
     }
-    
+
     return false;
 }
 
 //+------------------------------------------------------------------+
 //| Check whether a probe should fire. Reloads config every ~200 ms. |
+//| Increments hit count and evaluates hit condition if present.     |
 //+------------------------------------------------------------------+
 bool MqlDebugProbeCheck(int id) {
     if (__mqldbg_maxProbe == 0 || id < 0 || id >= __mqldbg_maxProbe)
@@ -502,7 +572,47 @@ bool MqlDebugProbeCheck(int id) {
         if (MqlDebugLoadConfig()) return false;
     }
 
-    return __mqldbg_active[id];
+    if (!__mqldbg_active[id])
+        return false;
+
+    // Increment hit counter (saturate to prevent signed overflow)
+    if (__mqldbg_hitcount[id] < 2147483647)
+        __mqldbg_hitcount[id]++;
+    int count = __mqldbg_hitcount[id];
+
+    // Evaluate hit condition (op 0 = no condition, always fire)
+    int op  = __mqldbg_hitcond_op[id];
+    int val = __mqldbg_hitcond_val[id];
+    if (op != 0) {
+        bool pass = false;
+        switch (op) {
+            case 1: pass = (count == val);            break; // =
+            case 2: pass = (count >  val);            break; // >
+            case 3: pass = (count >= val);            break; // >=
+            case 4: pass = (count <  val);            break; // <
+            case 5: pass = (count <= val);            break; // <=
+            case 6: pass = (val > 0 && count % val == 0); break; // %
+        }
+        if (!pass) return false;
+    }
+
+    return true;
 }
+
+//+------------------------------------------------------------------+
+//| Check whether a probe is in logpoint mode (log only, no pause).  |
+//+------------------------------------------------------------------+
+bool MqlDebugIsLogpoint(int id) {
+    if (id < 0 || id >= __mqldbg_maxProbe) return false;
+    return __mqldbg_logpoint[id];
+}
+
+//+------------------------------------------------------------------+
+//| LOG macro — structured log output for logpoints                   |
+//+------------------------------------------------------------------+
+#define MQL_DBG_LOG(msg)                                                       \
+  MqlDebugWrite("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" +              \
+                __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|LOG|" +    \
+                MqlDebugEscape(msg))
 
 #endif // MQLDEBUG_MQH

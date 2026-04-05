@@ -25,6 +25,7 @@ const MAX_CALL_FRAMES = 50;
  * @property {number} line
  * @property {string} timestamp
  * @property {WatchEntry[]} watches   Variables captured at this hit
+ * @property {number} hitCount
  *
  * @typedef {Object} CallFrame
  * @property {string} func
@@ -48,6 +49,11 @@ class DebugStateStore {
         this.latestWatches = new Map(); // varName -> WatchEntry
         /** Per-breakpoint hit counts, keyed by label */
         this.hitCounts = new Map(); // label -> number
+        /** @type {{ message: string, file: string, func: string, line: number, timestamp: string }[]} */
+        this.logMessages = [];
+        /** Monotonic counters — survive shift() so consumers detect new entries */
+        this.totalHitCount = 0;
+        this.totalLogCount = 0;
         this.sessionActive = false;
     }
 
@@ -103,6 +109,7 @@ class DebugStateStore {
                     hitCount:  count,
                 };
                 this.hits.push(hit);
+                this.totalHitCount++;
                 if (this.hits.length > MAX_HITS) this.hits.shift();
                 break;
             }
@@ -135,6 +142,18 @@ class DebugStateStore {
                     this.callStack.push({ func: event.func, file: event.file, line: event.line, state: 'exited' });
                     if (this.callStack.length > MAX_CALL_FRAMES) this.callStack.shift();
                 }
+                break;
+            }
+            case 'log': {
+                this.logMessages.push({
+                    message:   event.message,
+                    file:      event.file,
+                    func:      event.func,
+                    line:      event.line,
+                    timestamp: event.timestamp,
+                });
+                this.totalLogCount++;
+                if (this.logMessages.length > MAX_HITS) this.logMessages.shift();
                 break;
             }
             case 'session_end': {
@@ -189,4 +208,4 @@ class DebugStateStore {
 
 // Singleton — one store per extension activation
 const store = new DebugStateStore();
-module.exports = { store, DebugStateStore };
+module.exports = { store, DebugStateStore, MAX_HITS };

@@ -338,5 +338,6 @@ function OfflineHelp() {
 module.exports = {
     Help,
     OfflineHelp,
-    getMql5DocLang
+    getMql5DocLang,
+    loadMql5DocsMap
 };

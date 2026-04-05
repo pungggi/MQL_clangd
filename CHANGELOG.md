@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- **Hit Conditional Breakpoints**: Breakpoints can now specify a hit count condition (e.g. `> 5`, `% 3`, `== 10`) so they only fire after the Nth hit. Supports `=`, `>`, `>=`, `<`, `<=`, and `%` (modulo) operators.
+- **Logpoints**: Breakpoints with a log message emit to the Debug Console without pausing the EA. Supports `{expression}` interpolation with type-aware formatting for `int`, `double`, `string`, `bool`, `datetime`, and `enum` types.
+- **Clickable MQL Online Docs**: Hover tooltips now include a direct link to the MQL5 online documentation for built-in functions.
+- **Descriptive Breakpoint Messages**: Adjusted and unverified breakpoints now show descriptive status messages in the VS Code UI.
+
+### Bug Fixes
+- **Mid-session logpoints**: Logpoints added after compilation now work without recompiling — every probe checks the logpoint flag at runtime.
+- **Operator precedence in breakpoint metadata**: Fixed fragile `&&`/`||` precedence when extracting `hitCondition` and `logMessage` from DAP requests.
+
 ## 1.1.38
 
 ### Features (GA)

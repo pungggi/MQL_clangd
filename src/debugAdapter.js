@@ -38,11 +38,12 @@ class MqlDebugAdapter extends EventEmitter {
         this._context = context;
         this._originalPath = originalPath;
 
-        this._lastHitCount = 0;
+        this._lastTotalHitCount = 0;
+        this._lastTotalLogCount = 0;
         this._wasActive = false;
         this._seq = 1;
         this._disposed = false;
-        /** @type {Map<string, Set<number>>} active breakpoints per source path (lowercase) */
+        /** @type {Map<string, Map<number, {hitCondition?: string, logMessage?: string}>>} active breakpoints per source path (lowercase) */
         this._activeBreakpoints = new Map();
         /** True once VS Code has sent at least one setBreakpoints request */
         this._breakpointsConfigured = false;
@@ -84,6 +85,7 @@ class MqlDebugAdapter extends EventEmitter {
             case 'setExceptionBreakpoints': this._sendResponse(message, {}); break;
             case 'setFunctionBreakpoints': this._sendResponse(message, { breakpoints: [] }); break;
             case 'source': this._onSource(message); break;
+            case 'loadedSources': this._onLoadedSources(message); break;
             default:
                 // Acknowledge unknown requests gracefully so VS Code doesn't show errors
                 this._sendResponse(message, {});
@@ -110,6 +112,10 @@ class MqlDebugAdapter extends EventEmitter {
         this._sendResponse(req, {
             supportsConfigurationDoneRequest: true,
             supportsTerminateRequest: true,
+            supportsConditionalBreakpoints: true,
+            supportsHitConditionalBreakpoints: true,
+            supportsLogPoints: true,
+            supportsLoadedSourcesRequest: true,
         });
         this._sendEvent('initialized', {});
     }
@@ -205,6 +211,20 @@ class MqlDebugAdapter extends EventEmitter {
         }
     }
 
+    _onLoadedSources(req) {
+        const sources = [];
+        if (this._bridge.probeMap) {
+            for (const normPath of this._bridge.probeMap.keys()) {
+                const originalPath = this._mapToOriginalPath(normPath);
+                sources.push({
+                    name: path.basename(originalPath),
+                    path: originalPath,
+                });
+            }
+        }
+        this._sendResponse(req, { sources });
+    }
+
     _onSetBreakpoints(req) {
         const src = req.arguments && req.arguments.source;
         const key = src && src.path ? src.path.toLowerCase().replace(/\\/g, '/') : null;
@@ -239,14 +259,29 @@ class MqlDebugAdapter extends EventEmitter {
                     if (!found) verified = false;
                 }
             }
-            return { id: this._seq++, verified, line: actualLine };
+            let message;
+            if (!verified) {
+                message = `No instrumentable line within ±10 of line ${b.line}`;
+            } else if (actualLine !== b.line) {
+                message = `Adjusted to nearest probe at line ${actualLine}`;
+            }
+            return { id: this._seq++, verified, line: actualLine, message };
         });
 
-        // Track active breakpoint lines (verified lines) for auto-continue fallback
+        // Track active breakpoint lines (verified lines) with metadata for auto-continue fallback
         if (key) {
-            const lines = new Set(bps.filter(b => b.verified).map(b => b.line));
-            if (lines.size > 0) {
-                this._activeBreakpoints.set(key, lines);
+            const reqBps = req.arguments.breakpoints || [];
+            const lineMap = new Map();
+            for (let i = 0; i < bps.length; i++) {
+                if (bps[i].verified) {
+                    lineMap.set(bps[i].line, {
+                        hitCondition: reqBps[i]?.hitCondition || '',
+                        logMessage: reqBps[i]?.logMessage || '',
+                    });
+                }
+            }
+            if (lineMap.size > 0) {
+                this._activeBreakpoints.set(key, lineMap);
             } else {
                 this._activeBreakpoints.delete(key);
             }
@@ -274,13 +309,39 @@ class MqlDebugAdapter extends EventEmitter {
         }, 100);
     }
 
+    /**
+     * Parse a DAP hitCondition string into operator + value.
+     * Supports: "5", "= 5", "== 5", "> 5", ">= 5", "< 5", "<= 5", "% 3"
+     * @param {string} hitCondition
+     * @returns {{ op: string, val: number }|null}
+     */
+    _parseHitCondition(hitCondition) {
+        if (!hitCondition || !hitCondition.trim()) return null;
+        const s = hitCondition.trim();
+        // Match optional operator followed by a number
+        const m = s.match(/^(==?|>=?|<=?|%)\s*(\d+)$/);
+        if (m) {
+            const rawOp = m[1];
+            const val = parseInt(m[2], 10);
+            // Map to our config format characters
+            const opMap = { '=': '=', '==': '=', '>': '>', '>=': 'G', '<': '<', '<=': 'S', '%': '%' };
+            return { op: opMap[rawOp] || '=', val };
+        }
+        // Plain number means "break when count == N"
+        const num = parseInt(s, 10);
+        if (!isNaN(num) && String(num) === s) {
+            return { op: '=', val: num };
+        }
+        return null;
+    }
+
     /** Resolve all active breakpoint lines to probe IDs and write the config file. */
     _writeBreakpointConfig() {
         if (!this._bridge.isActive) return;
         try {
-            const activeIds = [];
-            for (const [filePath, lines] of this._activeBreakpoints) {
-                for (const line of lines) {
+            const entries = [];
+            for (const [filePath, lineMap] of this._activeBreakpoints) {
+                for (const [line, meta] of lineMap) {
                     let id;
                     try {
                         id = this._bridge.resolveProbeId(filePath, line);
@@ -288,10 +349,23 @@ class MqlDebugAdapter extends EventEmitter {
                         console.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
                         continue;
                     }
-                    if (id !== undefined) activeIds.push(id);
+                    if (id === undefined) continue;
+
+                    const hitParsed = this._parseHitCondition(meta.hitCondition);
+                    const isLogpoint = !!(meta.logMessage && meta.logMessage.trim());
+                    if (hitParsed || isLogpoint) {
+                        entries.push({
+                            id,
+                            hitOp: hitParsed ? hitParsed.op : undefined,
+                            hitVal: hitParsed ? hitParsed.val : undefined,
+                            isLogpoint,
+                        });
+                    } else {
+                        entries.push(id);
+                    }
                 }
             }
-            this._bridge.writeBreakpointConfig(activeIds);
+            this._bridge.writeBreakpointConfig(entries);
         } catch (err) {
             console.error('[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:', err);
         }
@@ -325,6 +399,7 @@ class MqlDebugAdapter extends EventEmitter {
                     name: w.varName,
                     value: String(w.value),
                     type: w.varType,
+                    presentationHint: { kind: 'data', attributes: ['readOnly'] },
                     variablesReference: 0,
                 }));
             } else {
@@ -332,6 +407,7 @@ class MqlDebugAdapter extends EventEmitter {
                     name: w.varName,
                     value: String(w.value),
                     type: w.varType,
+                    presentationHint: { kind: 'data', attributes: ['readOnly'] },
                     variablesReference: 0,
                 }));
             }
@@ -339,14 +415,15 @@ class MqlDebugAdapter extends EventEmitter {
             // Breakpoint Info scope — metadata about the current hit
             const hit = this._store.latestHit;
             if (hit) {
+                const infoHint = { kind: 'property', attributes: ['readOnly'] };
                 variables = [
-                    { name: 'Label', value: hit.label || '(none)', variablesReference: 0 },
-                    { name: 'Function', value: hit.func || '(unknown)', variablesReference: 0 },
-                    { name: 'File', value: hit.file || '(unknown)', variablesReference: 0 },
-                    { name: 'Line', value: String(this._parseOriginalLine(hit.label) || this._translateLine(hit.file, parseInt(hit.line, 10) || 0)), type: 'int', variablesReference: 0 },
-                    { name: 'Timestamp', value: hit.timestamp || '', variablesReference: 0 },
-                    { name: 'BP Hit Count', value: String(hit.hitCount || 0), type: 'int', variablesReference: 0 },
-                    { name: 'Total Hits', value: String(this._store.hits.length), type: 'int', variablesReference: 0 },
+                    { name: 'Label', value: hit.label || '(none)', presentationHint: infoHint, variablesReference: 0 },
+                    { name: 'Function', value: hit.func || '(unknown)', presentationHint: infoHint, variablesReference: 0 },
+                    { name: 'File', value: hit.file || '(unknown)', presentationHint: infoHint, variablesReference: 0 },
+                    { name: 'Line', value: String(this._parseOriginalLine(hit.label) || this._translateLine(hit.file, parseInt(hit.line, 10) || 0)), type: 'int', presentationHint: infoHint, variablesReference: 0 },
+                    { name: 'Timestamp', value: hit.timestamp || '', presentationHint: infoHint, variablesReference: 0 },
+                    { name: 'BP Hit Count', value: String(hit.hitCount || 0), type: 'int', presentationHint: infoHint, variablesReference: 0 },
+                    { name: 'Total Hits', value: String(this._store.hits.length), type: 'int', presentationHint: infoHint, variablesReference: 0 },
                 ];
             }
         }
@@ -382,22 +459,51 @@ class MqlDebugAdapter extends EventEmitter {
         if (this._disposed) return;
 
         const hits = this._store.hits;
+        const logs = this._store.logMessages;
+        const totalHits = this._store.totalHitCount;
+        const totalLogs = this._store.totalLogCount;
 
-        // Reset hit counter if the store was cleared (new session)
-        if (hits.length < this._lastHitCount) {
-            this._lastHitCount = 0;
+        // Reset counters if the store was cleared (new session)
+        if (totalHits < this._lastTotalHitCount) {
+            this._lastTotalHitCount = 0;
+        }
+        if (totalLogs < this._lastTotalLogCount) {
+            this._lastTotalLogCount = 0;
+        }
+
+        // Emit logpoint messages to Debug Console (no stopped event)
+        if (totalLogs > this._lastTotalLogCount) {
+            const newCount = Math.min(totalLogs - this._lastTotalLogCount, logs.length);
+            for (let i = logs.length - newCount; i < logs.length; i++) {
+                const lg = logs[i];
+                const displayLine = this._translateLine(lg.file, lg.line);
+                const sourcePath = lg.file ? this._mapToOriginalPath(lg.file) : undefined;
+                const sourceRef = sourcePath ? { name: path.basename(sourcePath), path: sourcePath } : undefined;
+                this._sendEvent('output', {
+                    category: 'console',
+                    output: `${lg.message}\n`,
+                    source: sourceRef,
+                    line: displayLine,
+                });
+            }
+            this._lastTotalLogCount = totalLogs;
         }
 
         // Emit stopped + console output for each new hit
-        if (hits.length > this._lastHitCount) {
+        if (totalHits > this._lastTotalHitCount) {
+            const newCount = Math.min(totalHits - this._lastTotalHitCount, hits.length);
             let shouldStop = false;
-            for (let i = this._lastHitCount; i < hits.length; i++) {
+            for (let i = hits.length - newCount; i < hits.length; i++) {
                 const h = hits[i];
                 // Output to Debug Console so user sees hit history
                 const displayLine = this._parseOriginalLine(h.label) || this._translateLine(h.file, parseInt(h.line, 10) || 0);
+                const sourcePath = h.file ? this._mapToOriginalPath(h.file) : undefined;
+                const sourceRef = sourcePath ? { name: path.basename(sourcePath), path: sourcePath } : undefined;
                 this._sendEvent('output', {
                     category: 'console',
                     output: `[MQL Break] ${h.label}  ${h.func}:${displayLine}  (${h.file})  ${h.timestamp}\n`,
+                    source: sourceRef,
+                    line: displayLine,
                 });
                 // Output watch values for this hit
                 if (h.watches && h.watches.length) {
@@ -405,6 +511,8 @@ class MqlDebugAdapter extends EventEmitter {
                         this._sendEvent('output', {
                             category: 'console',
                             output: `  ${w.varName} (${w.varType}) = ${w.value}\n`,
+                            source: sourceRef,
+                            line: displayLine,
                         });
                     }
                 }
@@ -413,20 +521,25 @@ class MqlDebugAdapter extends EventEmitter {
                     shouldStop = true;
                 }
             }
-            this._lastHitCount = hits.length;
+            this._lastTotalHitCount = totalHits;
 
             if (shouldStop) {
                 // Fire stopped event — VS Code will pause the UI and request
                 // stackTrace/scopes/variables, populating the native panels.
+                const latestHit = hits[hits.length - 1];
+                const hitLine = this._parseOriginalLine(latestHit.label) || this._translateLine(latestHit.file, parseInt(latestHit.line, 10) || 0);
                 this._sendEvent('stopped', {
                     reason: 'breakpoint',
-                    description: `Hit: ${hits[hits.length - 1].label}`,
+                    description: `Hit: ${latestHit.label}`,
+                    text: `${latestHit.func || '(unknown)'}:${hitLine}`,
                     threadId: THREAD_ID,
                     allThreadsStopped: true,
                 });
             } else {
                 // Breakpoint was removed during session — auto-continue
                 this._sendContinueCommand();
+                // Notify VS Code that variable data changed (for any visible panels)
+                this._sendEvent('invalidated', { areas: ['variables'] });
             }
         }
 

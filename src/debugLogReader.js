@@ -11,6 +11,7 @@ const POLL_INTERVAL_MS  = 500;
  * Structured line format (written by MqlDebug.mqh):
  *   DBG|{timestamp}|{file}|{function}|{line}|WATCH|{name}|{type}|{value}
  *   DBG|{timestamp}|{file}|{function}|{line}|BREAK|{label}
+ *   DBG|{timestamp}|{file}|{function}|{line}|LOG|{message}
  *   DBG|{timestamp}|{file}|{function}|{line}|ENTER
  *   DBG|{timestamp}|{file}|{function}|{line}|EXIT
  *   DBG|{timestamp}|{file}|{function}|{line}|SESSION_END
@@ -227,7 +228,7 @@ class MqlDebugLogReader {
      * @returns {DebugEvent|null}
      *
      * @typedef {Object} DebugEvent
-     * @property {'watch'|'break'|'enter'|'exit'|'session_end'} type
+     * @property {'watch'|'break'|'log'|'enter'|'exit'|'session_end'} type
      * @property {string} timestamp
      * @property {string} file        Source file (from __FILE__)
      * @property {string} func        Function name (from __FUNCTION__)
@@ -236,6 +237,7 @@ class MqlDebugLogReader {
      * @property {string} [varType]   Variable type (watch events)
      * @property {string} [value]     Variable value as string (watch events)
      * @property {string} [label]     Breakpoint label (break events)
+     * @property {string} [message]   Log message text (log events)
      */
     _parseLine(line) {
         // DBG|ts|file|func|lineno|KIND[|...]
@@ -263,6 +265,10 @@ class MqlDebugLogReader {
             }
             case 'EXIT': {
                 return { type: 'exit', ...base };
+            }
+            case 'LOG': {
+                // LOG message may contain '|' — rejoin remaining parts
+                return { type: 'log', ...base, message: rest.join('|') };
             }
             case 'SESSION_END': {
                 return { type: 'session_end', ...base };

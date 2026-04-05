@@ -4,6 +4,7 @@ const pathModule = require('path');
 const fs = require('fs');
 const lg = require('./language');
 const { resolvePathRelativeToWorkspace } = require('./createProperties');
+const { getMql5DocLang, loadMql5DocsMap } = require('./help');
 const err_codes = require('../data/error-codes.json');
 let _obj_items = null;
 function getObjItems() {
@@ -11,6 +12,23 @@ function getObjItems() {
     return _obj_items;
 }
 const colorW = require('../data/color.json');
+
+/**
+ * Build an MQL5 online documentation URL for the given keyword, or return null.
+ */
+function getMql5DocsUrl(keyword) {
+    const docsMap = loadMql5DocsMap();
+    const keyLower = keyword.toLowerCase();
+    let docPath = docsMap[keyLower];
+    if (!docPath) return null;
+    if (Array.isArray(docPath)) docPath = docPath[0];
+    if (!docPath) return null;
+    const lang = getMql5DocLang();
+    if (docPath.includes('/')) {
+        return `https://www.mql5.com/${lang}/docs/${docPath}`;
+    }
+    return `https://www.mql5.com/${lang}/docs/${docPath}/${keyLower}`;
+}
 
 // Lazy-initialized VS Code-dependent values (must not access vscode at module load time)
 let _language = null;
@@ -416,6 +434,11 @@ function Hover_MQL() {
                     });
                 }
 
+                const docsUrl = getMql5DocsUrl(word);
+                if (docsUrl) {
+                    contents.appendMarkdown(`\n\n[MQL Online](${docsUrl})`);
+                }
+
                 return new vscode.Hover(contents, range);
             }
 
@@ -432,6 +455,11 @@ function Hover_MQL() {
                 const clrRGB = colorW[word].split(',');
                 const hexColor = rgbaToHex(+clrRGB[0], +clrRGB[1], +clrRGB[2]);
                 contents.appendMarkdown(`\n\n<span style="background-color:#${hexColor};padding:2px 20px;">&nbsp;</span> \`#${hexColor}\``);
+            }
+
+            const docsUrl = getMql5DocsUrl(word);
+            if (docsUrl) {
+                contents.appendMarkdown(`\n\n[MQL Online](${docsUrl})`);
             }
 
             return new vscode.Hover(contents, range);

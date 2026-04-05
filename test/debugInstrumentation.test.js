@@ -11,6 +11,8 @@ const {
     parseFunctionParams,
     sanitizeLabel,
     sanitizeCondition,
+    buildLogExpression,
+    buildProbeInjection,
 } = _test;
 
 suite('debugInstrumentation', function () {
@@ -377,6 +379,227 @@ suite('debugInstrumentation', function () {
         test('returns empty for null/undefined', function () {
             assert.strictEqual(sanitizeCondition(null), '');
             assert.strictEqual(sanitizeCondition(undefined), '');
+        });
+    });
+
+    // =========================================================================
+    // buildLogExpression
+    // =========================================================================
+
+    suite('buildLogExpression', function () {
+        test('plain text without interpolation', function () {
+            const result = buildLogExpression('hello world', []);
+            assert.strictEqual(result, '"hello world"');
+        });
+
+        test('empty/null template returns empty string literal', function () {
+            assert.strictEqual(buildLogExpression('', []), '""');
+            assert.strictEqual(buildLogExpression(null, []), '""');
+            assert.strictEqual(buildLogExpression(undefined, []), '""');
+        });
+
+        test('single {expr} with int type', function () {
+            const vars = [{ name: 'count', type: 'int' }];
+            const result = buildLogExpression('count={count}', vars);
+            assert.strictEqual(result, '"count=" + IntegerToString((long)(count))');
+        });
+
+        test('single {expr} with double type', function () {
+            const vars = [{ name: 'price', type: 'double' }];
+            const result = buildLogExpression('price={price}', vars);
+            assert.strictEqual(result, '"price=" + DoubleToString((double)(price), 8)');
+        });
+
+        test('single {expr} with string type', function () {
+            const vars = [{ name: 'name', type: 'string' }];
+            const result = buildLogExpression('name={name}', vars);
+            assert.strictEqual(result, '"name=" + (name)');
+        });
+
+        test('single {expr} with bool type', function () {
+            const vars = [{ name: 'flag', type: 'bool' }];
+            const result = buildLogExpression('flag={flag}', vars);
+            assert.strictEqual(result, '"flag=" + ((flag) ? "true" : "false")');
+        });
+
+        test('single {expr} with datetime type', function () {
+            const vars = [{ name: 'ts', type: 'datetime' }];
+            const result = buildLogExpression('time={ts}', vars);
+            assert.strictEqual(result, '"time=" + TimeToString((datetime)(ts), TIME_DATE | TIME_SECONDS)');
+        });
+
+        test('single {expr} with long type', function () {
+            const vars = [{ name: 'ticket', type: 'ulong' }];
+            const result = buildLogExpression('ticket={ticket}', vars);
+            assert.strictEqual(result, '"ticket=" + IntegerToString((long)(ticket))');
+        });
+
+        test('single {expr} with enum type', function () {
+            const vars = [{ name: 'ot', type: 'ENUM_ORDER_TYPE' }];
+            const result = buildLogExpression('type={ot}', vars);
+            assert.strictEqual(result, '"type=" + IntegerToString((long)(ot))');
+        });
+
+        test('multiple interpolations', function () {
+            const vars = [
+                { name: 'x', type: 'int' },
+                { name: 'y', type: 'double' },
+            ];
+            const result = buildLogExpression('x={x}, y={y}', vars);
+            assert.strictEqual(result, '"x=" + IntegerToString((long)(x)) + ", y=" + DoubleToString((double)(y), 8)');
+        });
+
+        test('unknown type falls back to (string) cast', function () {
+            const vars = [{ name: 'obj', type: 'CMyClass' }];
+            const result = buildLogExpression('obj={obj}', vars);
+            assert.strictEqual(result, '"obj=" + (string)(obj)');
+        });
+
+        test('expression not in watchVars falls back to (string) cast', function () {
+            const result = buildLogExpression('val={unknown}', []);
+            assert.strictEqual(result, '"val=" + (string)(unknown)');
+        });
+
+        test('unclosed brace treated as literal', function () {
+            const result = buildLogExpression('hello {world', []);
+            // Implementation splits at '{', then finds no '}', treats rest as literal
+            assert.strictEqual(result, '"hello " + "{world"');
+        });
+
+        test('empty braces produce literal {}', function () {
+            const result = buildLogExpression('a {} b', []);
+            assert.strictEqual(result, '"a " + "{}" + " b"');
+        });
+
+        test('strips const/static from type before matching', function () {
+            const vars = [{ name: 'x', type: 'const int' }];
+            const result = buildLogExpression('{x}', vars);
+            assert.strictEqual(result, 'IntegerToString((long)(x))');
+        });
+
+        test('float type uses DoubleToString', function () {
+            const vars = [{ name: 'f', type: 'float' }];
+            const result = buildLogExpression('{f}', vars);
+            assert.strictEqual(result, 'DoubleToString((double)(f), 8)');
+        });
+
+        test('{{ produces literal open brace', function () {
+            const result = buildLogExpression('a {{ b', []);
+            assert.strictEqual(result, '"a " + "{" + " b"');
+        });
+
+        test('}} produces literal close brace', function () {
+            const result = buildLogExpression('a }} b', []);
+            assert.strictEqual(result, '"a } b"');
+        });
+
+        test('{{expr}} produces literal braces around text', function () {
+            const result = buildLogExpression('{{hello}}', []);
+            assert.strictEqual(result, '"{" + "hello}"');
+        });
+
+        test('escaped braces mixed with interpolation', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const result = buildLogExpression('val={{x}}', vars);
+            // {{ → literal {, then {x} is expression, then }} would need
+            // to appear but here after {x} there's only }
+            // Actually: "val={{x}}" → v a l = { { x } }
+            // First { at 4, template[5]='{' → literal {, pos=6
+            // Next { at 6... wait: "val={{x}}" positions:
+            //   v(0) a(1) l(2) =(3) {(4) {(5) x(6) }(7) }(8)
+            // openIdx=4, template[5]='{' → push "val=", push "{", pos=6
+            // openIdx=indexOf('{',6)=-1, rest is "x}}" → replace }} → "x}"
+            // Result: "val=" + "{" + "x}"
+            assert.strictEqual(result, '"val=" + "{" + "x}"');
+        });
+
+        test('}} at end of string after expression', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const result = buildLogExpression('{x}}}', vars);
+            // {x} is expression, then }} → literal }
+            assert.strictEqual(result, 'IntegerToString((long)(x)) + "}"');
+        });
+
+        test('standalone }} with no expressions', function () {
+            const result = buildLogExpression('}}', []);
+            assert.strictEqual(result, '"}"');
+        });
+
+        test('standalone {{ with no expressions', function () {
+            const result = buildLogExpression('{{', []);
+            assert.strictEqual(result, '"{"');
+        });
+    });
+
+    // =========================================================================
+    // buildProbeInjection
+    // =========================================================================
+
+    suite('buildProbeInjection', function () {
+        test('basic probe without logMessage contains PAUSE', function () {
+            const lines = buildProbeInjection(0, 'bp_test_1', [], '');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MqlDebugProbeCheck(0)'), 'should check probe');
+            assert.ok(joined.includes('MQL_DBG_BREAK("bp_test_1")'), 'should emit BREAK');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'), 'should contain PAUSE');
+        });
+
+        test('probe without logMessage has runtime logpoint check to skip PAUSE', function () {
+            const lines = buildProbeInjection(5, 'bp_test_5', [], '');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MqlDebugIsLogpoint(5)'), 'should check logpoint at runtime');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'), 'should still contain PAUSE for break mode');
+        });
+
+        test('probe with logMessage generates dual path with MQL_DBG_LOG', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const lines = buildProbeInjection(3, 'bp_test_3', vars, '', 'x={x}');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MqlDebugIsLogpoint(3)'), 'should check logpoint flag');
+            assert.ok(joined.includes('MQL_DBG_LOG('), 'should contain LOG macro');
+            assert.ok(joined.includes('IntegerToString'), 'should have interpolated expression');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'), 'should have PAUSE in break branch');
+        });
+
+        test('logpoint path does not include PAUSE', function () {
+            const lines = buildProbeInjection(3, 'bp_test_3', [], '', 'hello');
+            const joined = lines.join('\n');
+            // Find the logpoint branch (between MqlDebugIsLogpoint and } else)
+            const logpointStart = joined.indexOf('MqlDebugIsLogpoint');
+            const elseIdx = joined.indexOf('} else {', logpointStart);
+            const logpointBranch = joined.substring(logpointStart, elseIdx);
+            assert.ok(!logpointBranch.includes('MQL_DBG_PAUSE'), 'logpoint branch should not PAUSE');
+        });
+
+        test('probe with condition includes condition in guard', function () {
+            const lines = buildProbeInjection(0, 'bp_test_1', [], 'x > 5');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('&& (x > 5)'), 'should include condition expression');
+        });
+
+        test('probe with watch vars includes watch macros', function () {
+            const vars = [
+                { name: 'count', type: 'int' },
+                { name: 'price', type: 'double' },
+            ];
+            const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MQL_DBG_WATCH_INT("count", count)'), 'should watch int');
+            assert.ok(joined.includes('MQL_DBG_WATCH_DBL("price", price)'), 'should watch double');
+        });
+
+        test('no-logMessage fallback: logpoint emits BREAK + watches without PAUSE', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const lines = buildProbeInjection(7, 'bp_test_7', vars, '');
+            const joined = lines.join('\n');
+            // Should have BREAK and watch in the main body (before logpoint check)
+            assert.ok(joined.includes('MQL_DBG_BREAK("bp_test_7")'), 'should have BREAK');
+            assert.ok(joined.includes('MQL_DBG_WATCH_INT("x", x)'), 'should have watch');
+            // PAUSE is conditional on NOT being a logpoint
+            assert.ok(joined.includes('!MqlDebugIsLogpoint(7)'),
+                'should guard PAUSE with logpoint check');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'),
+                'should contain PAUSE in break branch');
         });
     });
 });
