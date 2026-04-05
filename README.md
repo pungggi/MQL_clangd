@@ -17,7 +17,7 @@
 | Smart Compile Target for Headers | ❌ | ✅ |
 | Document Symbols (Outline, Breadcrumbs) | ❌ | ✅ |
 | Run Backtest from VS Code | ❌ | ✅ |
-| Debugging | ❌ | **Coming next** |
+| Debugging | ❌ | ✅ |
 
 ---
 
@@ -73,7 +73,7 @@ This extension now uses **clangd** to provide state-of-the-art IntelliSense, cod
 
 ---
 
-### 💡Important Notes:
+### Important Notes:
 *   **Multi-root workspaces**: The configuration tool supports multi-root workspaces and will prioritize settings for the currently active file's folder.
 *   **Settings Merge**: The extension is built to be "clean" - it merges MQL flags with your existing `clangd.fallbackFlags` rather than overwriting them.
 *   **Compiler Flags**: We automatically inject `-xc++` and `-std=c++17` along with version-specific defines (`__MQL4__`/`__MQL5__`) to help clangd understand MQL syntax.
@@ -146,7 +146,7 @@ Monitor your MQL4/MQL5 terminal logs in real-time directly within VS Code—no n
 
 | Mode | Description | Latency |
 |------|-------------|---------|
-| **LiveLog (Real-time)** | Tails `MQL5/Files/LiveLog.txt` (auto-rotate at 10MB → `LiveLog_YYYY_MM_DD.txt`) - uses `PrintLive()` with immediate disk flush | **Instant** ⚡ |
+| **LiveLog (Real-time)** | Tails `MQL5/Files/LiveLog.txt` (auto-rotate at 10MB → `LiveLog_YYYY_MM_DD.txt`) - uses `PrintLive()` with immediate disk flush | **Instant** |
 | **Standard Journal** | Tails `MQL5/Logs/YYYYMMDD.log` - uses standard `Print()` output | Delayed (MetaTrader buffering) |
 
 **Why two modes?**
