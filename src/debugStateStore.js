@@ -25,6 +25,7 @@ const MAX_CALL_FRAMES = 50;
  * @property {number} line
  * @property {string} timestamp
  * @property {WatchEntry[]} watches   Variables captured at this hit
+ * @property {number} hitCount
  *
  * @typedef {Object} CallFrame
  * @property {string} func
