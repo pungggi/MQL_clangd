@@ -68,7 +68,7 @@ This extension now uses **clangd** to provide state-of-the-art IntelliSense, cod
 
 ---
 
-### Quick Setup Guide: 
+### Quick Setup Guide
 
 1.  **Installation**:
     *   Install this **MQL Clangd** extension from the VS Code Marketplace.
@@ -91,7 +91,7 @@ This extension now uses **clangd** to provide state-of-the-art IntelliSense, cod
 
 ---
 
-### Important Notes:
+### Important Notes
 *   **Multi-root workspaces**: The configuration tool supports multi-root workspaces and will prioritize settings for the currently active file's folder.
 *   **Settings Merge**: The extension is built to be "clean" - it merges MQL flags with your existing `clangd.fallbackFlags` rather than overwriting them.
 *   **Compiler Flags**: We automatically inject `-xc++` and `-std=c++17` along with version-specific defines (`__MQL4__`/`__MQL5__`) to help clangd understand MQL syntax.
