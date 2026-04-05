@@ -49,6 +49,8 @@ class MqlDebugAdapter extends EventEmitter {
         this._breakpointsConfigured = false;
         /** @type {ReturnType<typeof setTimeout>|null} debounce timer for BP config writes */
         this._reinstrumentTimer = null;
+        /** Maps variablesReference IDs (>=1000) to variable names for history expansion */
+        this._historyRefMap = new Map();
 
         // onDidSendMessage is required by VS Code's DebugAdapter interface.
         // We expose it as an EventEmitter event named 'message'.
@@ -393,24 +395,27 @@ class MqlDebugAdapter extends EventEmitter {
         let variables = [];
         if (ref === 1) {
             // Watches scope — latest watch values from the most recent hit
+            // Each variable is expandable to show its value history
+            this._historyRefMap = new Map(); // reset on each variables request for ref=1
             const hit = this._store.latestHit;
+            let watches;
             if (hit && hit.watches && hit.watches.length) {
-                variables = hit.watches.map(w => ({
-                    name: w.varName,
-                    value: String(w.value),
-                    type: w.varType,
-                    presentationHint: { kind: 'data', attributes: ['readOnly'] },
-                    variablesReference: 0,
-                }));
+                watches = hit.watches;
             } else {
-                variables = this._store.latestWatchList.map(w => ({
+                watches = this._store.latestWatchList;
+            }
+            let refId = 1000;
+            variables = watches.map(w => {
+                const histRef = refId++;
+                this._historyRefMap.set(histRef, w.varName);
+                return {
                     name: w.varName,
                     value: String(w.value),
                     type: w.varType,
                     presentationHint: { kind: 'data', attributes: ['readOnly'] },
-                    variablesReference: 0,
-                }));
-            }
+                    variablesReference: histRef,
+                };
+            });
         } else if (ref === 2) {
             // Breakpoint Info scope — metadata about the current hit
             const hit = this._store.latestHit;
@@ -426,6 +431,17 @@ class MqlDebugAdapter extends EventEmitter {
                     { name: 'Total Hits', value: String(this._store.hits.length), type: 'int', presentationHint: infoHint, variablesReference: 0 },
                 ];
             }
+        } else if (ref >= 1000 && this._historyRefMap && this._historyRefMap.has(ref)) {
+            // Variable history expansion — show value timeline
+            const varName = this._historyRefMap.get(ref);
+            const history = this._store.getVariableHistory(varName, 15);
+            const histHint = { kind: 'property', attributes: ['readOnly'] };
+            variables = history.map((h, i) => ({
+                name: `#${i + 1}`,
+                value: `${h.value}  [${h.timestamp}]`,
+                presentationHint: histHint,
+                variablesReference: 0,
+            }));
         }
         this._sendResponse(req, { variables });
     }

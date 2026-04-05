@@ -335,3 +335,84 @@ suite('MqlDebugBridge — writeBreakpointConfig extended format', function () {
         assert.strictEqual(readConfig(), '5hS7');
     });
 });
+
+// ---------------------------------------------------------------------------
+// DebugStateStore — previous hit watches & variable history
+// ---------------------------------------------------------------------------
+
+suite('DebugStateStore — value change tracking', function () {
+    let s;
+    setup(function () { s = new DebugStateStore(); });
+
+    test('_previousHitWatches is empty on first hit', function () {
+        s.startSession();
+        s.applyBatch([
+            { type: 'break', label: 'bp1', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+            { type: 'watch', varName: 'x', varType: 'int', value: '5', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+        ]);
+        assert.strictEqual(s._previousHitWatches.size, 0, 'no previous watches on first hit');
+    });
+
+    test('_previousHitWatches captures values from previous hit', function () {
+        s.startSession();
+        s.applyBatch([
+            { type: 'break', label: 'bp1', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+            { type: 'watch', varName: 'x', varType: 'int', value: '5', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+        ]);
+        s.applyBatch([
+            { type: 'break', label: 'bp1', file: 'a.mq5', func: 'F', line: 10, timestamp: 't2' },
+            { type: 'watch', varName: 'x', varType: 'int', value: '10', file: 'a.mq5', func: 'F', line: 10, timestamp: 't2' },
+        ]);
+        assert.strictEqual(s._previousHitWatches.get('x'), '5', 'should have previous value');
+    });
+
+    test('_previousHitWatches resets on session start', function () {
+        s.startSession();
+        s.applyBatch([
+            { type: 'break', label: 'bp1', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+            { type: 'watch', varName: 'x', varType: 'int', value: '5', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+        ]);
+        s.startSession(); // reset
+        assert.strictEqual(s._previousHitWatches.size, 0);
+    });
+});
+
+suite('DebugStateStore — getVariableHistory', function () {
+    let s;
+    setup(function () { s = new DebugStateStore(); });
+
+    test('returns empty for unknown variable', function () {
+        s.startSession();
+        const h = s.getVariableHistory('nonexistent');
+        assert.deepStrictEqual(h, []);
+    });
+
+    test('returns chronological value history', function () {
+        s.startSession();
+        for (let i = 1; i <= 3; i++) {
+            s.applyBatch([
+                { type: 'break', label: 'bp1', file: 'a.mq5', func: 'F', line: 10, timestamp: `t${i}` },
+                { type: 'watch', varName: 'x', varType: 'int', value: String(i * 10), file: 'a.mq5', func: 'F', line: 10, timestamp: `t${i}` },
+            ]);
+        }
+        const h = s.getVariableHistory('x');
+        assert.strictEqual(h.length, 3);
+        assert.strictEqual(h[0].value, '10');
+        assert.strictEqual(h[1].value, '20');
+        assert.strictEqual(h[2].value, '30');
+    });
+
+    test('respects maxEntries limit', function () {
+        s.startSession();
+        for (let i = 0; i < 25; i++) {
+            s.applyBatch([
+                { type: 'break', label: 'bp1', file: 'a.mq5', func: 'F', line: 10, timestamp: `t${i}` },
+                { type: 'watch', varName: 'x', varType: 'int', value: String(i), file: 'a.mq5', func: 'F', line: 10, timestamp: `t${i}` },
+            ]);
+        }
+        const h = s.getVariableHistory('x', 5);
+        assert.strictEqual(h.length, 5);
+        // Should be the LAST 5 entries (most recent)
+        assert.strictEqual(h[4].value, '24');
+    });
+});

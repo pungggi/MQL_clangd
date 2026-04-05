@@ -7,6 +7,15 @@
 - **Logpoints**: Breakpoints with a log message emit to the Debug Console without pausing the EA. Supports `{expression}` interpolation with type-aware formatting for `int`, `double`, `string`, `bool`, `datetime`, and `enum` types.
 - **Clickable MQL Online Docs**: Hover tooltips now include a direct link to the MQL5 online documentation for built-in functions.
 - **Descriptive Breakpoint Messages**: Adjusted and unverified breakpoints now show descriptive status messages in the VS Code UI.
+- **Smarter Variable Detection**: The debugger now uses heuristics to prioritize which variables to watch at each breakpoint:
+  - **Assignment-proximity scoring**: Variables assigned on or near the breakpoint line are ranked higher than distant declarations.
+  - **Control-flow awareness**: Variables from enclosing `if`/`for`/`while`/`switch` conditions are automatically included.
+  - **Function call arguments**: Variables passed as arguments to function calls near the breakpoint are detected.
+  - **Auto-expand small structs**: Struct/class members (<=8 primitive fields) are expanded at default detail level without needing Deep Analysis.
+- **Expression Watches** (`// @watch:type expr`): Watch arbitrary MQL expressions, not just variables. The expression is evaluated at the breakpoint and its value shown in the Variables panel. Function calls are validated against a built-in allowlist of read-only MQL functions. Use `// @watch!:type expr` to bypass safety checks for advanced use cases.
+- **Variable Timeline**: Expand any variable in the Variables panel to see its value history across multiple hits of the same breakpoint.
+- **Batch I/O**: Debug probes now batch all writes into a single `FileWriteString+FileFlush` per breakpoint hit, reducing file I/O by up to 10x for breakpoints with many watches.
+- **CodeLens Watch Suggestions**: Breakpoint lines without a `@watch` annotation show a clickable "Add @watch" CodeLens for quick annotation insertion.
 
 ### Bug Fixes
 - **Mid-session logpoints**: Logpoints added after compilation now work without recompiling — every probe checks the logpoint flag at runtime.

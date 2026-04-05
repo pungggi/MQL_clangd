@@ -137,6 +137,119 @@ function isConditionSafe(condition) {
     return stack.length === 0 && !inQuote;
 }
 
+// -------------------------------------------------------------------------
+// Expression watch safety — function-call allowlist
+// -------------------------------------------------------------------------
+
+/**
+ * Read-only MQL5 built-in functions safe to call from expression watches.
+ * These have no side effects — they only read market data, account info, etc.
+ * Any function call NOT in this set is rejected to prevent code injection
+ * (e.g. a malicious `// @watch:int OrderSend(request, result)` hidden in shared code).
+ */
+const SAFE_READONLY_FUNCTIONS = new Set([
+    // Market data
+    'SymbolInfoDouble', 'SymbolInfoInteger', 'SymbolInfoString',
+    'SymbolInfoTick', 'SymbolInfoSessionQuote', 'SymbolInfoSessionTrade',
+    'MarketBookGet', 'SymbolsTotal', 'SymbolName', 'SymbolSelect',
+    'SymbolIsSynchronized', 'iOpen', 'iClose', 'iHigh', 'iLow',
+    'iVolume', 'iTime', 'iSpread', 'iTickVolume', 'iBars',
+    'iBarShift', 'iHighest', 'iLowest',
+    // Series / timeseries
+    'SeriesInfoInteger', 'Bars', 'BarsCalculated',
+    'CopyRates', 'CopyTime', 'CopyOpen', 'CopyHigh', 'CopyLow',
+    'CopyClose', 'CopyTickVolume', 'CopyRealVolume', 'CopySpread',
+    'CopyTicks', 'CopyTicksRange',
+    // Account info
+    'AccountInfoDouble', 'AccountInfoInteger', 'AccountInfoString',
+    // Position / order / deal queries (read-only)
+    'PositionsTotal', 'PositionGetSymbol', 'PositionSelect',
+    'PositionGetDouble', 'PositionGetInteger', 'PositionGetString',
+    'PositionGetTicket', 'PositionSelectByTicket',
+    'OrdersTotal', 'OrderGetTicket', 'OrderSelect',
+    'OrderGetDouble', 'OrderGetInteger', 'OrderGetString',
+    'HistoryOrdersTotal', 'HistoryOrderSelect', 'HistoryOrderGetTicket',
+    'HistoryOrderGetDouble', 'HistoryOrderGetInteger', 'HistoryOrderGetString',
+    'HistoryDealsTotal', 'HistoryDealSelect', 'HistoryDealGetTicket',
+    'HistoryDealGetDouble', 'HistoryDealGetInteger', 'HistoryDealGetString',
+    'HistorySelect', 'HistorySelectByPosition',
+    // Math
+    'MathAbs', 'MathCeil', 'MathFloor', 'MathRound', 'MathMax', 'MathMin',
+    'MathMod', 'MathPow', 'MathSqrt', 'MathLog', 'MathLog10', 'MathExp',
+    'MathSin', 'MathCos', 'MathTan', 'MathArcsin', 'MathArccos', 'MathArctan',
+    'MathIsValidNumber', 'MathRand', 'MathSrand',
+    'fabs', 'ceil', 'floor', 'round', 'fmax', 'fmin', 'fmod', 'pow', 'sqrt',
+    'log', 'log10', 'exp', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
+    // String (read-only)
+    'StringLen', 'StringFind', 'StringSubstr', 'StringGetCharacter',
+    'StringCompare', 'StringConcatenate', 'StringFormat',
+    'IntegerToString', 'DoubleToString', 'TimeToString',
+    'CharToString', 'ShortToString', 'EnumToString',
+    'StringToInteger', 'StringToDouble', 'StringToTime',
+    // Array info (read-only)
+    'ArraySize', 'ArrayRange', 'ArrayMaximum', 'ArrayMinimum',
+    'ArrayBsearch', 'ArrayIsDynamic', 'ArrayIsSeries',
+    // Object info (read-only)
+    'ObjectFind', 'ObjectGetDouble', 'ObjectGetInteger', 'ObjectGetString',
+    'ObjectsTotal', 'ObjectName', 'ObjectGetTimeByValue', 'ObjectGetValueByTime',
+    // Chart info (read-only)
+    'ChartID', 'ChartSymbol', 'ChartPeriod',
+    'ChartGetDouble', 'ChartGetInteger', 'ChartGetString',
+    // Time
+    'TimeCurrent', 'TimeLocal', 'TimeGMT', 'TimeTradeServer',
+    'TimeToStruct', 'StructToTime', 'TimeGMTOffset', 'TimeDaylightSavings',
+    // Terminal info
+    'TerminalInfoInteger', 'TerminalInfoDouble', 'TerminalInfoString',
+    'MQLInfoInteger', 'MQLInfoString',
+    // Period / symbol
+    'Period', 'Symbol', 'Point', 'Digits',
+    // Type checking / conversion
+    'typename', 'sizeof', 'StringToCharArray',
+    // Indicator values
+    'iMA', 'iRSI', 'iMACD', 'iStochastic', 'iBands', 'iATR',
+    'iCCI', 'iADX', 'iSAR', 'iOBV', 'iMFI', 'iAD',
+    'iCustom', 'CopyBuffer',
+    // Normalization
+    'NormalizeDouble', 'SymbolInfoDouble',
+]);
+
+/**
+ * Validate that an expression is safe for use in an expression watch.
+ *
+ * Rules:
+ * - Balanced delimiters (delegated to isConditionSafe)
+ * - Any function call (identifier immediately followed by `(`) must be in
+ *   SAFE_READONLY_FUNCTIONS. This blocks side-effecting calls like OrderSend,
+ *   FileDelete, WebRequest, etc.
+ * - Semicolons are forbidden (prevents statement injection)
+ * - Preprocessor directives are forbidden
+ *
+ * @param {string} expr  The expression text
+ * @returns {{ safe: boolean, reason?: string }}
+ */
+function isExpressionSafe(expr) {
+    if (!expr || !expr.trim()) return { safe: false, reason: 'empty expression' };
+    if (!isConditionSafe(expr)) return { safe: false, reason: 'unbalanced delimiters' };
+    if (expr.includes(';')) return { safe: false, reason: 'semicolons not allowed' };
+    if (expr.trimStart().startsWith('#')) return { safe: false, reason: 'preprocessor directives not allowed' };
+
+    // Find all function calls: identifier followed by (
+    const RE_FUNC_CALL = /\b([a-zA-Z_]\w*)\s*\(/g;
+    let m;
+    while ((m = RE_FUNC_CALL.exec(expr)) !== null) {
+        const funcName = m[1];
+        // Skip MQL type casts that look like function calls: int(x), double(x), etc.
+        if (/^(int|uint|short|ushort|char|uchar|long|ulong|double|float|string|bool|datetime|color)$/.test(funcName)) {
+            continue;
+        }
+        if (!SAFE_READONLY_FUNCTIONS.has(funcName)) {
+            return { safe: false, reason: `function '${funcName}' is not in the allowed read-only list` };
+        }
+    }
+
+    return { safe: true };
+}
+
 /**
  * Check if a file is a "user file" (not a system include from MQL5/Include/).
  * User files get full probe instrumentation at every executable line.
@@ -280,30 +393,68 @@ function findInjectionPoint(lines, targetLine) {
 }
 
 /**
- * Parse `// @watch varName [varName2 ...]` annotations from lines around the breakpoint.
+ * Parse `// @watch varName [varName2 ...]` and `// @watch:type expression` annotations.
  * Searches up to 5 lines before and 2 lines after the breakpoint line.
- * Supports multiple variable names on a single annotation line.
+ *
+ * Simple form:    `// @watch x y z`        → variable names (type resolved later)
+ * Typed form:     `// @watch:double expr`  → expression, validated against allowlist
+ * Unsafe form:    `// @watch!:double expr` → expression, bypasses safety checks
+ *
+ * The `!` modifier explicitly opts into unrestricted expression injection.
+ * Without it, any function calls in the expression must be in SAFE_READONLY_FUNCTIONS.
  *
  * @param {string[]} lines
  * @param {number}   bpLine  1-based breakpoint line
- * @returns {string[]}  Variable names to watch
+ * @returns {{ names: string[], expressions: { expr: string, type: string, label: string }[], rejected: { expr: string, reason: string, line: number }[] }}
  */
 function parseWatchAnnotations(lines, bpLine) {
-    const RE_WATCH = /\/\/\s*@watch\s+([\w\s]+)/;
-    const vars = [];
+    const RE_WATCH_SIMPLE = /\/\/\s*@watch\s+([\w\s]+)/;
+    const RE_WATCH_TYPED = /\/\/\s*@watch(!?):(\w+)\s+(.+)/;
+    const names = [];
+    const expressions = [];
+    const rejected = [];
     const from = Math.max(0, bpLine - 6);
     const to = Math.min(lines.length - 1, bpLine + 1);
 
     for (let i = from; i <= to; i++) {
-        const m = lines[i].match(RE_WATCH);
+        // Try typed expression form first (more specific)
+        const tm = lines[i].match(RE_WATCH_TYPED);
+        if (tm) {
+            const unsafe = tm[1] === '!';
+            const type = tm[2].trim();
+            const expr = tm[3].trim();
+            if (expr) {
+                if (unsafe) {
+                    // @watch!: — user explicitly opted into unrestricted mode
+                    if (!isConditionSafe(expr)) {
+                        rejected.push({ expr, reason: 'unbalanced delimiters', line: i + 1 });
+                    } else {
+                        const label = expr.length > 40 ? expr.substring(0, 37) + '...' : expr;
+                        expressions.push({ expr, type, label });
+                    }
+                } else {
+                    // @watch: — validated against allowlist
+                    const check = isExpressionSafe(expr);
+                    if (check.safe) {
+                        const label = expr.length > 40 ? expr.substring(0, 37) + '...' : expr;
+                        expressions.push({ expr, type, label });
+                    } else {
+                        rejected.push({ expr, reason: check.reason, line: i + 1 });
+                    }
+                }
+            }
+            continue;
+        }
+        // Simple variable name form
+        const m = lines[i].match(RE_WATCH_SIMPLE);
         if (m) {
-            const names = m[1].trim().split(/\s+/);
-            for (const n of names) {
-                if (n && !vars.includes(n)) vars.push(n);
+            const parsed = m[1].trim().split(/\s+/);
+            for (const n of parsed) {
+                if (n && !names.includes(n)) names.push(n);
             }
         }
     }
-    return vars;
+    return { names, expressions, rejected };
 }
 
 // -------------------------------------------------------------------------
@@ -351,15 +502,22 @@ const MQL_ARRAY_MACROS = {
  * Falls back to MQL_DBG_WATCH (double) for unknown types.
  * @param {string} mqlType
  * @param {boolean} [isArray=false]
+ * @param {boolean} [batch=false]  Use batch-mode macros (MQL_DBG_BWATCH_*)
  */
-function macroForType(mqlType, isArray) {
-    if (!mqlType) return 'MQL_DBG_WATCH';
+function macroForType(mqlType, isArray, batch) {
+    if (!mqlType) return batch ? 'MQL_DBG_BWATCH' : 'MQL_DBG_WATCH';
     const key = mqlType.replace(/\b(const|static|input)\b/g, '').trim().toLowerCase();
+    let macro;
     if (isArray) {
-        return MQL_ARRAY_MACROS[key] || null; // null = skip unsupported array type
+        macro = MQL_ARRAY_MACROS[key] || null;
+        if (!macro) return null; // null = skip unsupported array type
+    } else if (key.startsWith('enum_')) {
+        macro = 'MQL_DBG_WATCH_INT';
+    } else {
+        macro = MQL_TYPE_MACROS[key] || 'MQL_DBG_WATCH';
     }
-    if (key.startsWith('enum_')) return 'MQL_DBG_WATCH_INT';
-    return MQL_TYPE_MACROS[key] || 'MQL_DBG_WATCH';
+    // Batch mode: MQL_DBG_WATCH_* → MQL_DBG_BWATCH_*
+    return batch ? macro.replace('MQL_DBG_WATCH', 'MQL_DBG_BWATCH') : macro;
 }
 
 // -------------------------------------------------------------------------
@@ -1342,14 +1500,19 @@ function buildLogExpression(template, watchVars) {
  * @returns {string[]}  Lines to insert
  */
 function buildProbeInjection(probeId, label, watchVars, condition, logMessage) {
+    // Use batch-mode macros to reduce file I/O (single write+flush per probe)
     const watchLines = [];
-    watchLines.push(`MQL_DBG_BREAK("${label}");`);
+    watchLines.push(`MQL_DBG_BBREAK("${label}");`);
     for (const v of watchVars) {
-        if (v.isArray) {
-            const arrMacro = macroForType(v.type, true);
+        if (v.isExpression) {
+            // Expression watch: inject the expression verbatim as the value
+            const macro = macroForType(v.type, false, true);
+            watchLines.push(`${macro}("${v.name}", ${v.expr});`);
+        } else if (v.isArray) {
+            const arrMacro = macroForType(v.type, true, true);
             if (arrMacro) watchLines.push(`${arrMacro}("${v.name}", ${v.name});`);
         } else {
-            const macro = macroForType(v.type);
+            const macro = macroForType(v.type, false, true);
             watchLines.push(`${macro}("${v.name}", ${v.name});`);
         }
     }
@@ -1364,24 +1527,25 @@ function buildProbeInjection(probeId, label, watchVars, condition, logMessage) {
 
     const hasLogMessage = logMessage && logMessage.trim();
     if (hasLogMessage) {
-        // Compile-time logpoint message available: use MQL_DBG_LOG in logpoint path
         const logExpr = buildLogExpression(logMessage, watchVars);
         result.push(
             `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
             `  if (MqlDebugIsLogpoint(${probeId})) {`,
             `    MQL_DBG_LOG(${logExpr});`,
             '  } else {',
+            '    MqlDebugBatchStart();',
             ...watchLines.map(l => `    ${l}`),
+            '    MqlDebugBatchFlush();',
             '    MQL_DBG_PAUSE;',
             '  }',
             '}'
         );
     } else {
-        // No logpoint message: emit BREAK + watches always, only PAUSE when not a logpoint.
-        // This allows logpoints added mid-session to work without recompilation.
         result.push(
             `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
+            '  MqlDebugBatchStart();',
             ...watchLines.map(l => `  ${l}`),
+            '  MqlDebugBatchFlush();',
             `  if (!MqlDebugIsLogpoint(${probeId})) MQL_DBG_PAUSE;`,
             '}'
         );
@@ -1520,6 +1684,143 @@ function resolveIncludePath(incPath, includeBase, mql5Root) {
     return null;
 }
 
+// -------------------------------------------------------------------------
+// Heuristic scoring & context-aware variable detection
+// -------------------------------------------------------------------------
+
+/**
+ * Score a variable's relevance to a breakpoint based on proximity and usage.
+ * Higher scores = more interesting to the user.
+ *
+ * @param {string[]} lines   Source lines (0-based array)
+ * @param {number}   bpLine  1-based breakpoint line
+ * @param {string}   varName Variable name to score
+ * @returns {number}
+ */
+function scoreVariableRelevance(lines, bpLine, varName) {
+    const idx = bpLine - 1;
+    const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const reWord = new RegExp('\\b' + escaped + '\\b');
+    // Assignment: varName = ... or varName += ... etc. (but not == or !=)
+    const reAssign = new RegExp('\\b' + escaped + '\\s*(?:[+\\-*/%&|^]|<<|>>)?=(?!=)');
+
+    let score = 0;
+
+    // Check assignment proximity (most valuable signal)
+    for (let dist = 0; dist <= 5; dist++) {
+        const lineIdx = idx - dist;
+        if (lineIdx < 0) break;
+        const line = lines[lineIdx];
+        if (reAssign.test(line)) {
+            score += dist === 0 ? 10 : dist <= 3 ? 8 : 5;
+            break;
+        }
+    }
+
+    // Count usage frequency within ±10 lines
+    const from = Math.max(0, idx - 10);
+    const to = Math.min(lines.length - 1, idx + 3);
+    let refs = 0;
+    for (let i = from; i <= to; i++) {
+        const trimmed = lines[i].trimStart();
+        if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('#')) continue;
+        if (reWord.test(lines[i])) refs++;
+    }
+    score += Math.min(refs, 5); // cap frequency bonus at 5
+
+    return score;
+}
+
+/**
+ * Find variables used in the enclosing control-flow condition (if/for/while/switch).
+ * Walks backward from the breakpoint to find the nearest enclosing control structure.
+ *
+ * @param {string[]} lines   Source lines (0-based array)
+ * @param {number}   bpLine  1-based breakpoint line
+ * @returns {string[]}  Variable identifiers from the condition expression
+ */
+function findEnclosingControlFlowVars(lines, bpLine) {
+    const idx = bpLine - 1;
+    if (idx < 0 || idx >= lines.length) return [];
+
+    // Walk backward tracking brace depth (using braceDepthDelta for string/comment safety)
+    let braceDepth = 0;
+    for (let i = idx; i >= 0; i--) {
+        const r = braceDepthDelta(lines[i]);
+        // Walking backward: subtract delta (same pattern as parseLocalsInScope)
+        braceDepth -= r.delta;
+
+        // At depth < 0, we've exited BP's block — check the line with `{` for a control keyword
+        if (braceDepth < 0) {
+            // The control keyword might be on this line or previous lines (multi-line condition)
+            let condText = '';
+            for (let j = Math.max(0, i - 5); j <= i; j++) {
+                condText += ' ' + lines[j];
+            }
+            const m = condText.match(/\b(?:if|for|while|switch)\s*\(([^)]*(?:\([^)]*\))*[^)]*)\)/);
+            if (!m) return [];
+
+            const condExpr = m[1];
+            const vars = [];
+            const RE_IDENT = /\b([a-zA-Z_]\w*)\b/g;
+            let rm;
+            while ((rm = RE_IDENT.exec(condExpr)) !== null) {
+                const name = rm[1];
+                if (!NON_VARNAME_KEYWORDS.has(name) && !NON_TYPE_KEYWORDS.has(name) &&
+                    !vars.includes(name) && !/^\d/.test(name)) {
+                    vars.push(name);
+                }
+            }
+            return vars;
+        }
+    }
+    return [];
+}
+
+/**
+ * Find variables passed as arguments to function calls on or near the breakpoint line.
+ *
+ * @param {string[]} lines   Source lines (0-based array)
+ * @param {number}   bpLine  1-based breakpoint line
+ * @returns {string[]}  Variable identifiers used as function arguments
+ */
+function findFunctionCallArgs(lines, bpLine) {
+    const idx = bpLine - 1;
+    if (idx < 0 || idx >= lines.length) return [];
+
+    const vars = [];
+    const from = Math.max(0, idx - 1);
+    const to = Math.min(lines.length - 1, idx + 1);
+
+    for (let i = from; i <= to; i++) {
+        const trimmed = lines[i].trimStart();
+        if (trimmed.startsWith('//') || trimmed.startsWith('#')) continue;
+
+        // Match function calls: FuncName(args...)
+        const RE_CALL = /\b[a-zA-Z_]\w*\s*\(([^)]*)\)/g;
+        let cm;
+        while ((cm = RE_CALL.exec(lines[i])) !== null) {
+            const argStr = cm[1];
+            if (!argStr.trim()) continue;
+            // Extract identifiers from argument list (skip string literals)
+            const RE_ARG_IDENT = /\b([a-zA-Z_]\w*)\b/g;
+            let am;
+            while ((am = RE_ARG_IDENT.exec(argStr)) !== null) {
+                const name = am[1];
+                if (!NON_VARNAME_KEYWORDS.has(name) && !NON_TYPE_KEYWORDS.has(name) &&
+                    !vars.includes(name) && !/^\d/.test(name)) {
+                    // Skip if it looks like a function call itself (next non-space char is '(')
+                    const afterIdx = am.index + am[0].length;
+                    const rest = argStr.substring(afterIdx).trimStart();
+                    if (rest.startsWith('(')) continue;
+                    vars.push(name);
+                }
+            }
+        }
+    }
+    return vars;
+}
+
 /**
  * Collect all watch variables for a breakpoint at the given line.
  * Factored out so it can be called from the all-line probe loop.
@@ -1531,11 +1832,30 @@ function resolveIncludePath(incPath, includeBase, mql5Root) {
  * @returns {{ name: string, type: string, isArray?: boolean }[]}
  */
 function collectWatchVars(lines, bpLine, typeDB, deepAnalysis) {
-    const annotatedVars = parseWatchAnnotations(lines, bpLine);
+    const annotations = parseWatchAnnotations(lines, bpLine);
+    const annotatedVars = annotations.names;
     const localVars = parseLocalsInScope(lines, bpLine);
+
+    // Warn about rejected expression watches (unsafe function calls, etc.)
+    for (const rej of annotations.rejected) {
+        const msg = `⚠ Expression watch rejected at line ${rej.line}: "${rej.expr}" — ${rej.reason}`;
+        if (vscode && vscode.window) {
+            vscode.window.showWarningMessage(msg);
+        }
+    }
 
     const seen = new Set();
     const watchVars = [];
+
+    // Expression watches: injected verbatim with explicit type
+    for (const ew of annotations.expressions) {
+        const key = `__expr__${ew.expr}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            watchVars.push({ name: ew.label, type: ew.type, isExpression: true, expr: ew.expr });
+        }
+    }
+
     for (const name of annotatedVars) {
         seen.add(name);
         const local = localVars.find(l => l.name === name);
@@ -1545,6 +1865,38 @@ function collectWatchVars(lines, bpLine, typeDB, deepAnalysis) {
         if (!seen.has(local.name)) {
             seen.add(local.name);
             watchVars.push(local);
+        }
+    }
+
+    // Add variables from enclosing control-flow conditions (if/for/while/switch)
+    for (const cfName of findEnclosingControlFlowVars(lines, bpLine)) {
+        if (seen.has(cfName)) continue;
+        const local = localVars.find(l => l.name === cfName);
+        if (local) {
+            seen.add(cfName);
+            watchVars.push({ name: cfName, type: local.type, isArray: local.isArray });
+        } else if (typeDB.globalMap.has(cfName)) {
+            const g = typeDB.globalMap.get(cfName);
+            if (isWatchableType(g.type, typeDB.classMap)) {
+                seen.add(cfName);
+                watchVars.push({ name: cfName, type: g.type, isArray: g.isArray });
+            }
+        }
+    }
+
+    // Add variables used as function call arguments near BP
+    for (const argName of findFunctionCallArgs(lines, bpLine)) {
+        if (seen.has(argName)) continue;
+        const local = localVars.find(l => l.name === argName);
+        if (local) {
+            seen.add(argName);
+            watchVars.push({ name: argName, type: local.type, isArray: local.isArray });
+        } else if (typeDB.globalMap.has(argName)) {
+            const g = typeDB.globalMap.get(argName);
+            if (isWatchableType(g.type, typeDB.classMap)) {
+                seen.add(argName);
+                watchVars.push({ name: argName, type: g.type, isArray: g.isArray });
+            }
         }
     }
 
@@ -1562,6 +1914,24 @@ function collectWatchVars(lines, bpLine, typeDB, deepAnalysis) {
         if (!seen.has(member.name)) {
             seen.add(member.name);
             watchVars.push(member);
+        }
+    }
+
+    // Auto-expand small struct/class locals (<=8 watchable fields) at default level.
+    // Deep analysis does full uncapped expansion below.
+    if (!deepAnalysis) {
+        const MAX_AUTO_EXPAND_FIELDS = 8;
+        for (const local of localVars) {
+            if (!typeDB.classMap.has(local.type)) continue;
+            // Count watchable fields for this type (walk inheritance)
+            const fields = findClassFieldExpansions([local], typeDB.classMap);
+            if (fields.length === 0 || fields.length > MAX_AUTO_EXPAND_FIELDS) continue;
+            for (const field of fields) {
+                if (!seen.has(field.name)) {
+                    seen.add(field.name);
+                    watchVars.push(field);
+                }
+            }
         }
     }
 
@@ -1610,6 +1980,21 @@ function collectWatchVars(lines, bpLine, typeDB, deepAnalysis) {
         seen.add(expr);
         watchVars.push({ name: expr, type, isArray });
     }
+
+    // Sort by relevance: annotated/expression vars stay at top, rest sorted by precomputed score
+    const annotatedSet = new Set(annotatedVars);
+    const scoreCache = new Map();
+    for (const v of watchVars) {
+        if (!annotatedSet.has(v.name) && !v.isExpression) {
+            scoreCache.set(v.name, scoreVariableRelevance(lines, bpLine, v.name));
+        }
+    }
+    watchVars.sort((a, b) => {
+        const aPinned = (annotatedSet.has(a.name) || a.isExpression) ? 1 : 0;
+        const bPinned = (annotatedSet.has(b.name) || b.isExpression) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned; // pinned first
+        return (scoreCache.get(b.name) || 0) - (scoreCache.get(a.name) || 0);
+    });
 
     return watchVars;
 }
@@ -1994,6 +2379,8 @@ module.exports = {
     _test: {
         MqlLineClassifier,
         isConditionSafe,
+        isExpressionSafe,
+        SAFE_READONLY_FUNCTIONS,
         findInjectionPoint,
         parseWatchAnnotations,
         macroForType,
@@ -2004,5 +2391,9 @@ module.exports = {
         braceDepthDelta,
         buildLogExpression,
         buildProbeInjection,
+        scoreVariableRelevance,
+        findEnclosingControlFlowVars,
+        findFunctionCallArgs,
+        collectWatchVars,
     }
 };
