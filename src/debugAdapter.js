@@ -239,7 +239,13 @@ class MqlDebugAdapter extends EventEmitter {
                     if (!found) verified = false;
                 }
             }
-            return { id: this._seq++, verified, line: actualLine };
+            let message;
+            if (!verified) {
+                message = `No instrumentable line within ±10 of line ${b.line}`;
+            } else if (actualLine !== b.line) {
+                message = `Adjusted to nearest probe at line ${actualLine}`;
+            }
+            return { id: this._seq++, verified, line: actualLine, message };
         });
 
         // Track active breakpoint lines (verified lines) for auto-continue fallback
