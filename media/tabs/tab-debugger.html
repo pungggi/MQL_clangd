@@ -130,9 +130,31 @@
                         of <span class="code-inline">% 50</span> together with a logpoint message to log
                         every 50th tick instead of every tick.
                     </li>
-                    <li><strong>Manual <span class="code-inline">// @watch</span> annotations:</strong> Add a <span
-                            class="code-inline">// @watch myVar otherVar</span> comment near a breakpoint to explicitly
-                        name variables the auto-detector might miss.</li>
+                    <li>
+                        <strong>Manual <span class="code-inline">// @watch</span> annotations:</strong>
+                        The debugger auto-detects local variables near each breakpoint, but some values —
+                        like global variables, computed properties, or array elements — may be out of reach.
+                        Add a <span class="code-inline">// @watch</span> comment within 5 lines above or
+                        2 lines below the breakpoint to explicitly name them:
+                        <div class="highlight-box">
+<pre style="margin:0; font-family: var(--vscode-editor-font-family), monospace; font-size: 0.9em; line-height: 1.5;">
+double gSpread;          // global — not auto-detected
+
+void OnTick()
+{
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   gSpread = ask - bid;
+
+   // @watch gSpread ask bid        &lt;— names on one line
+   int ticket = OrderSend(…);   // &lt;— breakpoint set here
+}</pre>
+                            The debugger will now capture <span class="code-inline">gSpread</span>,
+                            <span class="code-inline">ask</span>, and
+                            <span class="code-inline">bid</span> alongside any
+                            auto-detected locals when this breakpoint is hit.
+                        </div>
+                    </li>
                     <li><strong>Call Stack Tracking:</strong> Functions containing breakpoints automatically report
                         <span class="code-inline">ENTER</span>/<span class="code-inline">EXIT</span> events so the
                         dashboard shows a live call stack.
