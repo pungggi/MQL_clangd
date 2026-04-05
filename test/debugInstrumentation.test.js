@@ -12,6 +12,7 @@ const {
     sanitizeLabel,
     sanitizeCondition,
     buildLogExpression,
+    buildProbeInjection,
 } = _test;
 
 suite('debugInstrumentation', function () {
@@ -480,6 +481,76 @@ suite('debugInstrumentation', function () {
             const vars = [{ name: 'f', type: 'float' }];
             const result = buildLogExpression('{f}', vars);
             assert.strictEqual(result, 'DoubleToString((double)(f), 8)');
+        });
+    });
+
+    // =========================================================================
+    // buildProbeInjection
+    // =========================================================================
+
+    suite('buildProbeInjection', function () {
+        test('basic probe without logMessage contains PAUSE', function () {
+            const lines = buildProbeInjection(0, 'bp_test_1', [], '');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MqlDebugProbeCheck(0)'), 'should check probe');
+            assert.ok(joined.includes('MQL_DBG_BREAK("bp_test_1")'), 'should emit BREAK');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'), 'should contain PAUSE');
+        });
+
+        test('probe without logMessage has runtime logpoint check to skip PAUSE', function () {
+            const lines = buildProbeInjection(5, 'bp_test_5', [], '');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MqlDebugIsLogpoint(5)'), 'should check logpoint at runtime');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'), 'should still contain PAUSE for break mode');
+        });
+
+        test('probe with logMessage generates dual path with MQL_DBG_LOG', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const lines = buildProbeInjection(3, 'bp_test_3', vars, '', 'x={x}');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MqlDebugIsLogpoint(3)'), 'should check logpoint flag');
+            assert.ok(joined.includes('MQL_DBG_LOG('), 'should contain LOG macro');
+            assert.ok(joined.includes('IntegerToString'), 'should have interpolated expression');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'), 'should have PAUSE in break branch');
+        });
+
+        test('logpoint path does not include PAUSE', function () {
+            const lines = buildProbeInjection(3, 'bp_test_3', [], '', 'hello');
+            const joined = lines.join('\n');
+            // Find the logpoint branch (between MqlDebugIsLogpoint and } else)
+            const logpointStart = joined.indexOf('MqlDebugIsLogpoint');
+            const elseIdx = joined.indexOf('} else {', logpointStart);
+            const logpointBranch = joined.substring(logpointStart, elseIdx);
+            assert.ok(!logpointBranch.includes('MQL_DBG_PAUSE'), 'logpoint branch should not PAUSE');
+        });
+
+        test('probe with condition includes condition in guard', function () {
+            const lines = buildProbeInjection(0, 'bp_test_1', [], 'x > 5');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('&& (x > 5)'), 'should include condition expression');
+        });
+
+        test('probe with watch vars includes watch macros', function () {
+            const vars = [
+                { name: 'count', type: 'int' },
+                { name: 'price', type: 'double' },
+            ];
+            const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MQL_DBG_WATCH_INT("count", count)'), 'should watch int');
+            assert.ok(joined.includes('MQL_DBG_WATCH_DBL("price", price)'), 'should watch double');
+        });
+
+        test('no-logMessage fallback: logpoint emits BREAK + watches without PAUSE', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const lines = buildProbeInjection(7, 'bp_test_7', vars, '');
+            const joined = lines.join('\n');
+            // Should have BREAK and watch in the main body (before logpoint check)
+            assert.ok(joined.includes('MQL_DBG_BREAK("bp_test_7")'), 'should have BREAK');
+            assert.ok(joined.includes('MQL_DBG_WATCH_INT("x", x)'), 'should have watch');
+            // PAUSE is conditional on NOT being a logpoint
+            assert.ok(joined.includes('!MqlDebugIsLogpoint(7)') && joined.includes('MQL_DBG_PAUSE'),
+                'PAUSE should be guarded by logpoint check');
         });
     });
 });

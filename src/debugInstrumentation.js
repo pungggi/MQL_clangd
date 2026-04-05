@@ -1308,9 +1308,12 @@ function buildLogExpression(template, watchVars) {
  * Wraps the BREAK + watches + PAUSE inside an `if (MqlDebugProbeCheck(id))` block
  * so the EA only fires the probe when VS Code has activated it via the config file.
  *
- * If a logMessage is provided, generates a dual code path:
- * - Logpoint mode (runtime flag): emits a LOG event with the interpolated message, no pause.
- * - Break mode (default): emits BREAK + watches + PAUSE as before.
+ * Every probe includes a runtime logpoint check (`MqlDebugIsLogpoint`) so that
+ * logpoints added mid-session work even without recompilation:
+ * - If a logMessage template was provided at compile time, the logpoint path
+ *   emits a LOG event with the interpolated message.
+ * - Otherwise, the logpoint fallback emits BREAK + watches (same as break mode)
+ *   but skips PAUSE, so the EA continues without stopping.
  *
  * @param {number}   probeId      Sequential probe index
  * @param {string}   label        Breakpoint label (e.g. "bp_SMC_mq5_310")
@@ -1320,18 +1323,17 @@ function buildLogExpression(template, watchVars) {
  * @returns {string[]}  Lines to insert
  */
 function buildProbeInjection(probeId, label, watchVars, condition, logMessage) {
-    const breakInner = [];
-    breakInner.push(`MQL_DBG_BREAK("${label}");`);
+    const watchLines = [];
+    watchLines.push(`MQL_DBG_BREAK("${label}");`);
     for (const v of watchVars) {
         if (v.isArray) {
             const arrMacro = macroForType(v.type, true);
-            if (arrMacro) breakInner.push(`${arrMacro}("${v.name}", ${v.name});`);
+            if (arrMacro) watchLines.push(`${arrMacro}("${v.name}", ${v.name});`);
         } else {
             const macro = macroForType(v.type);
-            breakInner.push(`${macro}("${v.name}", ${v.name});`);
+            watchLines.push(`${macro}("${v.name}", ${v.name});`);
         }
     }
-    breakInner.push('MQL_DBG_PAUSE;');
 
     const condExpr = (condition && condition.trim() && isConditionSafe(condition))
         ? ` && (${condition})` : '';
@@ -1341,23 +1343,27 @@ function buildProbeInjection(probeId, label, watchVars, condition, logMessage) {
         result.push(`// Invalid breakpoint condition: ${sanitizeCondition(condition)}`);
     }
 
-    // If logMessage is provided, generate dual path
     const hasLogMessage = logMessage && logMessage.trim();
     if (hasLogMessage) {
+        // Compile-time logpoint message available: use MQL_DBG_LOG in logpoint path
         const logExpr = buildLogExpression(logMessage, watchVars);
         result.push(
             `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
             `  if (MqlDebugIsLogpoint(${probeId})) {`,
             `    MQL_DBG_LOG(${logExpr});`,
             '  } else {',
-            ...breakInner.map(l => `    ${l}`),
+            ...watchLines.map(l => `    ${l}`),
+            '    MQL_DBG_PAUSE;',
             '  }',
             '}'
         );
     } else {
+        // No logpoint message: emit BREAK + watches always, only PAUSE when not a logpoint.
+        // This allows logpoints added mid-session to work without recompilation.
         result.push(
             `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
-            ...breakInner.map(l => `  ${l}`),
+            ...watchLines.map(l => `  ${l}`),
+            `  if (!MqlDebugIsLogpoint(${probeId})) MQL_DBG_PAUSE;`,
             '}'
         );
     }
@@ -1978,5 +1984,6 @@ module.exports = {
         sanitizeCondition,
         braceDepthDelta,
         buildLogExpression,
+        buildProbeInjection,
     }
 };

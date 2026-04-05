@@ -479,6 +479,10 @@ bool MqlDebugLoadConfig() {
     ArrayFill(__mqldbg_hitcond_op, 0, __mqldbg_maxProbe, 0);
     ArrayFill(__mqldbg_hitcond_val, 0, __mqldbg_maxProbe, 0);
     ArrayFill(__mqldbg_logpoint, 0, __mqldbg_maxProbe, false);
+    // NOTE: __mqldbg_hitcount is intentionally NOT reset here.
+    // Hit counts persist across config reloads so that changing a
+    // hit condition (e.g. "> 5" → "> 10") evaluates against the
+    // running total, matching standard DAP adapter behavior.
 
     int handle = FileOpen(MQLDEBUG_BP_CONFIG,
                           FILE_READ | FILE_TXT | FILE_ANSI |

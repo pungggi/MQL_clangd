@@ -276,8 +276,8 @@ class MqlDebugAdapter extends EventEmitter {
             for (let i = 0; i < bps.length; i++) {
                 if (bps[i].verified) {
                     lineMap.set(bps[i].line, {
-                        hitCondition: reqBps[i] && reqBps[i].hitCondition || '',
-                        logMessage: reqBps[i] && reqBps[i].logMessage || '',
+                        hitCondition: reqBps[i]?.hitCondition || '',
+                        logMessage: reqBps[i]?.logMessage || '',
                     });
                 }
             }
