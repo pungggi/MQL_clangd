@@ -415,4 +415,29 @@ suite('DebugStateStore — getVariableHistory', function () {
         // Should be the LAST 5 entries (most recent)
         assert.strictEqual(h[4].value, '24');
     });
+
+    test('filters by breakpoint label when provided', function () {
+        s.startSession();
+        // Two different breakpoints, both watching 'x'
+        s.applyBatch([
+            { type: 'break', label: 'bp_A', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+            { type: 'watch', varName: 'x', varType: 'int', value: '100', file: 'a.mq5', func: 'F', line: 10, timestamp: 't1' },
+        ]);
+        s.applyBatch([
+            { type: 'break', label: 'bp_B', file: 'a.mq5', func: 'G', line: 20, timestamp: 't2' },
+            { type: 'watch', varName: 'x', varType: 'int', value: '200', file: 'a.mq5', func: 'G', line: 20, timestamp: 't2' },
+        ]);
+        s.applyBatch([
+            { type: 'break', label: 'bp_A', file: 'a.mq5', func: 'F', line: 10, timestamp: 't3' },
+            { type: 'watch', varName: 'x', varType: 'int', value: '300', file: 'a.mq5', func: 'F', line: 10, timestamp: 't3' },
+        ]);
+        // Without label — returns all 3 hits
+        const all = s.getVariableHistory('x');
+        assert.strictEqual(all.length, 3);
+        // With label — returns only bp_A hits
+        const filtered = s.getVariableHistory('x', 20, 'bp_A');
+        assert.strictEqual(filtered.length, 2);
+        assert.strictEqual(filtered[0].value, '100');
+        assert.strictEqual(filtered[1].value, '300');
+    });
 });

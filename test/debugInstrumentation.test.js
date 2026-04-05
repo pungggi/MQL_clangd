@@ -937,6 +937,18 @@ suite('debugInstrumentation', function () {
             assert.ok(vars.includes('text'), 'should find text');
         });
 
+        test('finds all args with nested function calls', function () {
+            const lines = [
+                'void OnTick() {',
+                '  Print(foo(bar), baz);', // BP here (line 2)
+                '}',
+            ];
+            const vars = findFunctionCallArgs(lines, 2);
+            assert.ok(!vars.includes('foo'), 'should not include nested function name');
+            assert.ok(vars.includes('bar'), 'should find bar inside nested call');
+            assert.ok(vars.includes('baz'), 'should find baz after nested call');
+        });
+
         test('returns empty with no function calls', function () {
             const lines = [
                 'void OnTick() {',
@@ -1020,6 +1032,18 @@ suite('debugInstrumentation', function () {
             const joined = lines.join('\n');
             assert.ok(joined.includes('MQL_DBG_BWATCH_INT("x", x)'), 'regular watch');
             assert.ok(joined.includes('SymbolInfoDouble(_Symbol, SYMBOL_ASK)'), 'expression watch');
+        });
+
+        test('expression watch label with quotes is escaped', function () {
+            const vars = [
+                { name: 'a["key"]', type: 'string', isExpression: true, expr: 'a["key"]' },
+            ];
+            const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
+            const joined = lines.join('\n');
+            // The label should have escaped quotes: a[\"key\"]
+            assert.ok(joined.includes('a[\\"key\\"]'), 'should escape quotes in label');
+            // The expression should remain verbatim
+            assert.ok(joined.includes('a["key"]'), 'expression should be verbatim');
         });
     });
 

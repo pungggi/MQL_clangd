@@ -192,14 +192,17 @@ class DebugStateStore {
 
     /**
      * Get the value history of a variable across recent breakpoint hits.
+     * When bpLabel is provided, only returns entries from that specific breakpoint.
      * @param {string} varName
      * @param {number} [maxEntries=20]
+     * @param {string} [bpLabel]  Breakpoint label to scope the history to
      * @returns {{ value: string, timestamp: string, hitCount: number, label: string }[]}
      */
-    getVariableHistory(varName, maxEntries = 20) {
+    getVariableHistory(varName, maxEntries = 20, bpLabel) {
         const history = [];
         for (let i = this.hits.length - 1; i >= 0 && history.length < maxEntries; i--) {
             const hit = this.hits[i];
+            if (bpLabel && hit.label !== bpLabel) continue;
             const w = hit.watches.find(w => w.varName === varName);
             if (w) {
                 history.push({

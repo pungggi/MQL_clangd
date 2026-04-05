@@ -1506,8 +1506,10 @@ function buildProbeInjection(probeId, label, watchVars, condition, logMessage) {
     for (const v of watchVars) {
         if (v.isExpression) {
             // Expression watch: inject the expression verbatim as the value
+            // Escape the label for safe embedding in an MQL string literal
+            const safeLabel = v.name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
             const macro = macroForType(v.type, false, true);
-            watchLines.push(`${macro}("${v.name}", ${v.expr});`);
+            watchLines.push(`${macro}("${safeLabel}", ${v.expr});`);
         } else if (v.isArray) {
             const arrMacro = macroForType(v.type, true, true);
             if (arrMacro) watchLines.push(`${arrMacro}("${v.name}", ${v.name});`);
@@ -1796,11 +1798,21 @@ function findFunctionCallArgs(lines, bpLine) {
         const trimmed = lines[i].trimStart();
         if (trimmed.startsWith('//') || trimmed.startsWith('#')) continue;
 
-        // Match function calls: FuncName(args...)
-        const RE_CALL = /\b[a-zA-Z_]\w*\s*\(([^)]*)\)/g;
+        // Find function calls by locating "Identifier(" then walking to the balanced ")"
+        const RE_CALL_START = /\b[a-zA-Z_]\w*\s*\(/g;
         let cm;
-        while ((cm = RE_CALL.exec(lines[i])) !== null) {
-            const argStr = cm[1];
+        const line = lines[i];
+        while ((cm = RE_CALL_START.exec(line)) !== null) {
+            // Walk from the '(' to find the matching ')' respecting nesting
+            const openIdx = cm.index + cm[0].length - 1; // index of '('
+            let depth = 1;
+            let endIdx = -1;
+            for (let c = openIdx + 1; c < line.length && depth > 0; c++) {
+                if (line[c] === '(') depth++;
+                else if (line[c] === ')') { depth--; if (depth === 0) { endIdx = c; } }
+            }
+            if (endIdx === -1) continue; // unbalanced — skip
+            const argStr = line.substring(openIdx + 1, endIdx);
             if (!argStr.trim()) continue;
             // Extract identifiers from argument list (skip string literals)
             const RE_ARG_IDENT = /\b([a-zA-Z_]\w*)\b/g;

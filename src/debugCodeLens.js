@@ -58,7 +58,8 @@ class DebugWatchCodeLensProvider {
      */
     _hasWatchAnnotation(document, bpLine) {
         const from = Math.max(0, bpLine - 5);
-        for (let i = from; i <= bpLine; i++) {
+        const to = Math.min(document.lineCount - 1, bpLine + 2);
+        for (let i = from; i <= to; i++) {
             if (document.lineAt(i).text.includes('@watch')) return true;
         }
         return false;

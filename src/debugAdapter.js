@@ -404,10 +404,11 @@ class MqlDebugAdapter extends EventEmitter {
             } else {
                 watches = this._store.latestWatchList;
             }
+            const hitLabel = hit ? hit.label : '';
             let refId = 1000;
             variables = watches.map(w => {
                 const histRef = refId++;
-                this._historyRefMap.set(histRef, w.varName);
+                this._historyRefMap.set(histRef, { varName: w.varName, label: hitLabel });
                 return {
                     name: w.varName,
                     value: String(w.value),
@@ -433,8 +434,8 @@ class MqlDebugAdapter extends EventEmitter {
             }
         } else if (ref >= 1000 && this._historyRefMap && this._historyRefMap.has(ref)) {
             // Variable history expansion — show value timeline
-            const varName = this._historyRefMap.get(ref);
-            const history = this._store.getVariableHistory(varName, 15);
+            const { varName, label: bpLabel } = this._historyRefMap.get(ref);
+            const history = this._store.getVariableHistory(varName, 15, bpLabel);
             const histHint = { kind: 'property', attributes: ['readOnly'] };
             variables = history.map((h, i) => ({
                 name: `#${i + 1}`,
