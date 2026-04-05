@@ -3,4 +3,5 @@ node_modules/
 .vscode-test/*
 !.vscode/tasks.json
 .cache/
+dist/
 nul

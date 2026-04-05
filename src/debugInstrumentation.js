@@ -494,9 +494,9 @@ function parseLocalsInScope(lines, bpLine) {
     let funcBodyStart = -1;
     for (let i = idx; i >= 0; i--) {
         const r = braceDepthDelta(lines[i]);
-        // Walking backward: subtract delta (closing braces increase depth going up)
+        // Walking backward: subtract delta (opening braces push depth negative)
         braceDepth -= r.delta;
-        if (braceDepth > 0) {
+        if (braceDepth < 0) {
             // We've passed more opening braces than closing — found the function start
             funcBodyStart = i;
             break;
@@ -954,7 +954,7 @@ function resolveMemberType(expr, locals, globalMap, classMap, enclosingClass) {
 function isWatchableType(typeName, classMap) {
     const key = typeName.replace(/\b(const|static|input)\b/g, '').trim();
     const lower = key.toLowerCase();
-    if (MQL_TYPE_MACROS.hasOwnProperty(lower)) return true;
+    if (Object.prototype.hasOwnProperty.call(MQL_TYPE_MACROS, lower)) return true;
     if (lower.startsWith('enum_')) return true;
     if (classMap.has(key)) return false;
     return false; // unknown type — skip to avoid compile errors
@@ -1173,7 +1173,7 @@ function instrumentedToOriginal(instrumentedLine, offsets) {
  * @returns {string}
  */
 function sanitizeLabel(label) {
-    if (!label) return "";
+    if (!label) return '';
     return label.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
@@ -1183,7 +1183,7 @@ function sanitizeLabel(label) {
  * @returns {string}
  */
 function sanitizeCondition(condition) {
-    if (!condition) return "";
+    if (!condition) return '';
     // If it contains newlines or comment delimiters, use JSON encoding as a safe fallback
     const isUnsafe = /[\r\n]|\/\/|\/\*|\*\//.test(condition);
     if (!isUnsafe) return condition;
@@ -1217,12 +1217,12 @@ function buildInjectionLines(label, watchVars, condition) {
             watchLines.push(`${macro}("${v.name}", ${v.name});`);
         }
     }
-    const pauseLine = `MQL_DBG_PAUSE;`;
+    const pauseLine = 'MQL_DBG_PAUSE;';
 
     if (condition && condition.trim()) {
         if (isConditionSafe(condition)) {
             const bodyLines = [breakLine, ...watchLines, pauseLine];
-            return [`if (${condition}) {`, ...bodyLines.map(l => `  ${l}`), `}`];
+            return [`if (${condition}) {`, ...bodyLines.map(l => `  ${l}`), '}'];
         } else {
             return [
                 `// Invalid breakpoint condition: ${sanitizeCondition(condition)}`,
@@ -1258,7 +1258,7 @@ function buildProbeInjection(probeId, label, watchVars, condition) {
             inner.push(`${macro}("${v.name}", ${v.name});`);
         }
     }
-    inner.push(`MQL_DBG_PAUSE;`);
+    inner.push('MQL_DBG_PAUSE;');
 
     const condExpr = (condition && condition.trim() && isConditionSafe(condition))
         ? ` && (${condition})` : '';
@@ -1270,7 +1270,7 @@ function buildProbeInjection(probeId, label, watchVars, condition) {
     result.push(
         `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
         ...inner.map(l => `  ${l}`),
-        `}`
+        '}'
     );
     return result;
 }
@@ -1655,10 +1655,10 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
                 const files = fs.readdirSync(dir);
                 for (const f of files) {
                     if (f.includes('.mql_dbg_build.')) {
-                        try { fs.unlinkSync(path.join(dir, f)); } catch {}
+                        try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore cleanup errors */ }
                     }
                 }
-            } catch {}
+            } catch { /* ignore read errors */ }
         }
 
         // Rewrite includes that point to copied children

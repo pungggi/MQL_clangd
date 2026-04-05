@@ -74,7 +74,7 @@ class MqlDebugLogReader {
                 this._log(`File exists, skipping ${stats.size} bytes`);
             } else {
                 fs.writeFileSync(this.filePath, ''); // touch so watcher can attach
-                this._log(`File created (touched)`);
+                this._log('File created (touched)');
             }
         } catch (err) {
             this._emitError(err);

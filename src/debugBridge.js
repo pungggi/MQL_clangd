@@ -115,7 +115,7 @@ class MqlDebugBridge {
         try {
             const result = instrumentWorkspace(sourcePath, breakpointMap, mql5Root);
             if (!result) {
-                vscode.window.showErrorMessage(`MQL Debug: Failed to instrument workspace.`);
+                vscode.window.showErrorMessage('MQL Debug: Failed to instrument workspace.');
                 return;
             }
             ({ tempPath, restore, skipped, lineMap, probeMap } = result);

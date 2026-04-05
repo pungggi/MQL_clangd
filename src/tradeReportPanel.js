@@ -340,9 +340,9 @@ class TradeReportPanel {
         do {
             previous = sanitized;
             // Remove leading slashes/backslashes and Windows drive letters
-            sanitized = sanitized.replace(/^[\\\/]+/, '').replace(/^[a-zA-Z]:/, '');
+            sanitized = sanitized.replace(/^[\\/]+/, '').replace(/^[a-zA-Z]:/, '');
             // Remove leading ".." path segments only
-            sanitized = sanitized.replace(/^\.\.(?:[\\\/]|$)/, '');
+            sanitized = sanitized.replace(/^\.\.(?:[\\/]|$)/, '');
         } while (sanitized !== previous && sanitized !== '');
 
         return sanitized;

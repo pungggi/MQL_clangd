@@ -47,6 +47,34 @@ struct ULARGE_INTEGER { unsigned long long QuadPart; };
 #define CL_USE_ANY -1
 #endif
 
+// Windows API types used in Win32 stubs (not covered by _WINDEF_ guard)
+struct DISPLAYCONFIG_MODE { unsigned int modeInfoIdx; };
+struct RAWFORMAT { unsigned char data[16]; };
+// MOUSEINPUT and INPUT_TYPE are defined just before the INPUT struct that uses them (bottom of file)
+
+// Function pointer typedefs used by CAxis/CCurve
+typedef string (*DoubleToStringFunction)(double value, void* cbdata);
+typedef double (*CurveFunction)(double x, void* cbdata);
+typedef void (*PlotFucntion)(void* cbdata);
+
+// OpenCL execution status (not in MQL5 public headers)
+enum ENUM_OPENCL_EXECUTION_STATUS {
+    OPENCL_EXECUTION_STATUS_SUBMITTED = 0,
+    OPENCL_EXECUTION_STATUS_RUNNING = 1,
+    OPENCL_EXECUTION_STATUS_COMPLETE = 2,
+    OPENCL_EXECUTION_STATUS_ERROR = -1
+};
+
+// Template forward declarations
+template<typename T> class CLinkedList;
+
+// DirectX types used before their full definition
+enum ENUM_DX_PRIMITIVE_TOPOLOGY { DX_PRIMITIVE_TOPOLOGY_TRIANGLELIST = 0 };
+enum ENUM_DX_FORMAT { DX_FORMAT_UNKNOWN = 0 };
+struct DXVertex { float x; float y; float z; };
+struct CDXInput {};
+class CDXTexture {};
+
 // Forward declarations
 class CArray;
 class CArrayChar;
@@ -202,10 +230,10 @@ struct BITMAPINFOHEADER;
 class CFileBMP;
 class CFilePipe;
 class CFileTxt;
-struct Slot;
-struct Introsort;
+template<typename T> struct Slot;
+template<typename TKey, typename TItem> struct Introsort;
 class CPrimeGenerator;
-class CLinkedListNode;
+template<typename T> class CLinkedListNode;
 class CAxis;
 class CColorGenerator;
 struct CPoint2D;
@@ -3205,6 +3233,53 @@ public:
     uint imgClrImportant;
 };
 
+// CPoint/CSize/CRect moved before CChartCanvas (which uses them as value members)
+struct CPoint {
+public:
+    int x;
+    int y;
+};
+
+struct CSize {
+public:
+    int cx;
+    int cy;
+};
+
+struct CRect {
+public:
+    int left;
+    int top;
+    int right;
+    int bottom;
+    CPoint LeftTop(void) const;
+    void LeftTop(const int x, const int y);
+    void LeftTop(const CPoint& point);
+    CPoint RightBottom(void) const;
+    void RightBottom(const int x, const int y);
+    void RightBottom(const CPoint& point);
+    CPoint CenterPoint(void) const;
+    int Width(void) const;
+    void Width(const int w);
+    int Height(void) const;
+    void Height(const int h);
+    CSize Size(void) const;
+    void Size(const int cx, const int cy);
+    void Size(const CSize& size);
+    void SetBound(const int l, const int t, const int r, const int b);
+    void SetBound(const CRect& rect);
+    void SetBound(const CPoint& point, const CSize& size);
+    void SetBound(const CPoint& left_top, const CPoint& right_bottom);
+    void Move(const int x, const int y);
+    void Move(const CPoint& point);
+    void Shift(const int dx, const int dy);
+    void Shift(const CPoint& point);
+    void Shift(const CSize& size);
+    bool Contains(const int x, const int y) const;
+    bool Contains(const CPoint& point) const;
+    void Normalize(void);
+};
+
 class CChartCanvas : public CCanvas {
 public:
     CChartCanvas(void);
@@ -3364,6 +3439,82 @@ protected:
     string LabelMake(const string text, const double value, const bool to_left);
 };
 
+// DX types moved before CDXMesh (which uses them as value members)
+struct DXVector2 {
+public:
+    float x;
+    float y;
+    DXVector2(void);
+    DXVector2(float v);
+    DXVector2(float vx, float vy);
+};
+
+struct DXVector3 {
+public:
+    float x;
+    float y;
+    float z;
+    DXVector3(void);
+    DXVector3(float v);
+    DXVector3(float vx, float vy, float vz);
+};
+
+struct DXVector4 {
+public:
+    float x;
+    float y;
+    float z;
+    float w;
+    DXVector4(void);
+    DXVector4(float v);
+    DXVector4(float vx, float vy, float vz, float vw);
+    DXVector4(const DXVector2 & v);
+    DXVector4(const DXVector3 & v);
+    DXVector4(const DXVector4 & v);
+};
+
+struct DXColor {
+public:
+    float r;
+    float g;
+    float b;
+    float a;
+    DXColor(void);
+    DXColor(float red, float green, float blue, float alpha);
+    DXColor(const DXVector4 & v);
+    DXColor(const DXVector3 & v);
+    DXColor(const DXColor   & c);
+};
+
+struct DXMatrix {
+};
+
+struct DXPlane {
+public:
+    float a;
+    float b;
+    float c;
+    float d;
+};
+
+struct DXQuaternion {
+public:
+    float x;
+    float y;
+    float z;
+    float w;
+};
+
+struct DViewport {
+public:
+    ulong x;
+    ulong y;
+    ulong width;
+    ulong height;
+    float minz;
+    float maxz;
+};
+
 class CDXMesh : public CDXObject {
 public:
     CDXMesh(void);
@@ -3435,89 +3586,10 @@ protected:
     CDXObjectBase m_dx_resources;
 };
 
-struct DXColor {
-public:
-    float r;
-    float g;
-    float b;
-    float a;
-    DXColor(void);
-    DXColor(float red, float green, float blue, float alpha);
-    DXColor(const DXVector4 & v);
-    DXColor(const DXVector3 & v);
-    DXColor(const DXColor   & c);
-};
-
-struct DXPlane {
-public:
-    float a;
-    float b;
-    float c;
-    float d;
-};
-
-struct DXVector2 {
-public:
-    float x;
-    float y;
-    DXVector2(void);
-    DXVector2(float v);
-    DXVector2(float vx, float vy);
-    DXVector2(const DXVector3 & v);
-    DXVector2(const DXVector4 & v);
-};
-
-struct DXVector3 {
-public:
-    float x;
-    float y;
-    float z;
-    DXVector3(void);
-    DXVector3(float v);
-    DXVector3(float vx, float vy, float vz);
-    DXVector3(const DXVector2 & v);
-    DXVector3(const DXVector4 & v);
-};
-
-struct DXVector4 {
-public:
-    float x;
-    float y;
-    float z;
-    float w;
-    DXVector4(void);
-    DXVector4(float v);
-    DXVector4(float vx, float vy, float vz, float vw);
-    DXVector4(const DXVector2 & v);
-    DXVector4(const DXVector3 & v);
-    DXVector4(const DXVector4 & v);
-};
-
-struct DXMatrix {
-};
-
-struct DXQuaternion {
-public:
-    float x;
-    float y;
-    float z;
-    float w;
-};
-
-struct DViewport {
-public:
-    ulong x;
-    ulong y;
-    ulong width;
-    ulong height;
-    float minz;
-    float maxz;
-};
-
 class CDXSurface : public CDXMesh {
 public:
-    enum EN_SURFACE_FLAGS;
-    enum EN_COLOR_SCHEME;
+    enum EN_SURFACE_FLAGS { SF_NONE = 0 };
+    enum EN_COLOR_SCHEME { CS_NONE = 0 };
     CDXSurface();
     ~CDXSurface();
     bool Create(CDXDispatcher & dispatcher, CDXInput* buffer_scene, double & data, uint m_data_widht, uint m_data_height, float data_range, const DXVector3 & from, const DXVector3 & to, DXVector2 & texture_size, uint flags = SF_NONE, EN_COLOR_SCHEME color_scheme = CS_NONE);
@@ -4555,6 +4627,92 @@ protected:
     virtual bool OnClickLabel(void);
 };
 
+
+class CPanel : public CWndObj {
+public:
+    CPanel(void);
+    ~CPanel();
+    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
+    ENUM_BORDER_TYPE BorderType(void) const;
+    bool BorderType(const ENUM_BORDER_TYPE type);
+protected:
+    virtual bool OnSetText(void);
+    virtual bool OnSetColorBackground(void);
+    virtual bool OnSetColorBorder(void);
+    virtual bool OnCreate(void);
+    virtual bool OnShow(void);
+    virtual bool OnHide(void);
+    virtual bool OnMove(void);
+    virtual bool OnResize(void);
+    virtual bool OnChange(void);
+};
+
+class CScroll : public CWndContainer {
+public:
+    CScroll(void);
+    ~CScroll();
+    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
+    virtual bool OnEvent(const int id, const long & lparam, const double & dparam, const string & sparam);
+    int MinPos(void) const;
+    void MinPos(const int value);
+    int MaxPos(void) const;
+    void MaxPos(const int value);
+    int CurrPos(void) const;
+    bool CurrPos(int value);
+protected:
+    CPanel m_back;
+    CBmpButton m_inc;
+    CBmpButton m_dec;
+    CBmpButton m_thumb;
+    int m_min_pos;
+    int m_max_pos;
+    int m_curr_pos;
+    virtual bool CreateBack(void);
+    virtual bool CreateInc(void);
+    virtual bool CreateDec(void);
+    virtual bool CreateThumb(void);
+    virtual bool OnClickInc(void);
+    virtual bool OnClickDec(void);
+    virtual bool OnShow(void);
+    virtual bool OnHide(void);
+    virtual bool OnChangePos(void);
+    virtual bool OnThumbDragStart(void);
+    virtual bool OnThumbDragProcess(void);
+    virtual bool OnThumbDragEnd(void);
+    virtual int CalcPos(const int coord);
+};
+
+class CScrollV : public CScroll {
+public:
+    CScrollV(void);
+    ~CScrollV();
+protected:
+    virtual bool CreateInc(void);
+    virtual bool CreateDec(void);
+    virtual bool CreateThumb(void);
+    virtual bool OnResize(void);
+    virtual bool OnChangePos(void);
+    virtual bool OnThumbDragStart(void);
+    virtual bool OnThumbDragProcess(void);
+    virtual bool OnThumbDragEnd(void);
+    virtual int CalcPos(const int coord);
+};
+
+class CScrollH : public CScroll {
+public:
+    CScrollH(void);
+    ~CScrollH();
+protected:
+    virtual bool CreateInc(void);
+    virtual bool CreateDec(void);
+    virtual bool CreateThumb(void);
+    virtual bool OnResize(void);
+    virtual bool OnChangePos(void);
+    virtual bool OnThumbDragStart(void);
+    virtual bool OnThumbDragProcess(void);
+    virtual bool OnThumbDragEnd(void);
+    virtual int CalcPos(const int coord);
+};
 class CWndClient : public CWndContainer {
 public:
     CWndClient(void);
@@ -4842,25 +5000,6 @@ protected:
     bool CheckView(void);
 };
 
-class CPanel : public CWndObj {
-public:
-    CPanel(void);
-    ~CPanel();
-    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
-    ENUM_BORDER_TYPE BorderType(void) const;
-    bool BorderType(const ENUM_BORDER_TYPE type);
-protected:
-    virtual bool OnSetText(void);
-    virtual bool OnSetColorBackground(void);
-    virtual bool OnSetColorBorder(void);
-    virtual bool OnCreate(void);
-    virtual bool OnShow(void);
-    virtual bool OnHide(void);
-    virtual bool OnMove(void);
-    virtual bool OnResize(void);
-    virtual bool OnChange(void);
-};
-
 class CPicture : public CWndObj {
 public:
     CPicture(void);
@@ -4923,119 +5062,6 @@ protected:
     void Select(const int index);
 };
 
-struct CPoint {
-public:
-    int x;
-    int y;
-};
-
-struct CSize {
-public:
-    int cx;
-    int cy;
-};
-
-struct CRect {
-public:
-    int left;
-    int top;
-    int right;
-    int bottom;
-    CPoint LeftTop(void) const;
-    void LeftTop(const int x, const int y);
-    void LeftTop(const CPoint& point);
-    CPoint RightBottom(void) const;
-    void RightBottom(const int x, const int y);
-    void RightBottom(const CPoint& point);
-    CPoint CenterPoint(void) const;
-    int Width(void) const;
-    void Width(const int w);
-    int Height(void) const;
-    void Height(const int h);
-    CSize Size(void) const;
-    void Size(const int cx, const int cy);
-    void Size(const CSize& size);
-    void SetBound(const int l, const int t, const int r, const int b);
-    void SetBound(const CRect& rect);
-    void SetBound(const CPoint& point, const CSize& size);
-    void SetBound(const CPoint& left_top, const CPoint& right_bottom);
-    void Move(const int x, const int y);
-    void Move(const CPoint& point);
-    void Shift(const int dx, const int dy);
-    void Shift(const CPoint& point);
-    void Shift(const CSize& size);
-    bool Contains(const int x, const int y) const;
-    bool Contains(const CPoint& point) const;
-    void Normalize(void);
-};
-
-class CScroll : public CWndContainer {
-public:
-    CScroll(void);
-    ~CScroll();
-    virtual bool Create(const long chart, const string name, const int subwin, const int x1, const int y1, const int x2, const int y2);
-    virtual bool OnEvent(const int id, const long & lparam, const double & dparam, const string & sparam);
-    int MinPos(void) const;
-    void MinPos(const int value);
-    int MaxPos(void) const;
-    void MaxPos(const int value);
-    int CurrPos(void) const;
-    bool CurrPos(int value);
-protected:
-    CPanel m_back;
-    CBmpButton m_inc;
-    CBmpButton m_dec;
-    CBmpButton m_thumb;
-    int m_min_pos;
-    int m_max_pos;
-    int m_curr_pos;
-    virtual bool CreateBack(void);
-    virtual bool CreateInc(void);
-    virtual bool CreateDec(void);
-    virtual bool CreateThumb(void);
-    virtual bool OnClickInc(void);
-    virtual bool OnClickDec(void);
-    virtual bool OnShow(void);
-    virtual bool OnHide(void);
-    virtual bool OnChangePos(void);
-    virtual bool OnThumbDragStart(void);
-    virtual bool OnThumbDragProcess(void);
-    virtual bool OnThumbDragEnd(void);
-    virtual int CalcPos(const int coord);
-};
-
-class CScrollV : public CScroll {
-public:
-    CScrollV(void);
-    ~CScrollV();
-protected:
-    virtual bool CreateInc(void);
-    virtual bool CreateDec(void);
-    virtual bool CreateThumb(void);
-    virtual bool OnResize(void);
-    virtual bool OnChangePos(void);
-    virtual bool OnThumbDragStart(void);
-    virtual bool OnThumbDragProcess(void);
-    virtual bool OnThumbDragEnd(void);
-    virtual int CalcPos(const int coord);
-};
-
-class CScrollH : public CScroll {
-public:
-    CScrollH(void);
-    ~CScrollH();
-protected:
-    virtual bool CreateInc(void);
-    virtual bool CreateDec(void);
-    virtual bool CreateThumb(void);
-    virtual bool OnResize(void);
-    virtual bool OnChangePos(void);
-    virtual bool OnThumbDragStart(void);
-    virtual bool OnThumbDragProcess(void);
-    virtual bool OnThumbDragEnd(void);
-    virtual int CalcPos(const int coord);
-};
-
 class CSpinEdit : public CWndContainer {
 public:
     CSpinEdit(void);
@@ -5070,6 +5096,44 @@ protected:
     int m_limit_right;
     int m_limit_bottom;
     virtual bool OnDragProcess(const int x, const int y);
+};
+
+
+class CAccountInfo : public CObject {
+public:
+    CAccountInfo(void);
+    ~CAccountInfo();
+    long Login(void) const;
+    ENUM_ACCOUNT_TRADE_MODE TradeMode(void) const;
+    string TradeModeDescription(void) const;
+    long Leverage(void) const;
+    ENUM_ACCOUNT_STOPOUT_MODE StopoutMode(void) const;
+    string StopoutModeDescription(void) const;
+    ENUM_ACCOUNT_MARGIN_MODE MarginMode(void) const;
+    string MarginModeDescription(void) const;
+    bool TradeAllowed(void) const;
+    bool TradeExpert(void) const;
+    int LimitOrders(void) const;
+    double Balance(void) const;
+    double Credit(void) const;
+    double Profit(void) const;
+    double Equity(void) const;
+    double Margin(void) const;
+    double FreeMargin(void) const;
+    double MarginLevel(void) const;
+    double MarginCall(void) const;
+    double MarginStopOut(void) const;
+    string Name(void) const;
+    string Server(void) const;
+    string Currency(void) const;
+    string Company(void) const;
+    long InfoInteger(const ENUM_ACCOUNT_INFO_INTEGER prop_id) const;
+    double InfoDouble(const ENUM_ACCOUNT_INFO_DOUBLE prop_id) const;
+    string InfoString(const ENUM_ACCOUNT_INFO_STRING prop_id) const;
+    double OrderProfitCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price_open, const double price_close) const;
+    double MarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
+    double FreeMarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
+    double MaxLotCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double price, const double percent = 100) const;
 };
 
 class CExpertBase : public CObject {
@@ -5135,6 +5199,1006 @@ public:
     virtual double CheckClose(CPositionInfo * position);
 protected:
     double m_percent;
+};
+
+
+// Indicator classes moved before signal classes (signal classes use indicators as value members)
+class CSeries : public CArrayObj {
+public:
+    CSeries(void);
+    ~CSeries();
+    string Name(void) const;
+    int BuffersTotal(void) const;
+    int BufferSize(void) const;
+    int Timeframe(void) const;
+    string Symbol(void) const;
+    ENUM_TIMEFRAMES Period(void) const;
+    string PeriodDescription(const int val = 0);
+    void RefreshCurrent(const bool flag);
+    virtual bool BufferResize(const int size);
+    virtual void Refresh(const int flags);
+protected:
+    string m_name;
+    int m_buffers_total;
+    int m_buffer_size;
+    int m_timeframe_flags;
+    string m_symbol;
+    ENUM_TIMEFRAMES m_period;
+    bool m_refresh_current;
+    datetime m_first_date;
+    bool SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
+    void PeriodToTimeframeFlag(const ENUM_TIMEFRAMES period);
+    bool CheckLoadHistory(const int size);
+    bool CheckTerminalHistory(const int size);
+    bool CheckServerHistory(const int size);
+};
+
+class CIndicator : public CSeries {
+public:
+    CIndicator(void);
+    ~CIndicator();
+    int Handle(void) const;
+    string Status(void) const;
+    void FullRelease(const bool flag = true);
+    void Redrawer(const bool flag = true);
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_INDICATOR type, const int num_params, const MqlParam & params);
+    virtual bool BufferResize(const int size);
+    int BarsCalculated(void) const;
+    double GetData(const int buffer_num, const int index) const;
+    int GetData(const int start_pos, const int count, const int buffer_num, double & buffer) const;
+    int GetData(const datetime start_time, const int count, const int buffer_num, double & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, const int buffer_num, double & buffer) const;
+    int Minimum(const int buffer_num, const int start, const int count) const;
+    double MinValue(const int buffer_num, const int start, const int count, int & index) const;
+    int Maximum(const int buffer_num, const int start, const int count) const;
+    double MaxValue(const int buffer_num, const int start, const int count, int & index) const;
+    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
+    bool AddToChart(const long chart, const int subwin);
+    bool DeleteFromChart(const long chart, const int subwin);
+    static string MethodDescription(const int val);
+    static string PriceDescription(const int val);
+    static string VolumeDescription(const int val);
+protected:
+    int m_handle;
+    string m_status;
+    bool m_full_release;
+    bool m_redrawer;
+    bool CreateBuffers(const string symbol, const ENUM_TIMEFRAMES period, const int buffers);
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+};
+
+class CiAC : public CIndicator {
+public:
+    CiAC(void);
+    ~CiAC();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period);
+};
+
+class CiAlligator : public CIndicator {
+public:
+    CiAlligator(void);
+    ~CiAlligator();
+    int JawPeriod(void) const;
+    int JawShift(void) const;
+    int TeethPeriod(void) const;
+    int TeethShift(void) const;
+    int LipsPeriod(void) const;
+    int LipsShift(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
+    double Jaw(const int index) const;
+    double Teeth(const int index) const;
+    double Lips(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_jaw_period;
+    int m_jaw_shift;
+    int m_teeth_period;
+    int m_teeth_shift;
+    int m_lips_period;
+    int m_lips_shift;
+    ENUM_MA_METHOD m_ma_method;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
+};
+
+class CiAO : public CIndicator {
+public:
+    CiAO(void);
+    ~CiAO();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period);
+};
+
+class CiFractals : public CIndicator {
+public:
+    CiFractals(void);
+    ~CiFractals();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    double Upper(const int index) const;
+    double Lower(const int index) const;
+    virtual int Type(void) const;
+protected:
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period);
+};
+
+class CiGator : public CIndicator {
+public:
+    CiGator(void);
+    ~CiGator();
+    int JawPeriod(void) const;
+    int JawShift(void) const;
+    int TeethPeriod(void) const;
+    int TeethShift(void) const;
+    int LipsPeriod(void) const;
+    int LipsShift(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
+    double Upper(const int index) const;
+    double Lower(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_jaw_period;
+    int m_jaw_shift;
+    int m_teeth_period;
+    int m_teeth_shift;
+    int m_lips_period;
+    int m_lips_shift;
+    ENUM_MA_METHOD m_ma_method;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
+};
+
+class CiBWMFI : public CIndicator {
+public:
+    CiBWMFI(void);
+    ~CiBWMFI();
+    ENUM_APPLIED_VOLUME Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    ENUM_APPLIED_VOLUME m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
+};
+
+class CiCustom : public CIndicator {
+public:
+    CiCustom(void);
+    ~CiCustom();
+    bool NumBuffers(const int buffers);
+    int NumParams(void) const;
+    ENUM_DATATYPE ParamType(const int ind) const;
+    long ParamLong(const int ind) const;
+    double ParamDouble(const int ind) const;
+    string ParamString(const int ind) const;
+    virtual int Type(void) const;
+protected:
+    int m_num_params;
+    MqlParam m_params;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+};
+
+class CDoubleBuffer : public CArrayDouble {
+public:
+    CDoubleBuffer(void);
+    ~CDoubleBuffer();
+    void Size(const int size);
+    double At(const int index) const;
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
+protected:
+    string m_symbol;
+    ENUM_TIMEFRAMES m_period;
+    int m_size;
+};
+
+class CIndicatorBuffer : public CDoubleBuffer {
+public:
+    CIndicatorBuffer(void);
+    ~CIndicatorBuffer();
+    int Offset(void) const;
+    void Offset(const int offset);
+    string Name(void) const;
+    void Name(const string name);
+    double At(const int index) const;
+    bool Refresh(const int handle, const int num);
+    bool RefreshCurrent(const int handle, const int num);
+protected:
+    int m_offset;
+    string m_name;
+};
+
+class CIndicators : public CArrayObj {
+public:
+    CIndicators(void);
+    ~CIndicators();
+    bool BufferResize(const int size);
+    int Refresh(void);
+protected:
+    MqlDateTime m_prev_time;
+    int TimeframesFlags(const MqlDateTime & time);
+};
+
+class CiATR : public CIndicator {
+public:
+    CiATR(void);
+    ~CiATR();
+    int MaPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+};
+
+class CiBearsPower : public CIndicator {
+public:
+    CiBearsPower(void);
+    ~CiBearsPower();
+    int MaPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+};
+
+class CiBullsPower : public CIndicator {
+public:
+    CiBullsPower(void);
+    ~CiBullsPower();
+    int MaPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+};
+
+class CiCCI : public CIndicator {
+public:
+    CiCCI(void);
+    ~CiCCI();
+    int MaPeriod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+};
+
+class CiChaikin : public CIndicator {
+public:
+    CiChaikin(void);
+    ~CiChaikin();
+    int FastMaPeriod(void) const;
+    int SlowMaPeriod(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    ENUM_APPLIED_VOLUME Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ma_period, const int slow_ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_fast_ma_period;
+    int m_slow_ma_period;
+    ENUM_MA_METHOD m_ma_method;
+    ENUM_APPLIED_VOLUME m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ma_period, const int slow_ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
+};
+
+class CiDeMarker : public CIndicator {
+public:
+    CiDeMarker(void);
+    ~CiDeMarker();
+    int MaPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+};
+
+class CiForce : public CIndicator {
+public:
+    CiForce(void);
+    ~CiForce();
+    int MaPeriod(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    ENUM_APPLIED_VOLUME Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    ENUM_MA_METHOD m_ma_method;
+    ENUM_APPLIED_VOLUME m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
+};
+
+class CiMACD : public CIndicator {
+public:
+    CiMACD(void);
+    ~CiMACD();
+    int FastEmaPeriod(void) const;
+    int SlowEmaPeriod(void) const;
+    int SignalPeriod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
+    double Main(const int index) const;
+    double Signal(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_fast_ema_period;
+    int m_slow_ema_period;
+    int m_signal_period;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
+};
+
+class CiMomentum : public CIndicator {
+public:
+    CiMomentum(void);
+    ~CiMomentum();
+    int MaPeriod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+};
+
+class CiOsMA : public CIndicator {
+public:
+    CiOsMA(void);
+    ~CiOsMA();
+    int FastEmaPeriod(void) const;
+    int SlowEmaPeriod(void) const;
+    int SignalPeriod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_fast_ema_period;
+    int m_slow_ema_period;
+    int m_signal_period;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
+};
+
+class CiRSI : public CIndicator {
+public:
+    CiRSI(void);
+    ~CiRSI();
+    int MaPeriod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+};
+
+class CiRVI : public CIndicator {
+public:
+    CiRVI(void);
+    ~CiRVI();
+    int MaPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+    double Main(const int index) const;
+    double Signal(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+};
+
+class CiStochastic : public CIndicator {
+public:
+    CiStochastic(void);
+    ~CiStochastic();
+    int Kperiod(void) const;
+    int Dperiod(void) const;
+    int Slowing(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    ENUM_STO_PRICE PriceField(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int Kperiod, const int Dperiod, const int slowing, const ENUM_MA_METHOD ma_method, const ENUM_STO_PRICE price_field);
+    double Main(const int index) const;
+    double Signal(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_Kperiod;
+    int m_Dperiod;
+    int m_slowing;
+    ENUM_MA_METHOD m_ma_method;
+    ENUM_STO_PRICE m_price_field;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int Kperiod, const int Dperiod, const int slowing, const ENUM_MA_METHOD ma_method, const ENUM_STO_PRICE price_field);
+};
+
+class CiWPR : public CIndicator {
+public:
+    CiWPR(void);
+    ~CiWPR();
+    int CalcPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int calc_period);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_calc_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int calc_period);
+};
+
+class CiTriX : public CIndicator {
+public:
+    CiTriX(void);
+    ~CiTriX();
+    int MaPeriod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
+};
+
+class CPriceSeries : public CSeries {
+public:
+    CPriceSeries(void);
+    ~CPriceSeries();
+    virtual bool BufferResize(const int size);
+    virtual int MinIndex(const int start, const int count) const;
+    virtual double MinValue(const int start, const int count, int & index) const;
+    virtual int MaxIndex(const int start, const int count) const;
+    virtual double MaxValue(const int start, const int count, int & index) const;
+    double GetData(const int index) const;
+    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
+};
+
+class COpenBuffer : public CDoubleBuffer {
+public:
+    COpenBuffer(void);
+    ~COpenBuffer();
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+};
+
+class CiOpen : public CPriceSeries {
+public:
+    CiOpen(void);
+    ~CiOpen();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    double GetData(const int index) const;
+    int GetData(const int start_pos, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
+};
+
+class CHighBuffer : public CDoubleBuffer {
+public:
+    CHighBuffer(void);
+    ~CHighBuffer();
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+};
+
+class CiHigh : public CPriceSeries {
+public:
+    CiHigh(void);
+    ~CiHigh();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    double GetData(const int index) const;
+    int GetData(const int start_pos, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
+};
+
+class CLowBuffer : public CDoubleBuffer {
+public:
+    CLowBuffer(void);
+    ~CLowBuffer();
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+};
+
+class CiLow : public CPriceSeries {
+public:
+    CiLow(void);
+    ~CiLow();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    double GetData(const int index) const;
+    int GetData(const int start_pos, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
+};
+
+class CCloseBuffer : public CDoubleBuffer {
+public:
+    CCloseBuffer(void);
+    ~CCloseBuffer();
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+};
+
+class CiClose : public CPriceSeries {
+public:
+    CiClose(void);
+    ~CiClose();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    double GetData(const int index) const;
+    int GetData(const int start_pos, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const int count, double & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
+};
+
+class CSpreadBuffer : public CArrayInt {
+public:
+    CSpreadBuffer(void);
+    ~CSpreadBuffer();
+    void Size(const int size);
+    int At(const int index) const;
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
+protected:
+    string m_symbol;
+    ENUM_TIMEFRAMES m_period;
+    int m_freshed_data;
+    int m_size;
+};
+
+class CiSpread : public CSeries {
+public:
+    CiSpread(void);
+    ~CiSpread();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    virtual bool BufferResize(const int size);
+    int GetData(const int index) const;
+    int GetData(const int start_pos, const int count, int & buffer) const;
+    int GetData(const datetime start_time, const int count, int & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, int & buffer) const;
+    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
+};
+
+class CTimeBuffer : public CArrayDatetime {
+public:
+    CTimeBuffer(void);
+    ~CTimeBuffer();
+    void Size(const int size);
+    datetime At(const int index) const;
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
+protected:
+    string m_symbol;
+    ENUM_TIMEFRAMES m_period;
+    int m_freshed_data;
+    int m_size;
+};
+
+class CiTime : public CSeries {
+public:
+    CiTime(void);
+    ~CiTime();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    virtual bool BufferResize(const int size);
+    datetime GetData(const int index) const;
+    int GetData(const int start_pos, const int count, datetime & buffer) const;
+    int GetData(const datetime start_time, const int count, datetime & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, datetime & buffer) const;
+    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
+};
+
+class CTickVolumeBuffer : public CArrayLong {
+public:
+    CTickVolumeBuffer(void);
+    ~CTickVolumeBuffer();
+    void Size(const int size);
+    long At(const int index) const;
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
+protected:
+    string m_symbol;
+    ENUM_TIMEFRAMES m_period;
+    int m_freshed_data;
+    int m_size;
+};
+
+class CiTickVolume : public CSeries {
+public:
+    CiTickVolume(void);
+    ~CiTickVolume();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    virtual bool BufferResize(const int size);
+    long GetData(const int index) const;
+    int GetData(const int start_pos, const int count, long & buffer) const;
+    int GetData(const datetime start_time, const int count, long & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, long & buffer) const;
+    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
+};
+
+class CRealVolumeBuffer : public CArrayLong {
+public:
+    CRealVolumeBuffer(void);
+    ~CRealVolumeBuffer();
+    void Size(const int size);
+    long At(const int index) const;
+    virtual bool Refresh(void);
+    virtual bool RefreshCurrent(void);
+    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
+protected:
+    string m_symbol;
+    ENUM_TIMEFRAMES m_period;
+    int m_freshed_data;
+    int m_size;
+};
+
+class CiRealVolume : public CSeries {
+public:
+    CiRealVolume(void);
+    ~CiRealVolume();
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
+    virtual bool BufferResize(const int size);
+    long GetData(const int index) const;
+    int GetData(const int start_pos, const int count, long & buffer) const;
+    int GetData(const datetime start_time, const int count, long & buffer) const;
+    int GetData(const datetime start_time, const datetime stop_time, long & buffer) const;
+    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
+};
+
+class CiADX : public CIndicator {
+public:
+    CiADX(void);
+    ~CiADX();
+    int MaPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+    double Main(const int index) const;
+    double Plus(const int index) const;
+    double Minus(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+};
+
+class CiADXWilder : public CIndicator {
+public:
+    CiADXWilder(void);
+    ~CiADXWilder();
+    int MaPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+    double Main(const int index) const;
+    double Plus(const int index) const;
+    double Minus(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
+};
+
+class CiBands : public CIndicator {
+public:
+    CiBands(void);
+    ~CiBands();
+    int MaPeriod(void) const;
+    int MaShift(void) const;
+    double Deviation(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const double deviation, const int applied);
+    double Base(const int index) const;
+    double Upper(const int index) const;
+    double Lower(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_ma_shift;
+    double m_deviation;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const double deviation, const int applied);
+};
+
+class CiEnvelopes : public CIndicator {
+public:
+    CiEnvelopes(void);
+    ~CiEnvelopes();
+    int MaPeriod(void) const;
+    int MaShift(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    int Applied(void) const;
+    double Deviation(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied, const double deviation);
+    double Upper(const int index) const;
+    double Lower(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_MA_METHOD m_ma_method;
+    int m_applied;
+    double m_deviation;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied, const double deviation);
+};
+
+class CiIchimoku : public CIndicator {
+public:
+    CiIchimoku(void);
+    ~CiIchimoku();
+    int TenkanSenPeriod(void) const;
+    int KijunSenPeriod(void) const;
+    int SenkouSpanBPeriod(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int tenkan_sen, const int kijun_sen, const int senkou_span_b);
+    double TenkanSen(const int index) const;
+    double KijunSen(const int index) const;
+    double SenkouSpanA(const int index) const;
+    double SenkouSpanB(const int index) const;
+    double ChinkouSpan(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_tenkan_sen;
+    int m_kijun_sen;
+    int m_senkou_span_b;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int tenkan_sen, const int kijun_sen, const int senkou_span_b);
+};
+
+class CiMA : public CIndicator {
+public:
+    CiMA(void);
+    ~CiMA();
+    int MaPeriod(void) const;
+    int MaShift(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_MA_METHOD m_ma_method;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
+};
+
+class CiSAR : public CIndicator {
+public:
+    CiSAR(void);
+    ~CiSAR();
+    double SarStep(void) const;
+    double Maximum(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const double step, const double maximum);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    double m_step;
+    double m_maximum;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const double step, const double maximum);
+};
+
+class CiStdDev : public CIndicator {
+public:
+    CiStdDev(void);
+    ~CiStdDev();
+    int MaPeriod(void) const;
+    int MaShift(void) const;
+    ENUM_MA_METHOD MaMethod(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_ma_shift;
+    ENUM_MA_METHOD m_ma_method;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
+};
+
+class CiDEMA : public CIndicator {
+public:
+    CiDEMA(void);
+    ~CiDEMA();
+    int MaPeriod(void) const;
+    int IndShift(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_ind_shift;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
+};
+
+class CiTEMA : public CIndicator {
+public:
+    CiTEMA(void);
+    ~CiTEMA();
+    int MaPeriod(void) const;
+    int IndShift(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_ind_shift;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const int applied);
+};
+
+class CiFrAMA : public CIndicator {
+public:
+    CiFrAMA(void);
+    ~CiFrAMA();
+    int MaPeriod(void) const;
+    int IndShift(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_ind_shift;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
+};
+
+class CiAMA : public CIndicator {
+public:
+    CiAMA(void);
+    ~CiAMA();
+    int MaPeriod(void) const;
+    int FastEmaPeriod(void) const;
+    int SlowEmaPeriod(void) const;
+    int IndShift(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int fast_ema_period, const int slow_ema_period, const int ind_shift, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    int m_fast_ema_period;
+    int m_slow_ema_period;
+    int m_ind_shift;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int fast_ema_period, const int slow_ema_period, const int ind_shift, const int applied);
+};
+
+class CiVIDyA : public CIndicator {
+public:
+    CiVIDyA(void);
+    ~CiVIDyA();
+    int CmoPeriod(void) const;
+    int EmaPeriod(void) const;
+    int IndShift(void) const;
+    int Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int cmo_period, const int ema_period, const int ind_shift, const int applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_cmo_period;
+    int m_ema_period;
+    int m_ind_shift;
+    int m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int cmo_period, const int ema_period, const int ind_shift, const int applied);
+};
+
+class CiAD : public CIndicator {
+public:
+    CiAD(void);
+    ~CiAD();
+    ENUM_APPLIED_VOLUME Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    ENUM_APPLIED_VOLUME m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
+};
+
+class CiMFI : public CIndicator {
+public:
+    CiMFI(void);
+    ~CiMFI();
+    int MaPeriod(void) const;
+    ENUM_APPLIED_VOLUME Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_APPLIED_VOLUME applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    int m_ma_period;
+    ENUM_APPLIED_VOLUME m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_APPLIED_VOLUME applied);
+};
+
+class CiOBV : public CIndicator {
+public:
+    CiOBV(void);
+    ~CiOBV();
+    ENUM_APPLIED_VOLUME Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    ENUM_APPLIED_VOLUME m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
+};
+
+class CiVolumes : public CIndicator {
+public:
+    CiVolumes(void);
+    ~CiVolumes();
+    ENUM_APPLIED_VOLUME Applied(void) const;
+    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
+    double Main(const int index) const;
+    virtual int Type(void) const;
+protected:
+    ENUM_APPLIED_VOLUME m_applied;
+    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
+    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
 };
 
 class CExpertSignal : public CExpertBase {
@@ -6204,6 +7268,7 @@ public:
     Slot(void);
 };
 
+template<typename TKey, typename TItem>
 struct Introsort {
 public:
     TKey keys;
@@ -6251,7 +7316,7 @@ public:
     uint Color(void) const;
     void Color(const uint clr);
     bool AutoScale(void) const;
-    void AutoScale(const bool auto);
+    void AutoScale(const bool auto_);
     int ValuesSize(void) const;
     void ValuesSize(const int size);
     int ValuesWidth(void) const;
@@ -6362,1003 +7427,6 @@ protected:
     virtual void CalculateCoefficients(void);
 };
 
-class CSeries : public CArrayObj {
-public:
-    CSeries(void);
-    ~CSeries();
-    string Name(void) const;
-    int BuffersTotal(void) const;
-    int BufferSize(void) const;
-    int Timeframe(void) const;
-    string Symbol(void) const;
-    ENUM_TIMEFRAMES Period(void) const;
-    string PeriodDescription(const int val = 0);
-    void RefreshCurrent(const bool flag);
-    virtual bool BufferResize(const int size);
-    virtual void Refresh(const int flags);
-protected:
-    string m_name;
-    int m_buffers_total;
-    int m_buffer_size;
-    int m_timeframe_flags;
-    string m_symbol;
-    ENUM_TIMEFRAMES m_period;
-    bool m_refresh_current;
-    datetime m_first_date;
-    bool SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
-    void PeriodToTimeframeFlag(const ENUM_TIMEFRAMES period);
-    bool CheckLoadHistory(const int size);
-    bool CheckTerminalHistory(const int size);
-    bool CheckServerHistory(const int size);
-};
-
-class CIndicator : public CSeries {
-public:
-    CIndicator(void);
-    ~CIndicator();
-    int Handle(void) const;
-    string Status(void) const;
-    void FullRelease(const bool flag = true);
-    void Redrawer(const bool flag = true);
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_INDICATOR type, const int num_params, const MqlParam & params);
-    virtual bool BufferResize(const int size);
-    int BarsCalculated(void) const;
-    double GetData(const int buffer_num, const int index) const;
-    int GetData(const int start_pos, const int count, const int buffer_num, double & buffer) const;
-    int GetData(const datetime start_time, const int count, const int buffer_num, double & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, const int buffer_num, double & buffer) const;
-    int Minimum(const int buffer_num, const int start, const int count) const;
-    double MinValue(const int buffer_num, const int start, const int count, int & index) const;
-    int Maximum(const int buffer_num, const int start, const int count) const;
-    double MaxValue(const int buffer_num, const int start, const int count, int & index) const;
-    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
-    bool AddToChart(const long chart, const int subwin);
-    bool DeleteFromChart(const long chart, const int subwin);
-    static string MethodDescription(const int val);
-    static string PriceDescription(const int val);
-    static string VolumeDescription(const int val);
-protected:
-    int m_handle;
-    string m_status;
-    bool m_full_release;
-    bool m_redrawer;
-    bool CreateBuffers(const string symbol, const ENUM_TIMEFRAMES period, const int buffers);
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-};
-
-class CiAC : public CIndicator {
-public:
-    CiAC(void);
-    ~CiAC();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period);
-};
-
-class CiAlligator : public CIndicator {
-public:
-    CiAlligator(void);
-    ~CiAlligator();
-    int JawPeriod(void) const;
-    int JawShift(void) const;
-    int TeethPeriod(void) const;
-    int TeethShift(void) const;
-    int LipsPeriod(void) const;
-    int LipsShift(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
-    double Jaw(const int index) const;
-    double Teeth(const int index) const;
-    double Lips(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_jaw_period;
-    int m_jaw_shift;
-    int m_teeth_period;
-    int m_teeth_shift;
-    int m_lips_period;
-    int m_lips_shift;
-    ENUM_MA_METHOD m_ma_method;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
-};
-
-class CiAO : public CIndicator {
-public:
-    CiAO(void);
-    ~CiAO();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period);
-};
-
-class CiFractals : public CIndicator {
-public:
-    CiFractals(void);
-    ~CiFractals();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    double Upper(const int index) const;
-    double Lower(const int index) const;
-    virtual int Type(void) const;
-protected:
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period);
-};
-
-class CiGator : public CIndicator {
-public:
-    CiGator(void);
-    ~CiGator();
-    int JawPeriod(void) const;
-    int JawShift(void) const;
-    int TeethPeriod(void) const;
-    int TeethShift(void) const;
-    int LipsPeriod(void) const;
-    int LipsShift(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
-    double Upper(const int index) const;
-    double Lower(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_jaw_period;
-    int m_jaw_shift;
-    int m_teeth_period;
-    int m_teeth_shift;
-    int m_lips_period;
-    int m_lips_shift;
-    ENUM_MA_METHOD m_ma_method;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int jaw_period, const int jaw_shift, const int teeth_period, const int teeth_shift, const int lips_period, const int lips_shift, const ENUM_MA_METHOD ma_method, const int applied);
-};
-
-class CiBWMFI : public CIndicator {
-public:
-    CiBWMFI(void);
-    ~CiBWMFI();
-    ENUM_APPLIED_VOLUME Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    ENUM_APPLIED_VOLUME m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-};
-
-class CiCustom : public CIndicator {
-public:
-    CiCustom(void);
-    ~CiCustom();
-    bool NumBuffers(const int buffers);
-    int NumParams(void) const;
-    ENUM_DATATYPE ParamType(const int ind) const;
-    long ParamLong(const int ind) const;
-    double ParamDouble(const int ind) const;
-    string ParamString(const int ind) const;
-    virtual int Type(void) const;
-protected:
-    int m_num_params;
-    MqlParam m_params;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-};
-
-class CDoubleBuffer : public CArrayDouble {
-public:
-    CDoubleBuffer(void);
-    ~CDoubleBuffer();
-    void Size(const int size);
-    double At(const int index) const;
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
-protected:
-    string m_symbol;
-    ENUM_TIMEFRAMES m_period;
-    int m_size;
-};
-
-class CIndicatorBuffer : public CDoubleBuffer {
-public:
-    CIndicatorBuffer(void);
-    ~CIndicatorBuffer();
-    int Offset(void) const;
-    void Offset(const int offset);
-    string Name(void) const;
-    void Name(const string name);
-    double At(const int index) const;
-    bool Refresh(const int handle, const int num);
-    bool RefreshCurrent(const int handle, const int num);
-protected:
-    int m_offset;
-    string m_name;
-};
-
-class CIndicators : public CArrayObj {
-public:
-    CIndicators(void);
-    ~CIndicators();
-    bool BufferResize(const int size);
-    int Refresh(void);
-protected:
-    MqlDateTime m_prev_time;
-    int TimeframesFlags(const MqlDateTime & time);
-};
-
-class CiATR : public CIndicator {
-public:
-    CiATR(void);
-    ~CiATR();
-    int MaPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-};
-
-class CiBearsPower : public CIndicator {
-public:
-    CiBearsPower(void);
-    ~CiBearsPower();
-    int MaPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-};
-
-class CiBullsPower : public CIndicator {
-public:
-    CiBullsPower(void);
-    ~CiBullsPower();
-    int MaPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-};
-
-class CiCCI : public CIndicator {
-public:
-    CiCCI(void);
-    ~CiCCI();
-    int MaPeriod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-};
-
-class CiChaikin : public CIndicator {
-public:
-    CiChaikin(void);
-    ~CiChaikin();
-    int FastMaPeriod(void) const;
-    int SlowMaPeriod(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    ENUM_APPLIED_VOLUME Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ma_period, const int slow_ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_fast_ma_period;
-    int m_slow_ma_period;
-    ENUM_MA_METHOD m_ma_method;
-    ENUM_APPLIED_VOLUME m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ma_period, const int slow_ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
-};
-
-class CiDeMarker : public CIndicator {
-public:
-    CiDeMarker(void);
-    ~CiDeMarker();
-    int MaPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-};
-
-class CiForce : public CIndicator {
-public:
-    CiForce(void);
-    ~CiForce();
-    int MaPeriod(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    ENUM_APPLIED_VOLUME Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    ENUM_MA_METHOD m_ma_method;
-    ENUM_APPLIED_VOLUME m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_MA_METHOD ma_method, const ENUM_APPLIED_VOLUME applied);
-};
-
-class CiMACD : public CIndicator {
-public:
-    CiMACD(void);
-    ~CiMACD();
-    int FastEmaPeriod(void) const;
-    int SlowEmaPeriod(void) const;
-    int SignalPeriod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
-    double Main(const int index) const;
-    double Signal(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_fast_ema_period;
-    int m_slow_ema_period;
-    int m_signal_period;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
-};
-
-class CiMomentum : public CIndicator {
-public:
-    CiMomentum(void);
-    ~CiMomentum();
-    int MaPeriod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-};
-
-class CiOsMA : public CIndicator {
-public:
-    CiOsMA(void);
-    ~CiOsMA();
-    int FastEmaPeriod(void) const;
-    int SlowEmaPeriod(void) const;
-    int SignalPeriod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_fast_ema_period;
-    int m_slow_ema_period;
-    int m_signal_period;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int fast_ema_period, const int slow_ema_period, const int signal_period, const int applied);
-};
-
-class CiRSI : public CIndicator {
-public:
-    CiRSI(void);
-    ~CiRSI();
-    int MaPeriod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-};
-
-class CiRVI : public CIndicator {
-public:
-    CiRVI(void);
-    ~CiRVI();
-    int MaPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-    double Main(const int index) const;
-    double Signal(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-};
-
-class CiStochastic : public CIndicator {
-public:
-    CiStochastic(void);
-    ~CiStochastic();
-    int Kperiod(void) const;
-    int Dperiod(void) const;
-    int Slowing(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    ENUM_STO_PRICE PriceField(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int Kperiod, const int Dperiod, const int slowing, const ENUM_MA_METHOD ma_method, const ENUM_STO_PRICE price_field);
-    double Main(const int index) const;
-    double Signal(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_Kperiod;
-    int m_Dperiod;
-    int m_slowing;
-    ENUM_MA_METHOD m_ma_method;
-    ENUM_STO_PRICE m_price_field;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int Kperiod, const int Dperiod, const int slowing, const ENUM_MA_METHOD ma_method, const ENUM_STO_PRICE price_field);
-};
-
-class CiWPR : public CIndicator {
-public:
-    CiWPR(void);
-    ~CiWPR();
-    int CalcPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int calc_period);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_calc_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int calc_period);
-};
-
-class CiTriX : public CIndicator {
-public:
-    CiTriX(void);
-    ~CiTriX();
-    int MaPeriod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int applied);
-};
-
-class CPriceSeries : public CSeries {
-public:
-    CPriceSeries(void);
-    ~CPriceSeries();
-    virtual bool BufferResize(const int size);
-    virtual int MinIndex(const int start, const int count) const;
-    virtual double MinValue(const int start, const int count, int & index) const;
-    virtual int MaxIndex(const int start, const int count) const;
-    virtual double MaxValue(const int start, const int count, int & index) const;
-    double GetData(const int index) const;
-    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
-};
-
-class COpenBuffer : public CDoubleBuffer {
-public:
-    COpenBuffer(void);
-    ~COpenBuffer();
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-};
-
-class CiOpen : public CPriceSeries {
-public:
-    CiOpen(void);
-    ~CiOpen();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    double GetData(const int index) const;
-    int GetData(const int start_pos, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
-};
-
-class CHighBuffer : public CDoubleBuffer {
-public:
-    CHighBuffer(void);
-    ~CHighBuffer();
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-};
-
-class CiHigh : public CPriceSeries {
-public:
-    CiHigh(void);
-    ~CiHigh();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    double GetData(const int index) const;
-    int GetData(const int start_pos, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
-};
-
-class CLowBuffer : public CDoubleBuffer {
-public:
-    CLowBuffer(void);
-    ~CLowBuffer();
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-};
-
-class CiLow : public CPriceSeries {
-public:
-    CiLow(void);
-    ~CiLow();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    double GetData(const int index) const;
-    int GetData(const int start_pos, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
-};
-
-class CCloseBuffer : public CDoubleBuffer {
-public:
-    CCloseBuffer(void);
-    ~CCloseBuffer();
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-};
-
-class CiClose : public CPriceSeries {
-public:
-    CiClose(void);
-    ~CiClose();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    double GetData(const int index) const;
-    int GetData(const int start_pos, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const int count, double & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, double & buffer) const;
-};
-
-class CSpreadBuffer : public CArrayInt {
-public:
-    CSpreadBuffer(void);
-    ~CSpreadBuffer();
-    void Size(const int size);
-    int At(const int index) const;
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
-protected:
-    string m_symbol;
-    ENUM_TIMEFRAMES m_period;
-    int m_freshed_data;
-    int m_size;
-};
-
-class CiSpread : public CSeries {
-public:
-    CiSpread(void);
-    ~CiSpread();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    virtual bool BufferResize(const int size);
-    int GetData(const int index) const;
-    int GetData(const int start_pos, const int count, int & buffer) const;
-    int GetData(const datetime start_time, const int count, int & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, int & buffer) const;
-    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
-};
-
-class CTimeBuffer : public CArrayDatetime {
-public:
-    CTimeBuffer(void);
-    ~CTimeBuffer();
-    void Size(const int size);
-    datetime At(const int index) const;
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
-protected:
-    string m_symbol;
-    ENUM_TIMEFRAMES m_period;
-    int m_freshed_data;
-    int m_size;
-};
-
-class CiTime : public CSeries {
-public:
-    CiTime(void);
-    ~CiTime();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    virtual bool BufferResize(const int size);
-    datetime GetData(const int index) const;
-    int GetData(const int start_pos, const int count, datetime & buffer) const;
-    int GetData(const datetime start_time, const int count, datetime & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, datetime & buffer) const;
-    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
-};
-
-class CTickVolumeBuffer : public CArrayLong {
-public:
-    CTickVolumeBuffer(void);
-    ~CTickVolumeBuffer();
-    void Size(const int size);
-    long At(const int index) const;
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
-protected:
-    string m_symbol;
-    ENUM_TIMEFRAMES m_period;
-    int m_freshed_data;
-    int m_size;
-};
-
-class CiTickVolume : public CSeries {
-public:
-    CiTickVolume(void);
-    ~CiTickVolume();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    virtual bool BufferResize(const int size);
-    long GetData(const int index) const;
-    int GetData(const int start_pos, const int count, long & buffer) const;
-    int GetData(const datetime start_time, const int count, long & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, long & buffer) const;
-    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
-};
-
-class CRealVolumeBuffer : public CArrayLong {
-public:
-    CRealVolumeBuffer(void);
-    ~CRealVolumeBuffer();
-    void Size(const int size);
-    long At(const int index) const;
-    virtual bool Refresh(void);
-    virtual bool RefreshCurrent(void);
-    void SetSymbolPeriod(const string symbol, const ENUM_TIMEFRAMES period);
-protected:
-    string m_symbol;
-    ENUM_TIMEFRAMES m_period;
-    int m_freshed_data;
-    int m_size;
-};
-
-class CiRealVolume : public CSeries {
-public:
-    CiRealVolume(void);
-    ~CiRealVolume();
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period);
-    virtual bool BufferResize(const int size);
-    long GetData(const int index) const;
-    int GetData(const int start_pos, const int count, long & buffer) const;
-    int GetData(const datetime start_time, const int count, long & buffer) const;
-    int GetData(const datetime start_time, const datetime stop_time, long & buffer) const;
-    virtual void Refresh(const int flags = OBJ_ALL_PERIODS);
-};
-
-class CiADX : public CIndicator {
-public:
-    CiADX(void);
-    ~CiADX();
-    int MaPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-    double Main(const int index) const;
-    double Plus(const int index) const;
-    double Minus(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-};
-
-class CiADXWilder : public CIndicator {
-public:
-    CiADXWilder(void);
-    ~CiADXWilder();
-    int MaPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-    double Main(const int index) const;
-    double Plus(const int index) const;
-    double Minus(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period);
-};
-
-class CiBands : public CIndicator {
-public:
-    CiBands(void);
-    ~CiBands();
-    int MaPeriod(void) const;
-    int MaShift(void) const;
-    double Deviation(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const double deviation, const int applied);
-    double Base(const int index) const;
-    double Upper(const int index) const;
-    double Lower(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_ma_shift;
-    double m_deviation;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const double deviation, const int applied);
-};
-
-class CiEnvelopes : public CIndicator {
-public:
-    CiEnvelopes(void);
-    ~CiEnvelopes();
-    int MaPeriod(void) const;
-    int MaShift(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    int Applied(void) const;
-    double Deviation(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied, const double deviation);
-    double Upper(const int index) const;
-    double Lower(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_MA_METHOD m_ma_method;
-    int m_applied;
-    double m_deviation;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied, const double deviation);
-};
-
-class CiIchimoku : public CIndicator {
-public:
-    CiIchimoku(void);
-    ~CiIchimoku();
-    int TenkanSenPeriod(void) const;
-    int KijunSenPeriod(void) const;
-    int SenkouSpanBPeriod(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int tenkan_sen, const int kijun_sen, const int senkou_span_b);
-    double TenkanSen(const int index) const;
-    double KijunSen(const int index) const;
-    double SenkouSpanA(const int index) const;
-    double SenkouSpanB(const int index) const;
-    double ChinkouSpan(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_tenkan_sen;
-    int m_kijun_sen;
-    int m_senkou_span_b;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int tenkan_sen, const int kijun_sen, const int senkou_span_b);
-};
-
-class CiMA : public CIndicator {
-public:
-    CiMA(void);
-    ~CiMA();
-    int MaPeriod(void) const;
-    int MaShift(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_MA_METHOD m_ma_method;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
-};
-
-class CiSAR : public CIndicator {
-public:
-    CiSAR(void);
-    ~CiSAR();
-    double SarStep(void) const;
-    double Maximum(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const double step, const double maximum);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    double m_step;
-    double m_maximum;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const double step, const double maximum);
-};
-
-class CiStdDev : public CIndicator {
-public:
-    CiStdDev(void);
-    ~CiStdDev();
-    int MaPeriod(void) const;
-    int MaShift(void) const;
-    ENUM_MA_METHOD MaMethod(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_ma_shift;
-    ENUM_MA_METHOD m_ma_method;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const ENUM_MA_METHOD ma_method, const int applied);
-};
-
-class CiDEMA : public CIndicator {
-public:
-    CiDEMA(void);
-    ~CiDEMA();
-    int MaPeriod(void) const;
-    int IndShift(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_ind_shift;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
-};
-
-class CiTEMA : public CIndicator {
-public:
-    CiTEMA(void);
-    ~CiTEMA();
-    int MaPeriod(void) const;
-    int IndShift(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_ind_shift;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ma_shift, const int applied);
-};
-
-class CiFrAMA : public CIndicator {
-public:
-    CiFrAMA(void);
-    ~CiFrAMA();
-    int MaPeriod(void) const;
-    int IndShift(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_ind_shift;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int ind_shift, const int applied);
-};
-
-class CiAMA : public CIndicator {
-public:
-    CiAMA(void);
-    ~CiAMA();
-    int MaPeriod(void) const;
-    int FastEmaPeriod(void) const;
-    int SlowEmaPeriod(void) const;
-    int IndShift(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int fast_ema_period, const int slow_ema_period, const int ind_shift, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    int m_fast_ema_period;
-    int m_slow_ema_period;
-    int m_ind_shift;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const int fast_ema_period, const int slow_ema_period, const int ind_shift, const int applied);
-};
-
-class CiVIDyA : public CIndicator {
-public:
-    CiVIDyA(void);
-    ~CiVIDyA();
-    int CmoPeriod(void) const;
-    int EmaPeriod(void) const;
-    int IndShift(void) const;
-    int Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int cmo_period, const int ema_period, const int ind_shift, const int applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_cmo_period;
-    int m_ema_period;
-    int m_ind_shift;
-    int m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int cmo_period, const int ema_period, const int ind_shift, const int applied);
-};
-
-class CiAD : public CIndicator {
-public:
-    CiAD(void);
-    ~CiAD();
-    ENUM_APPLIED_VOLUME Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    ENUM_APPLIED_VOLUME m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-};
-
-class CiMFI : public CIndicator {
-public:
-    CiMFI(void);
-    ~CiMFI();
-    int MaPeriod(void) const;
-    ENUM_APPLIED_VOLUME Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_APPLIED_VOLUME applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    int m_ma_period;
-    ENUM_APPLIED_VOLUME m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int ma_period, const ENUM_APPLIED_VOLUME applied);
-};
-
-class CiOBV : public CIndicator {
-public:
-    CiOBV(void);
-    ~CiOBV();
-    ENUM_APPLIED_VOLUME Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    ENUM_APPLIED_VOLUME m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-};
-
-class CiVolumes : public CIndicator {
-public:
-    CiVolumes(void);
-    ~CiVolumes();
-    ENUM_APPLIED_VOLUME Applied(void) const;
-    bool Create(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-    double Main(const int index) const;
-    virtual int Type(void) const;
-protected:
-    ENUM_APPLIED_VOLUME m_applied;
-    virtual bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const int num_params, const MqlParam & params);
-    bool Initialize(const string symbol, const ENUM_TIMEFRAMES period, const ENUM_APPLIED_VOLUME applied);
-};
 
 class CDictionary_Obj_Obj : public CObject {
 public:
@@ -7401,19 +7469,19 @@ class CSingleCondition : public ICondition {
 public:
     CSingleCondition(void);
     CSingleCondition(INamedVariable * var, INamedValue * term);
-    CSingleCondition(INamedVariable * var, INamedValue * term, bool not);
+    CSingleCondition(INamedVariable * var, INamedValue * term, bool not_);
     ~CSingleCondition();
     void Var(INamedVariable * value);
     bool Not(void);
-    void Not(bool not);
+    void Not(bool not_);
     void Term(INamedValue * value);
     virtual bool IsTypeOf(EnCondition type);
 };
 
 class CFuzzyCondition : public CSingleCondition {
 public:
-    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not);
-    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not, HedgeType hedge);
+    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not_);
+    CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term, bool not_, HedgeType hedge);
     CFuzzyCondition(CFuzzyVariable * var, CFuzzyTerm * term);
     ~CFuzzyCondition();
     HedgeType Hedge(void);
@@ -7895,43 +7963,6 @@ public:
 protected:
     string m_string;
     virtual int Compare(const CObject * node, const int mode = 0) const;
-};
-
-class CAccountInfo : public CObject {
-public:
-    CAccountInfo(void);
-    ~CAccountInfo();
-    long Login(void) const;
-    ENUM_ACCOUNT_TRADE_MODE TradeMode(void) const;
-    string TradeModeDescription(void) const;
-    long Leverage(void) const;
-    ENUM_ACCOUNT_STOPOUT_MODE StopoutMode(void) const;
-    string StopoutModeDescription(void) const;
-    ENUM_ACCOUNT_MARGIN_MODE MarginMode(void) const;
-    string MarginModeDescription(void) const;
-    bool TradeAllowed(void) const;
-    bool TradeExpert(void) const;
-    int LimitOrders(void) const;
-    double Balance(void) const;
-    double Credit(void) const;
-    double Profit(void) const;
-    double Equity(void) const;
-    double Margin(void) const;
-    double FreeMargin(void) const;
-    double MarginLevel(void) const;
-    double MarginCall(void) const;
-    double MarginStopOut(void) const;
-    string Name(void) const;
-    string Server(void) const;
-    string Currency(void) const;
-    string Company(void) const;
-    long InfoInteger(const ENUM_ACCOUNT_INFO_INTEGER prop_id) const;
-    double InfoDouble(const ENUM_ACCOUNT_INFO_DOUBLE prop_id) const;
-    string InfoString(const ENUM_ACCOUNT_INFO_STRING prop_id) const;
-    double OrderProfitCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price_open, const double price_close) const;
-    double MarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
-    double FreeMarginCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double volume, const double price) const;
-    double MaxLotCheck(const string symbol, const ENUM_ORDER_TYPE trade_operation, const double price, const double percent = 100) const;
 };
 
 class CDealInfo : public CObject {
@@ -14361,6 +14392,23 @@ public:
     uint dwItemData;
     string dwTypeData;
     uint cch;
+};
+
+struct MOUSEINPUT {
+public:
+    long dx;
+    long dy;
+    uint mouseData;
+    uint dwFlags;
+    uint time;
+    ulong dwExtraInfo;
+};
+
+struct INPUT_TYPE {
+public:
+    MOUSEINPUT mi;
+    KEYBDINPUT ki;
+    HARDWAREINPUT hi;
 };
 
 struct INPUT {

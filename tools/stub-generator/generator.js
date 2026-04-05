@@ -262,9 +262,7 @@ class StubGenerator {
         if (method.isVirtual) decl += 'virtual ';
         if (method.isStatic) decl += 'static ';
 
-        let safeReturnType = method.returnType;
-        if (safeReturnType === 'INPUT_TYPE') safeReturnType = 'int';
-        if (safeReturnType) decl += safeReturnType + ' ';
+        if (method.returnType) decl += method.returnType + ' ';
 
         decl += method.name + '(';
         decl += this.generateParams(method.params);
@@ -285,9 +283,7 @@ class StubGenerator {
         return params.map(p => {
             let param = '';
             if (p.isConst) param += 'const ';
-            let safeType = p.type;
-            if (safeType === 'INPUT_TYPE') safeType = 'int';
-            param += safeType;
+            param += p.type;
 
             if (p.name) {
                 let safeName = p.name;
@@ -309,14 +305,18 @@ class StubGenerator {
      * Generate member declaration
      */
     generateMember(member) {
+        const CXX_KEYWORDS = StubGenerator.CXX_KEYWORDS;
         let decl = this.indent;
         if (member.isStatic) decl += 'static ';
         if (member.isConst) decl += 'const ';
 
-        let safeType = member.type;
-        if (safeType === 'INPUT_TYPE') safeType = 'int';
+        decl += member.type + ' ';
 
-        decl += safeType + ' ' + member.name + ';';
+        let safeName = member.name;
+        if (CXX_KEYWORDS.has(safeName)) {
+            safeName = safeName + '_';
+        }
+        decl += safeName + ';';
         return decl;
     }
 
@@ -399,11 +399,15 @@ class StubGenerator {
         lines.push('struct FILETIME { unsigned int dwLowDateTime; unsigned int dwHighDateTime; };');
         lines.push('struct LUID { unsigned int LowPart; int HighPart; };');
         lines.push('struct FILE_ID_128 { unsigned char Identifier[16]; };');
+        lines.push('// MOUSEINPUT and INPUT_TYPE are defined late in the file;');
+        lines.push('// forward-declare them so earlier code that references them compiles.');
+        lines.push('struct MOUSEINPUT;');
+        lines.push('struct INPUT_TYPE;');
         lines.push('');
         lines.push('// Function pointer typedefs used by CAxis/CCurve');
-        lines.push('typedef double (*DoubleToStringFunction)(double value, void* cbdata);');
+        lines.push('typedef string (*DoubleToStringFunction)(double value, void* cbdata);');
         lines.push('typedef double (*CurveFunction)(double x, void* cbdata);');
-        lines.push('typedef void (*PlotFunction)(void* cbdata);');
+        lines.push('typedef void (*PlotFucntion)(void* cbdata);  // MQL5 original spelling');
         lines.push('');
         lines.push('// OpenCL execution status (not in MQL5 public headers)');
         lines.push('enum ENUM_OPENCL_EXECUTION_STATUS {');
@@ -413,7 +417,14 @@ class StubGenerator {
         lines.push('    OPENCL_EXECUTION_STATUS_ERROR = -1');
         lines.push('};');
         lines.push('');
-        lines.push('// Template forward declaration needed by CLinkedListNode');
+        lines.push('// DirectX types used before their full definitions');
+        lines.push('enum ENUM_DX_PRIMITIVE_TOPOLOGY { DX_PRIMITIVE_TOPOLOGY_TRIANGLELIST = 0 };');
+        lines.push('enum ENUM_DX_FORMAT { DX_FORMAT_UNKNOWN = 0 };');
+        lines.push('struct DXVertex { float x; float y; float z; };');
+        lines.push('struct CDXInput {};');
+        lines.push('class CDXTexture {};');
+        lines.push('');
+        lines.push('// Template forward declarations needed by Generic collections');
         lines.push('template<typename T> class CLinkedList;');
         lines.push('');
 

@@ -293,7 +293,7 @@ class MqlDebugAdapter extends EventEmitter {
             }
             this._bridge.writeBreakpointConfig(activeIds);
         } catch (err) {
-            console.error(`[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:`, err);
+            console.error('[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:', err);
         }
     }
 

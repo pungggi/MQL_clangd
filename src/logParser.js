@@ -57,10 +57,11 @@ function parseLine(text) {
     const parts = text.split('\t');
     // Typical: hash, 0, wallclock, source, payload
     // EA lines have 5+ parts; system lines have 4-5 parts with "Tester", "Network", etc.
+    const wallclock = parts.length >= 3 ? parts[2].trim() : '';
     const source = parts.length >= 5 ? parts[3].trim() : '';
     const payload = parts.length >= 5 ? parts.slice(4).join('\t').trim() : (parts.length >= 4 ? parts[3].trim() : text);
 
-    return { source, payload };
+    return { wallclock, source, payload };
 }
 
 // ---------------------------------------------------------------------------
