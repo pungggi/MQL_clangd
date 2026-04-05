@@ -67,6 +67,7 @@ const {
 } = require('./debugBridge');
 const { MqlDebugAdapter } = require('./debugAdapter');
 const { store: debugStore } = require('./debugStateStore');
+const { registerDebugCodeLens } = require('./debugCodeLens');
 const { showStartupPage } = require('./startupPage');
 
 
@@ -2401,6 +2402,9 @@ function activate(context) {
     // Show Startup Page PoC
     showStartupPage(context);
 
+
+    // Debug watch annotation CodeLens
+    registerDebugCodeLens(context);
 
     // Clear symbol cache when a document is closed
     context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((document) => {

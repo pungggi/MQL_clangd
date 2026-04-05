@@ -55,6 +55,8 @@ class DebugStateStore {
         this.totalHitCount = 0;
         this.totalLogCount = 0;
         this.sessionActive = false;
+        /** Watch values from the previous breakpoint hit, for change detection */
+        this._previousHitWatches = new Map(); // varName -> value (string)
     }
 
     // -------------------------------------------------------------------------
@@ -97,6 +99,14 @@ class DebugStateStore {
     _applyOne(event) {
         switch (event.type) {
             case 'break': {
+                // Snapshot current hit's watches for value-change detection
+                const prevHit = this.latestHit;
+                this._previousHitWatches = new Map();
+                if (prevHit && prevHit.watches) {
+                    for (const w of prevHit.watches) {
+                        this._previousHitWatches.set(w.varName, String(w.value));
+                    }
+                }
                 const count = (this.hitCounts.get(event.label) || 0) + 1;
                 this.hitCounts.set(event.label, count);
                 const hit = {
@@ -178,6 +188,32 @@ class DebugStateStore {
     /** @returns {WatchEntry[]} All latest watch values as an array */
     get latestWatchList() {
         return Array.from(this.latestWatches.values());
+    }
+
+    /**
+     * Get the value history of a variable across recent breakpoint hits.
+     * When bpLabel is provided, only returns entries from that specific breakpoint.
+     * @param {string} varName
+     * @param {number} [maxEntries=20]
+     * @param {string} [bpLabel]  Breakpoint label to scope the history to
+     * @returns {{ value: string, timestamp: string, hitCount: number, label: string }[]}
+     */
+    getVariableHistory(varName, maxEntries = 20, bpLabel) {
+        const history = [];
+        for (let i = this.hits.length - 1; i >= 0 && history.length < maxEntries; i--) {
+            const hit = this.hits[i];
+            if (bpLabel && hit.label !== bpLabel) continue;
+            const w = hit.watches.find(w => w.varName === varName);
+            if (w) {
+                history.push({
+                    value: String(w.value),
+                    timestamp: hit.timestamp,
+                    hitCount: hit.hitCount,
+                    label: hit.label,
+                });
+            }
+        }
+        return history.reverse(); // chronological order
     }
 
     // -------------------------------------------------------------------------

@@ -66,16 +66,24 @@
                 </ul>
 
                 <h3>What Variables are Tracked?</h3>
-                <p>To keep performance high, the debugger smartly tracks variables based on your settings:</p>
+                <p>The debugger uses smart heuristics to automatically prioritize the most relevant variables at each breakpoint:</p>
                 <ul>
-                    <li><strong>Locals & Parameters:</strong> Tracks local variables and function parameters accessed
-                        near your breakpoints.</li>
+                    <li><strong>Locals & Parameters:</strong> Tracks local variables and function parameters in scope,
+                        ranked by proximity — variables assigned on or near the breakpoint line appear first.</li>
+                    <li><strong>Control-Flow Variables:</strong> Variables from enclosing <span class="code-inline">if</span>,
+                        <span class="code-inline">for</span>, <span class="code-inline">while</span>, and
+                        <span class="code-inline">switch</span> conditions are automatically included.</li>
+                    <li><strong>Function Call Arguments:</strong> Variables passed as arguments to function calls on or near
+                        the breakpoint line are detected and watched.</li>
+                    <li><strong>Small Struct Expansion:</strong> Struct and class types with 8 or fewer primitive fields
+                        are automatically expanded — no Deep Analysis needed.</li>
                     <li><strong>Class Members:</strong> Monitors fields belonging to the current class instance (<span
                             class="code-inline">this</span>).</li>
-                    <li><strong>Deep Analysis (Optional):</strong> Want more details? Enable <span
-                            class="code-inline">mql_tools.Debug.DetailLevel = "deepAnalysis"</span> in your VS Code
-                        settings. This will additionally track global primitives and recursively expand object fields.
-                    </li>
+                    <li><strong>Deep Analysis (Optional):</strong> Want even more? Enable <span
+                            class="code-inline">mql_tools.Debug.DetailLevel = "deepAnalysis"</span> to additionally
+                        track global primitives, input variables, and recursively expand all object fields.</li>
+                    <li><strong>Variable Timeline:</strong> Expand any variable in the Variables panel to see its value
+                        history across multiple hits of the same breakpoint.</li>
                     <li><strong>Breakpoint Info:</strong> Provides metadata such as hit counts, source file names, line
                         numbers, and timestamps.</li>
                 </ul>
@@ -156,6 +164,32 @@ void OnTick()
                             auto-detected locals when this breakpoint is hit.
                         </div>
                     </li>
+                    <li>
+                        <strong>Expression Watches</strong> (<span class="code-inline">// @watch:type expr</span>):
+                        Watch arbitrary MQL expressions — not just variable names. Specify the return type
+                        and the expression to evaluate:
+                        <div class="highlight-box">
+<pre style="margin:0; font-family: var(--vscode-editor-font-family), monospace; font-size: 0.9em; line-height: 1.5;">
+// @watch:double SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+// @watch:int    OrdersTotal()
+// @watch:double MathAbs(ask - bid)
+Print("tick");   // &lt;— breakpoint set here</pre>
+                            The expression is injected into the compiled code and evaluated at
+                            the breakpoint. Function calls are validated against a built-in allowlist
+                            of read-only MQL functions (market data, account info, math, etc.).
+                        </div>
+                        <div class="warn-box">
+                            <strong>Unrestricted mode:</strong> Use <span class="code-inline">// @watch!:type expr</span>
+                            (with <span class="code-inline">!</span>) to bypass the safety allowlist and call any function.
+                            Use with caution in shared codebases — the expression is compiled and executed verbatim.
+                        </div>
+                    </li>
+                    <li>
+                        <strong>CodeLens Watch Suggestions:</strong>
+                        When a breakpoint is set on a line without a nearby <span class="code-inline">@watch</span>
+                        annotation, a clickable <em>"Add @watch annotation"</em> lens appears above the line.
+                        Click it to insert a template annotation ready for you to fill in.
+                    </li>
                     <li><strong>Call Stack Tracking:</strong> Functions containing breakpoints automatically report
                         <span class="code-inline">ENTER</span>/<span class="code-inline">EXIT</span> events so the
                         dashboard shows a live call stack.
@@ -176,9 +210,10 @@ void OnTick()
                         instruction level. All stepping actions behave like <strong>Continue</strong> — they resume to
                         the next breakpoint. To inspect intermediate state, set additional breakpoints on the lines you
                         want to observe.</li>
-                    <li><strong>No Expression Evaluation:</strong> The Debug Console does not support evaluating
-                        arbitrary MQL expressions at runtime. Use <span class="code-inline">// @watch</span> annotations
-                        or enable Deep Analysis to capture the variables you need.</li>
+                    <li><strong>No Interactive Expression Evaluation:</strong> The Debug Console does not support typing
+                        arbitrary expressions at runtime. However, you can pre-declare expression watches using
+                        <span class="code-inline">// @watch:type expr</span> annotations — these are compiled into the
+                        debug build and evaluated at each breakpoint hit.</li>
                 </ul>
             </div>
 

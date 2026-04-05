@@ -198,6 +198,31 @@ void MqlDebugWrite(string structured) {
 }
 
 //+------------------------------------------------------------------+
+//| Batch I/O — accumulate lines and write once                      |
+//+------------------------------------------------------------------+
+string __mqldbg_batch = "";
+
+void MqlDebugBatchStart() { __mqldbg_batch = ""; }
+
+void MqlDebugBatchAdd(string structured) {
+  __mqldbg_batch += structured + "\n";
+}
+
+void MqlDebugBatchFlush() {
+  if (__mqldbg_batch == "") return;
+  if (!__dbgState.IsDebugInitialized())
+    MqlDebugInit();
+  if (__dbgState.GetDebugHandle() == INVALID_HANDLE)
+    return;
+  MqlDebugRotate();
+  if (__dbgState.GetDebugHandle() == INVALID_HANDLE)
+    return;
+  FileWriteString(__dbgState.GetDebugHandle(), __mqldbg_batch);
+  FileFlush(__dbgState.GetDebugHandle());
+  __mqldbg_batch = "";
+}
+
+//+------------------------------------------------------------------+
 //| Escape strings for DBG logging                                   |
 //+------------------------------------------------------------------+
 string MqlDebugEscape(string val) {
@@ -254,6 +279,35 @@ string MqlDebugEscape(string val) {
 #define MQL_DBG_WATCH(varName, val) MQL_DBG_WATCH_DBL(varName, val)
 
 //+------------------------------------------------------------------+
+//| Batch-mode macros — same output format, accumulated in buffer    |
+//+------------------------------------------------------------------+
+#define MQL_DBG_BBREAK(label) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|BREAK|" + MqlDebugEscape(label))
+
+#define MQL_DBG_BWATCH_INT(varName, val) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|int|" + IntegerToString((long)(val)))
+
+#define MQL_DBG_BWATCH_LONG(varName, val) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|long|" + IntegerToString((long)(val)))
+
+#define MQL_DBG_BWATCH_DBL(varName, val) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|double|" + DoubleToString((double)(val), 8))
+
+#define MQL_DBG_BWATCH_STR(varName, val) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|string|" + MqlDebugEscape(val))
+
+#define MQL_DBG_BWATCH_BOOL(varName, val) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|bool|" + ((val) ? "true" : "false"))
+
+#define MQL_DBG_BWATCH_DATETIME(varName, val) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|WATCH|" + MqlDebugEscape(varName) + "|datetime|" + TimeToString((datetime)(val), TIME_DATE | TIME_SECONDS))
+
+#define MQL_DBG_BWATCH(varName, val) MQL_DBG_BWATCH_DBL(varName, val)
+
+#define MQL_DBG_BLOG(msg) \
+    MqlDebugBatchAdd("DBG|" + MqlDebugTime() + "|" + __FILE__ + "|" + __FUNCTION__ + "|" + IntegerToString(__LINE__) + "|LOG|" + MqlDebugEscape(msg))
+
+//+------------------------------------------------------------------+
 //| ARRAY watch macros — emit each element as a separate WATCH line  |
 //| with varName[index] naming.  Capped at MQLDEBUG_MAX_ARRAY_ELEMS |
 //| to prevent flooding the log file on large arrays.                |
@@ -283,6 +337,33 @@ string MqlDebugEscape(string val) {
     MQL_DBG_WATCH_INT(varName + ".size", ArraySize(arr)); \
     for (int __i = 0; __i < __n; __i++) \
       MQL_DBG_WATCH_STR(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+//+------------------------------------------------------------------+
+//| Batch-mode ARRAY macros                                          |
+//+------------------------------------------------------------------+
+#define MQL_DBG_BWATCH_ARRAY_INT(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_BWATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_BWATCH_INT(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+#define MQL_DBG_BWATCH_ARRAY_DBL(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_BWATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_BWATCH_DBL(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+#define MQL_DBG_BWATCH_ARRAY_LONG(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_BWATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_BWATCH_LONG(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
+
+#define MQL_DBG_BWATCH_ARRAY_STR(varName, arr) \
+  { int __n = MathMin(ArraySize(arr), MQLDEBUG_MAX_ARRAY_ELEMS); \
+    MQL_DBG_BWATCH_INT(varName + ".size", ArraySize(arr)); \
+    for (int __i = 0; __i < __n; __i++) \
+      MQL_DBG_BWATCH_STR(varName + "[" + IntegerToString(__i) + "]", arr[__i]); }
 
 //+------------------------------------------------------------------+
 //| PAUSE — spin-wait at breakpoint until VS Code sends CONTINUE     |

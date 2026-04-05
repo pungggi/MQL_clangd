@@ -4,6 +4,8 @@ const { _test } = require('../src/debugInstrumentation');
 const {
     MqlLineClassifier,
     isConditionSafe,
+    isExpressionSafe,
+    SAFE_READONLY_FUNCTIONS,
     findInjectionPoint,
     parseWatchAnnotations,
     macroForType,
@@ -13,6 +15,10 @@ const {
     sanitizeCondition,
     buildLogExpression,
     buildProbeInjection,
+    scoreVariableRelevance,
+    findEnclosingControlFlowVars,
+    findFunctionCallArgs,
+    collectWatchVars,
 } = _test;
 
 suite('debugInstrumentation', function () {
@@ -107,6 +113,102 @@ suite('debugInstrumentation', function () {
     });
 
     // =========================================================================
+    // isExpressionSafe
+    // =========================================================================
+
+    suite('isExpressionSafe', function () {
+        test('allows simple variable access', function () {
+            const r = isExpressionSafe('myVar');
+            assert.strictEqual(r.safe, true);
+        });
+
+        test('allows arithmetic expressions', function () {
+            const r = isExpressionSafe('(a + b) * 2.0');
+            assert.strictEqual(r.safe, true);
+        });
+
+        test('allows allowlisted function calls', function () {
+            assert.strictEqual(isExpressionSafe('SymbolInfoDouble(_Symbol, SYMBOL_ASK)').safe, true);
+            assert.strictEqual(isExpressionSafe('OrdersTotal()').safe, true);
+            assert.strictEqual(isExpressionSafe('MathAbs(x - y)').safe, true);
+            assert.strictEqual(isExpressionSafe('ArraySize(arr)').safe, true);
+            assert.strictEqual(isExpressionSafe('StringLen(s)').safe, true);
+        });
+
+        test('allows nested allowlisted calls', function () {
+            const r = isExpressionSafe('NormalizeDouble(SymbolInfoDouble(_Symbol, SYMBOL_ASK), 5)');
+            assert.strictEqual(r.safe, true);
+        });
+
+        test('allows type casts that look like function calls', function () {
+            assert.strictEqual(isExpressionSafe('int(myDouble)').safe, true);
+            assert.strictEqual(isExpressionSafe('double(myInt) + 1.0').safe, true);
+            assert.strictEqual(isExpressionSafe('string(value)').safe, true);
+        });
+
+        test('rejects dangerous function calls — OrderSend', function () {
+            const r = isExpressionSafe('OrderSend(request, result)');
+            assert.strictEqual(r.safe, false);
+            assert.ok(r.reason.includes('OrderSend'));
+        });
+
+        test('rejects FileDelete', function () {
+            const r = isExpressionSafe('FileDelete("data.csv")');
+            assert.strictEqual(r.safe, false);
+            assert.ok(r.reason.includes('FileDelete'));
+        });
+
+        test('rejects WebRequest', function () {
+            const r = isExpressionSafe('WebRequest("POST", url, headers, timeout, data, res, resHeaders)');
+            assert.strictEqual(r.safe, false);
+            assert.ok(r.reason.includes('WebRequest'));
+        });
+
+        test('rejects unknown user functions', function () {
+            const r = isExpressionSafe('MyCustomFunction(x)');
+            assert.strictEqual(r.safe, false);
+            assert.ok(r.reason.includes('MyCustomFunction'));
+        });
+
+        test('rejects semicolons (statement injection)', function () {
+            const r = isExpressionSafe('x; OrderSend(req, res)');
+            assert.strictEqual(r.safe, false);
+            assert.strictEqual(r.reason, 'semicolons not allowed');
+        });
+
+        test('rejects preprocessor directives', function () {
+            const r = isExpressionSafe('#include <evil.mqh>');
+            assert.strictEqual(r.safe, false);
+            assert.strictEqual(r.reason, 'preprocessor directives not allowed');
+        });
+
+        test('rejects unbalanced delimiters', function () {
+            const r = isExpressionSafe('SymbolInfoDouble(_Symbol');
+            assert.strictEqual(r.safe, false);
+            assert.strictEqual(r.reason, 'unbalanced delimiters');
+        });
+
+        test('rejects empty/null', function () {
+            assert.strictEqual(isExpressionSafe('').safe, false);
+            assert.strictEqual(isExpressionSafe(null).safe, false);
+            assert.strictEqual(isExpressionSafe(undefined).safe, false);
+        });
+
+        test('SAFE_READONLY_FUNCTIONS contains expected entries', function () {
+            assert.ok(SAFE_READONLY_FUNCTIONS.has('SymbolInfoDouble'));
+            assert.ok(SAFE_READONLY_FUNCTIONS.has('OrdersTotal'));
+            assert.ok(SAFE_READONLY_FUNCTIONS.has('MathAbs'));
+            assert.ok(SAFE_READONLY_FUNCTIONS.has('ArraySize'));
+            assert.ok(SAFE_READONLY_FUNCTIONS.has('TimeCurrent'));
+            // Should NOT contain side-effecting functions
+            assert.ok(!SAFE_READONLY_FUNCTIONS.has('OrderSend'));
+            assert.ok(!SAFE_READONLY_FUNCTIONS.has('FileDelete'));
+            assert.ok(!SAFE_READONLY_FUNCTIONS.has('WebRequest'));
+            assert.ok(!SAFE_READONLY_FUNCTIONS.has('Print'));
+        });
+    });
+
+    // =========================================================================
     // findInjectionPoint
     // =========================================================================
 
@@ -193,8 +295,9 @@ suite('debugInstrumentation', function () {
                 '  int x = 5;',         // bp on line 3
                 '}',
             ];
-            const vars = parseWatchAnnotations(lines, 3);
-            assert.deepStrictEqual(vars, ['myVar', 'otherVar']);
+            const result = parseWatchAnnotations(lines, 3);
+            assert.deepStrictEqual(result.names, ['myVar', 'otherVar']);
+            assert.deepStrictEqual(result.expressions, []);
         });
 
         test('returns empty when no annotation', function () {
@@ -203,7 +306,9 @@ suite('debugInstrumentation', function () {
                 '  int x = 5;',
                 '}',
             ];
-            assert.deepStrictEqual(parseWatchAnnotations(lines, 2), []);
+            const result = parseWatchAnnotations(lines, 2);
+            assert.deepStrictEqual(result.names, []);
+            assert.deepStrictEqual(result.expressions, []);
         });
 
         test('deduplicates variable names', function () {
@@ -212,8 +317,102 @@ suite('debugInstrumentation', function () {
                 '// @watch b c',
                 'int x;',
             ];
-            const vars = parseWatchAnnotations(lines, 3);
-            assert.deepStrictEqual(vars, ['a', 'b', 'c']);
+            const result = parseWatchAnnotations(lines, 3);
+            assert.deepStrictEqual(result.names, ['a', 'b', 'c']);
+        });
+
+        test('parses typed expression watch', function () {
+            const lines = [
+                'void OnTick() {',
+                '  // @watch:double SymbolInfoDouble(_Symbol, SYMBOL_ASK)',
+                '  Print("test");',  // bp on line 3
+                '}',
+            ];
+            const result = parseWatchAnnotations(lines, 3);
+            assert.strictEqual(result.expressions.length, 1);
+            assert.strictEqual(result.expressions[0].type, 'double');
+            assert.strictEqual(result.expressions[0].expr, 'SymbolInfoDouble(_Symbol, SYMBOL_ASK)');
+        });
+
+        test('mixed simple and typed annotations', function () {
+            const lines = [
+                '// @watch x y',
+                '// @watch:int OrdersTotal()',
+                'int z;',  // bp on line 3
+            ];
+            const result = parseWatchAnnotations(lines, 3);
+            assert.deepStrictEqual(result.names, ['x', 'y']);
+            assert.strictEqual(result.expressions.length, 1);
+            assert.strictEqual(result.expressions[0].type, 'int');
+        });
+
+        test('rejects unsafe expression watches and reports them', function () {
+            const lines = [
+                '// @watch:int OrderSend(request, result)',
+                'int z;',  // bp on line 2
+            ];
+            const result = parseWatchAnnotations(lines, 2);
+            assert.strictEqual(result.expressions.length, 0, 'should not include unsafe expression');
+            assert.strictEqual(result.rejected.length, 1, 'should report rejection');
+            assert.ok(result.rejected[0].reason.includes('OrderSend'));
+            assert.strictEqual(result.rejected[0].line, 1);
+        });
+
+        test('accepts safe and rejects unsafe in same block', function () {
+            const lines = [
+                '// @watch:double SymbolInfoDouble(_Symbol, SYMBOL_ASK)',
+                '// @watch:int FileDelete("bad.csv")',
+                'Print("test");',  // bp on line 3
+            ];
+            const result = parseWatchAnnotations(lines, 3);
+            assert.strictEqual(result.expressions.length, 1, 'safe expression accepted');
+            assert.strictEqual(result.expressions[0].expr, 'SymbolInfoDouble(_Symbol, SYMBOL_ASK)');
+            assert.strictEqual(result.rejected.length, 1, 'unsafe expression rejected');
+            assert.ok(result.rejected[0].reason.includes('FileDelete'));
+        });
+
+        test('@watch!: bypasses safety checks for dangerous calls', function () {
+            const lines = [
+                '// @watch!:int OrderSend(request, result)',
+                'int z;',  // bp on line 2
+            ];
+            const result = parseWatchAnnotations(lines, 2);
+            assert.strictEqual(result.expressions.length, 1, 'unsafe expression allowed with !');
+            assert.strictEqual(result.expressions[0].expr, 'OrderSend(request, result)');
+            assert.strictEqual(result.expressions[0].type, 'int');
+            assert.strictEqual(result.rejected.length, 0, 'no rejections');
+        });
+
+        test('@watch!: still rejects unbalanced delimiters', function () {
+            const lines = [
+                '// @watch!:int OrderSend(request',
+                'int z;',  // bp on line 2
+            ];
+            const result = parseWatchAnnotations(lines, 2);
+            assert.strictEqual(result.expressions.length, 0, 'unbalanced still rejected');
+            assert.strictEqual(result.rejected.length, 1);
+            assert.strictEqual(result.rejected[0].reason, 'unbalanced delimiters');
+        });
+
+        test('@watch!: allows user-defined functions', function () {
+            const lines = [
+                '// @watch!:double MyCustomCalculation(x, y, z)',
+                'Print("test");',  // bp on line 2
+            ];
+            const result = parseWatchAnnotations(lines, 2);
+            assert.strictEqual(result.expressions.length, 1);
+            assert.strictEqual(result.expressions[0].expr, 'MyCustomCalculation(x, y, z)');
+        });
+
+        test('@watch: without ! rejects same user-defined function', function () {
+            const lines = [
+                '// @watch:double MyCustomCalculation(x, y, z)',
+                'Print("test");',  // bp on line 2
+            ];
+            const result = parseWatchAnnotations(lines, 2);
+            assert.strictEqual(result.expressions.length, 0, 'rejected without !');
+            assert.strictEqual(result.rejected.length, 1);
+            assert.ok(result.rejected[0].reason.includes('MyCustomCalculation'));
         });
     });
 
@@ -540,8 +739,10 @@ suite('debugInstrumentation', function () {
             const lines = buildProbeInjection(0, 'bp_test_1', [], '');
             const joined = lines.join('\n');
             assert.ok(joined.includes('MqlDebugProbeCheck(0)'), 'should check probe');
-            assert.ok(joined.includes('MQL_DBG_BREAK("bp_test_1")'), 'should emit BREAK');
+            assert.ok(joined.includes('MQL_DBG_BBREAK("bp_test_1")'), 'should emit BREAK (batch)');
             assert.ok(joined.includes('MQL_DBG_PAUSE'), 'should contain PAUSE');
+            assert.ok(joined.includes('MqlDebugBatchStart()'), 'should start batch');
+            assert.ok(joined.includes('MqlDebugBatchFlush()'), 'should flush batch');
         });
 
         test('probe without logMessage has runtime logpoint check to skip PAUSE', function () {
@@ -577,29 +778,313 @@ suite('debugInstrumentation', function () {
             assert.ok(joined.includes('&& (x > 5)'), 'should include condition expression');
         });
 
-        test('probe with watch vars includes watch macros', function () {
+        test('probe with watch vars includes batch watch macros', function () {
             const vars = [
                 { name: 'count', type: 'int' },
                 { name: 'price', type: 'double' },
             ];
             const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
             const joined = lines.join('\n');
-            assert.ok(joined.includes('MQL_DBG_WATCH_INT("count", count)'), 'should watch int');
-            assert.ok(joined.includes('MQL_DBG_WATCH_DBL("price", price)'), 'should watch double');
+            assert.ok(joined.includes('MQL_DBG_BWATCH_INT("count", count)'), 'should watch int (batch)');
+            assert.ok(joined.includes('MQL_DBG_BWATCH_DBL("price", price)'), 'should watch double (batch)');
         });
 
         test('no-logMessage fallback: logpoint emits BREAK + watches without PAUSE', function () {
             const vars = [{ name: 'x', type: 'int' }];
             const lines = buildProbeInjection(7, 'bp_test_7', vars, '');
             const joined = lines.join('\n');
-            // Should have BREAK and watch in the main body (before logpoint check)
-            assert.ok(joined.includes('MQL_DBG_BREAK("bp_test_7")'), 'should have BREAK');
-            assert.ok(joined.includes('MQL_DBG_WATCH_INT("x", x)'), 'should have watch');
+            // Should have batch BREAK and watch in the main body (before logpoint check)
+            assert.ok(joined.includes('MQL_DBG_BBREAK("bp_test_7")'), 'should have BREAK (batch)');
+            assert.ok(joined.includes('MQL_DBG_BWATCH_INT("x", x)'), 'should have watch (batch)');
             // PAUSE is conditional on NOT being a logpoint
             assert.ok(joined.includes('!MqlDebugIsLogpoint(7)'),
                 'should guard PAUSE with logpoint check');
             assert.ok(joined.includes('MQL_DBG_PAUSE'),
                 'should contain PAUSE in break branch');
+        });
+    });
+
+    // =========================================================================
+    // scoreVariableRelevance
+    // =========================================================================
+
+    suite('scoreVariableRelevance', function () {
+        test('variable assigned on BP line gets highest score', function () {
+            const lines = ['void OnTick() {', '  int x = 5;', '  x = 10;', '  Print(x);', '}'];
+            const score = scoreVariableRelevance(lines, 3, 'x'); // line 3 is "x = 10;"
+            assert.ok(score >= 10, `expected >= 10 for BP-line assignment, got ${score}`);
+        });
+
+        test('variable assigned 2 lines before BP scores high', function () {
+            const lines = ['void OnTick() {', '  int x = 5;', '  double y = 1.0;', '  Print(x);', '}'];
+            const score = scoreVariableRelevance(lines, 4, 'x'); // x assigned at line 2, BP at line 4
+            assert.ok(score > 0, `expected > 0, got ${score}`);
+        });
+
+        test('unreferenced variable scores zero', function () {
+            const lines = ['void OnTick() {', '  int x = 5;', '  Print(y);', '}'];
+            const score = scoreVariableRelevance(lines, 3, 'z'); // z not in code at all
+            assert.strictEqual(score, 0);
+        });
+
+        test('frequently used variable gets frequency bonus', function () {
+            const lines = [
+                'void OnTick() {',
+                '  int x = arr[x] + x;',
+                '  if (x > 0) x++;',
+                '  Print(x);', // BP here (line 4)
+                '}',
+            ];
+            const score = scoreVariableRelevance(lines, 4, 'x');
+            // x appears on multiple lines near BP, should get frequency bonus
+            assert.ok(score >= 3, `expected >= 3 for frequent var, got ${score}`);
+        });
+    });
+
+    // =========================================================================
+    // findEnclosingControlFlowVars
+    // =========================================================================
+
+    suite('findEnclosingControlFlowVars', function () {
+        test('detects variables in if-condition', function () {
+            const lines = [
+                'void OnTick() {',
+                '  int x = 5;',
+                '  if (x > threshold) {',
+                '    Print(x);', // BP here (line 4)
+                '  }',
+                '}',
+            ];
+            const vars = findEnclosingControlFlowVars(lines, 4);
+            assert.ok(vars.includes('x'), 'should find x');
+            assert.ok(vars.includes('threshold'), 'should find threshold');
+        });
+
+        test('detects loop iterator in for-loop', function () {
+            const lines = [
+                'void OnTick() {',
+                '  for (int i = 0; i < count; i++) {',
+                '    arr[i] = 0;', // BP here (line 3)
+                '  }',
+                '}',
+            ];
+            const vars = findEnclosingControlFlowVars(lines, 3);
+            assert.ok(vars.includes('i'), 'should find i');
+            assert.ok(vars.includes('count'), 'should find count');
+        });
+
+        test('detects while-condition variables', function () {
+            const lines = [
+                'void OnTick() {',
+                '  while (pos >= 0) {',
+                '    Process(pos);', // BP here (line 3)
+                '  }',
+                '}',
+            ];
+            const vars = findEnclosingControlFlowVars(lines, 3);
+            assert.ok(vars.includes('pos'), 'should find pos');
+        });
+
+        test('returns empty when not inside control flow', function () {
+            const lines = [
+                'void OnTick() {',
+                '  int x = 5;', // BP here (line 2)
+                '}',
+            ];
+            const vars = findEnclosingControlFlowVars(lines, 2);
+            assert.deepStrictEqual(vars, []);
+        });
+    });
+
+    // =========================================================================
+    // findFunctionCallArgs
+    // =========================================================================
+
+    suite('findFunctionCallArgs', function () {
+        test('detects arguments on BP line', function () {
+            const lines = [
+                'void OnTick() {',
+                '  OrderSend(request, result);', // BP here (line 2)
+                '}',
+            ];
+            const vars = findFunctionCallArgs(lines, 2);
+            assert.ok(vars.includes('request'), 'should find request');
+            assert.ok(vars.includes('result'), 'should find result');
+        });
+
+        test('detects arguments on adjacent lines', function () {
+            const lines = [
+                'void OnTick() {',
+                '  Print(msg);',
+                '  int x = 0;', // BP here (line 3)
+                '  Send(data);',
+                '}',
+            ];
+            const vars = findFunctionCallArgs(lines, 3);
+            assert.ok(vars.includes('msg'), 'should find msg from line before');
+            assert.ok(vars.includes('data'), 'should find data from line after');
+        });
+
+        test('skips nested function calls as arguments', function () {
+            const lines = [
+                'void OnTick() {',
+                '  Print(StringLen(text));', // BP here (line 2)
+                '}',
+            ];
+            const vars = findFunctionCallArgs(lines, 2);
+            // StringLen is a function call, should not appear as a variable
+            assert.ok(!vars.includes('StringLen'), 'should not include function name');
+            assert.ok(vars.includes('text'), 'should find text');
+        });
+
+        test('finds all args with nested function calls', function () {
+            const lines = [
+                'void OnTick() {',
+                '  Print(foo(bar), baz);', // BP here (line 2)
+                '}',
+            ];
+            const vars = findFunctionCallArgs(lines, 2);
+            assert.ok(!vars.includes('foo'), 'should not include nested function name');
+            assert.ok(vars.includes('bar'), 'should find bar inside nested call');
+            assert.ok(vars.includes('baz'), 'should find baz after nested call');
+        });
+
+        test('returns empty with no function calls', function () {
+            const lines = [
+                'void OnTick() {',
+                '  int x = 5;', // BP here (line 2)
+                '}',
+            ];
+            const vars = findFunctionCallArgs(lines, 2);
+            assert.deepStrictEqual(vars, []);
+        });
+    });
+
+    // =========================================================================
+    // macroForType batch mode
+    // =========================================================================
+
+    suite('macroForType batch mode', function () {
+        test('returns batch macro for int', function () {
+            assert.strictEqual(macroForType('int', false, true), 'MQL_DBG_BWATCH_INT');
+        });
+
+        test('returns batch macro for double', function () {
+            assert.strictEqual(macroForType('double', false, true), 'MQL_DBG_BWATCH_DBL');
+        });
+
+        test('returns batch macro for string', function () {
+            assert.strictEqual(macroForType('string', false, true), 'MQL_DBG_BWATCH_STR');
+        });
+
+        test('returns batch array macro for int[]', function () {
+            assert.strictEqual(macroForType('int', true, true), 'MQL_DBG_BWATCH_ARRAY_INT');
+        });
+
+        test('returns batch fallback for unknown type', function () {
+            assert.strictEqual(macroForType(null, false, true), 'MQL_DBG_BWATCH');
+        });
+
+        test('returns non-batch macro when batch=false', function () {
+            assert.strictEqual(macroForType('int', false, false), 'MQL_DBG_WATCH_INT');
+        });
+
+        test('batch enum type returns BWATCH_INT', function () {
+            assert.strictEqual(macroForType('ENUM_ORDER_TYPE', false, true), 'MQL_DBG_BWATCH_INT');
+        });
+    });
+
+    // =========================================================================
+    // buildProbeInjection — expression watches
+    // =========================================================================
+
+    suite('buildProbeInjection — expression watches', function () {
+        test('expression watch injects expression verbatim as value', function () {
+            const vars = [
+                { name: 'SymbolInfoDouble(...)', type: 'double', isExpression: true, expr: 'SymbolInfoDouble(_Symbol, SYMBOL_ASK)' },
+            ];
+            const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
+            const joined = lines.join('\n');
+            assert.ok(
+                joined.includes('MQL_DBG_BWATCH_DBL("SymbolInfoDouble(...)", SymbolInfoDouble(_Symbol, SYMBOL_ASK))'),
+                'should inject expression as value argument'
+            );
+        });
+
+        test('expression watch with int type uses BWATCH_INT', function () {
+            const vars = [
+                { name: 'OrdersTotal()', type: 'int', isExpression: true, expr: 'OrdersTotal()' },
+            ];
+            const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
+            const joined = lines.join('\n');
+            assert.ok(
+                joined.includes('MQL_DBG_BWATCH_INT("OrdersTotal()", OrdersTotal())'),
+                'should use int macro for int expression'
+            );
+        });
+
+        test('mixed regular and expression watches', function () {
+            const vars = [
+                { name: 'x', type: 'int' },
+                { name: 'Ask price', type: 'double', isExpression: true, expr: 'SymbolInfoDouble(_Symbol, SYMBOL_ASK)' },
+            ];
+            const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
+            const joined = lines.join('\n');
+            assert.ok(joined.includes('MQL_DBG_BWATCH_INT("x", x)'), 'regular watch');
+            assert.ok(joined.includes('SymbolInfoDouble(_Symbol, SYMBOL_ASK)'), 'expression watch');
+        });
+
+        test('expression watch label with quotes is escaped', function () {
+            const vars = [
+                { name: 'a["key"]', type: 'string', isExpression: true, expr: 'a["key"]' },
+            ];
+            const lines = buildProbeInjection(0, 'bp_test_1', vars, '');
+            const joined = lines.join('\n');
+            // The label should have escaped quotes: a[\"key\"]
+            assert.ok(joined.includes('a[\\"key\\"]'), 'should escape quotes in label');
+            // The expression should remain verbatim
+            assert.ok(joined.includes('a["key"]'), 'expression should be verbatim');
+        });
+    });
+
+    // =========================================================================
+    // collectWatchVars — integration
+    // =========================================================================
+
+    suite('collectWatchVars — integration', function () {
+        const emptyTypeDB = { classMap: new Map(), globalMap: new Map() };
+
+        test('collects locals and sorts by relevance', function () {
+            const lines = [
+                'void OnTick() {',
+                '  int x = 0;',
+                '  int unused = 99;',
+                '  double y = 1.0;',
+                '  y = Ask;',         // y is assigned here (line 5), 1 line before BP
+                '  Print(y);',        // BP on line 6 — y is referenced here
+                '}',
+            ];
+            const vars = collectWatchVars(lines, 6, emptyTypeDB, false);
+            const names = vars.map(v => v.name);
+            assert.ok(names.includes('x'), 'should include x');
+            assert.ok(names.includes('y'), 'should include y');
+            assert.ok(names.includes('unused'), 'should include unused');
+            // y (assigned 1 line before BP, referenced on BP line) should rank above unused (far away, no refs)
+            assert.ok(names.indexOf('y') < names.indexOf('unused'), 'y should sort before unused');
+        });
+
+        test('includes expression watches from @watch:type annotations', function () {
+            const lines = [
+                'void OnTick() {',
+                '  // @watch:double SymbolInfoDouble(_Symbol, SYMBOL_ASK)',
+                '  int x = 5;',   // BP on line 3
+                '}',
+            ];
+            const vars = collectWatchVars(lines, 3, emptyTypeDB, false);
+            const exprWatch = vars.find(v => v.isExpression);
+            assert.ok(exprWatch, 'should include expression watch');
+            assert.strictEqual(exprWatch.type, 'double');
+            assert.strictEqual(exprWatch.expr, 'SymbolInfoDouble(_Symbol, SYMBOL_ASK)');
         });
     });
 });
