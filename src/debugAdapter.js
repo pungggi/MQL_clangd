@@ -116,7 +116,6 @@ class MqlDebugAdapter extends EventEmitter {
             supportsHitConditionalBreakpoints: true,
             supportsLogPoints: true,
             supportsLoadedSourcesRequest: true,
-            supportsValueFormattingOptions: true,
         });
         this._sendEvent('initialized', {});
     }
@@ -497,7 +496,7 @@ class MqlDebugAdapter extends EventEmitter {
                 const sourcePath = h.file ? this._mapToOriginalPath(h.file) : undefined;
                 const sourceRef = sourcePath ? { name: path.basename(sourcePath), path: sourcePath } : undefined;
                 this._sendEvent('output', {
-                    category: 'stdout',
+                    category: 'console',
                     output: `[MQL Break] ${h.label}  ${h.func}:${displayLine}  (${h.file})  ${h.timestamp}\n`,
                     source: sourceRef,
                     line: displayLine,
@@ -506,7 +505,7 @@ class MqlDebugAdapter extends EventEmitter {
                 if (h.watches && h.watches.length) {
                     for (const w of h.watches) {
                         this._sendEvent('output', {
-                            category: 'stdout',
+                            category: 'console',
                             output: `  ${w.varName} (${w.varType}) = ${w.value}\n`,
                             source: sourceRef,
                             line: displayLine,

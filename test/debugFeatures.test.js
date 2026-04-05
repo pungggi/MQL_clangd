@@ -60,7 +60,7 @@ suite('debugLogReader — LOG events', function () {
 // ---------------------------------------------------------------------------
 // debugStateStore — log event handling
 // ---------------------------------------------------------------------------
-const { store, DebugStateStore } = require('../src/debugStateStore');
+const { store, DebugStateStore, MAX_HITS } = require('../src/debugStateStore');
 
 suite('DebugStateStore — log events', function () {
     let s;
@@ -104,15 +104,17 @@ suite('DebugStateStore — log events', function () {
     });
 
     test('logMessages respects MAX_HITS cap', function () {
+        const overflow = 10;
+        const totalMessages = MAX_HITS + overflow;
         s.startSession();
-        for (let i = 0; i < 210; i++) {
+        for (let i = 0; i < totalMessages; i++) {
             s._applyOne({
                 type: 'log', message: `msg${i}`, file: '', func: '', line: i, timestamp: '',
             });
         }
-        assert.ok(s.logMessages.length <= 200, `Expected <= 200, got ${s.logMessages.length}`);
+        assert.ok(s.logMessages.length <= MAX_HITS, `Expected <= ${MAX_HITS}, got ${s.logMessages.length}`);
         // First message should have been shifted out
-        assert.strictEqual(s.logMessages[0].message, 'msg10');
+        assert.strictEqual(s.logMessages[0].message, `msg${totalMessages - MAX_HITS}`);
     });
 
     test('break events still work alongside log events', function () {
@@ -255,17 +257,18 @@ const fs = require('fs');
 const os = require('os');
 
 suite('MqlDebugBridge — writeBreakpointConfig extended format', function () {
-    const { bridge } = require('../src/debugBridge');
+    const { MqlDebugBridge } = require('../src/debugBridge');
     let tmpDir;
+    let testBridge;
 
     setup(function () {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mqldbg-test-'));
         fs.mkdirSync(path.join(tmpDir, 'Files'), { recursive: true });
-        bridge._mql5Root = tmpDir;
+        testBridge = new MqlDebugBridge();
+        testBridge._mql5Root = tmpDir;
     });
 
     teardown(function () {
-        bridge._mql5Root = null;
         try {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         } catch { /* ignore */ }
@@ -276,33 +279,33 @@ suite('MqlDebugBridge — writeBreakpointConfig extended format', function () {
     }
 
     test('plain number array (backward compatible)', function () {
-        bridge.writeBreakpointConfig([3, 17, 42]);
+        testBridge.writeBreakpointConfig([3, 17, 42]);
         assert.strictEqual(readConfig(), '3,17,42');
     });
 
     test('entry with hit condition', function () {
-        bridge.writeBreakpointConfig([
+        testBridge.writeBreakpointConfig([
             { id: 17, hitOp: '>', hitVal: 5 },
         ]);
         assert.strictEqual(readConfig(), '17h>5');
     });
 
     test('entry with logpoint flag', function () {
-        bridge.writeBreakpointConfig([
+        testBridge.writeBreakpointConfig([
             { id: 42, isLogpoint: true },
         ]);
         assert.strictEqual(readConfig(), '42L');
     });
 
     test('entry with both hit condition and logpoint', function () {
-        bridge.writeBreakpointConfig([
+        testBridge.writeBreakpointConfig([
             { id: 9, hitOp: '%', hitVal: 3, isLogpoint: true },
         ]);
         assert.strictEqual(readConfig(), '9h%3L');
     });
 
     test('mixed entries', function () {
-        bridge.writeBreakpointConfig([
+        testBridge.writeBreakpointConfig([
             3,
             { id: 17, hitOp: '>', hitVal: 5 },
             { id: 42, isLogpoint: true },
@@ -312,21 +315,21 @@ suite('MqlDebugBridge — writeBreakpointConfig extended format', function () {
     });
 
     test('entry with id only (no modifiers)', function () {
-        bridge.writeBreakpointConfig([
+        testBridge.writeBreakpointConfig([
             { id: 10 },
         ]);
         assert.strictEqual(readConfig(), '10');
     });
 
     test('entry with >= encoded as G', function () {
-        bridge.writeBreakpointConfig([
+        testBridge.writeBreakpointConfig([
             { id: 5, hitOp: 'G', hitVal: 10 },
         ]);
         assert.strictEqual(readConfig(), '5hG10');
     });
 
     test('entry with <= encoded as S', function () {
-        bridge.writeBreakpointConfig([
+        testBridge.writeBreakpointConfig([
             { id: 5, hitOp: 'S', hitVal: 7 },
         ]);
         assert.strictEqual(readConfig(), '5hS7');

@@ -1259,9 +1259,28 @@ function buildLogExpression(template, watchVars) {
     while (pos < template.length) {
         const openIdx = template.indexOf('{', pos);
         if (openIdx < 0) {
-            // Rest is literal text
-            parts.push(JSON.stringify(template.substring(pos)));
+            // Rest is literal text — unescape }} to }
+            parts.push(JSON.stringify(template.substring(pos).replace(/\}\}/g, '}')));
             break;
+        }
+        // Handle }} escape in literal text before the next {
+        const dblClose = template.indexOf('}}', pos);
+        if (dblClose >= 0 && dblClose < openIdx) {
+            if (dblClose > pos) {
+                parts.push(JSON.stringify(template.substring(pos, dblClose)));
+            }
+            parts.push(JSON.stringify('}'));
+            pos = dblClose + 2;
+            continue;
+        }
+        // Handle {{ escape — literal {
+        if (template[openIdx + 1] === '{') {
+            if (openIdx > pos) {
+                parts.push(JSON.stringify(template.substring(pos, openIdx)));
+            }
+            parts.push(JSON.stringify('{'));
+            pos = openIdx + 2;
+            continue;
         }
         // Literal text before {
         if (openIdx > pos) {

@@ -202,4 +202,4 @@ class DebugStateStore {
 
 // Singleton — one store per extension activation
 const store = new DebugStateStore();
-module.exports = { store, DebugStateStore };
+module.exports = { store, DebugStateStore, MAX_HITS };

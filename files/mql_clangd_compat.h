@@ -587,9 +587,15 @@ struct MqlCalendarCountry { ulong id; string name; string code; string currency;
 #define INVALID_HANDLE -1
 
 // File seek aliases (MQL uses SEEK_SET/SEEK_CUR/SEEK_END as plain identifiers)
+#ifndef SEEK_SET
 #define SEEK_SET 0
+#endif
+#ifndef SEEK_CUR
 #define SEEK_CUR 1
+#endif
+#ifndef SEEK_END
 #define SEEK_END 2
+#endif
 
 // Time format flags (used by TimeToString / TimeToStr)
 #ifndef TIME_DATE

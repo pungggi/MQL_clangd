@@ -416,6 +416,7 @@ class MqlDebugBridge {
 const bridge = new MqlDebugBridge();
 module.exports = {
     bridge,
+    MqlDebugBridge,
     COMPILE_MODE_CHECK,
     COMPILE_MODE_COMPILE,
     COMPILE_MODE_SCRIPT

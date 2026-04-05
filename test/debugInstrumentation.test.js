@@ -482,6 +482,53 @@ suite('debugInstrumentation', function () {
             const result = buildLogExpression('{f}', vars);
             assert.strictEqual(result, 'DoubleToString((double)(f), 8)');
         });
+
+        test('{{ produces literal open brace', function () {
+            const result = buildLogExpression('a {{ b', []);
+            assert.strictEqual(result, '"a " + "{" + " b"');
+        });
+
+        test('}} produces literal close brace', function () {
+            const result = buildLogExpression('a }} b', []);
+            assert.strictEqual(result, '"a } b"');
+        });
+
+        test('{{expr}} produces literal braces around text', function () {
+            const result = buildLogExpression('{{hello}}', []);
+            assert.strictEqual(result, '"{" + "hello}"');
+        });
+
+        test('escaped braces mixed with interpolation', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const result = buildLogExpression('val={{x}}', vars);
+            // {{ → literal {, then {x} is expression, then }} would need
+            // to appear but here after {x} there's only }
+            // Actually: "val={{x}}" → v a l = { { x } }
+            // First { at 4, template[5]='{' → literal {, pos=6
+            // Next { at 6... wait: "val={{x}}" positions:
+            //   v(0) a(1) l(2) =(3) {(4) {(5) x(6) }(7) }(8)
+            // openIdx=4, template[5]='{' → push "val=", push "{", pos=6
+            // openIdx=indexOf('{',6)=-1, rest is "x}}" → replace }} → "x}"
+            // Result: "val=" + "{" + "x}"
+            assert.strictEqual(result, '"val=" + "{" + "x}"');
+        });
+
+        test('}} at end of string after expression', function () {
+            const vars = [{ name: 'x', type: 'int' }];
+            const result = buildLogExpression('{x}}}', vars);
+            // {x} is expression, then }} → literal }
+            assert.strictEqual(result, 'IntegerToString((long)(x)) + "}"');
+        });
+
+        test('standalone }} with no expressions', function () {
+            const result = buildLogExpression('}}', []);
+            assert.strictEqual(result, '"}"');
+        });
+
+        test('standalone {{ with no expressions', function () {
+            const result = buildLogExpression('{{', []);
+            assert.strictEqual(result, '"{"');
+        });
     });
 
     // =========================================================================
@@ -549,8 +596,10 @@ suite('debugInstrumentation', function () {
             assert.ok(joined.includes('MQL_DBG_BREAK("bp_test_7")'), 'should have BREAK');
             assert.ok(joined.includes('MQL_DBG_WATCH_INT("x", x)'), 'should have watch');
             // PAUSE is conditional on NOT being a logpoint
-            assert.ok(joined.includes('!MqlDebugIsLogpoint(7)') && joined.includes('MQL_DBG_PAUSE'),
-                'PAUSE should be guarded by logpoint check');
+            assert.ok(joined.includes('!MqlDebugIsLogpoint(7)'),
+                'should guard PAUSE with logpoint check');
+            assert.ok(joined.includes('MQL_DBG_PAUSE'),
+                'should contain PAUSE in break branch');
         });
     });
 });

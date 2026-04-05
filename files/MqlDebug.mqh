@@ -25,6 +25,7 @@
 //|   DBG|{ts}|{file}|{func}|{line}|BREAK|{label}                    |
 //|   DBG|{ts}|{file}|{func}|{line}|ENTER                            |
 //|   DBG|{ts}|{file}|{func}|{line}|EXIT                             |
+//|   DBG|{ts}|{file}|{func}|{line}|LOG|{message}                    |
 //+------------------------------------------------------------------+
 
 // Configuration
@@ -529,12 +530,12 @@ bool MqlDebugLoadConfig() {
                 ushort opCh = StringGetCharacter(token, pos);
                 int op = 0;
                 pos++;
-                if (opCh == '=')      op = 1; // ==
-                else if (opCh == '>') op = 2; // >
-                else if (opCh == 'G') op = 3; // >= (G for Greater-or-equal)
-                else if (opCh == '<') op = 4; // <
-                else if (opCh == 'S') op = 5; // <= (S for Smaller-or-equal)
-                else if (opCh == '%') op = 6; // modulo
+                if (opCh == '=')             op = 1; // ==
+                else if (opCh == '>')        op = 2; // >
+                else if (opCh == 'G' || opCh == 'g') op = 3; // >= (G for Greater-or-equal)
+                else if (opCh == '<')        op = 4; // <
+                else if (opCh == 'S' || opCh == 's') op = 5; // <= (S for Smaller-or-equal)
+                else if (opCh == '%')        op = 6; // modulo
                 // Read the value digits
                 int valStart = pos;
                 while (pos < len && StringGetCharacter(token, pos) >= '0' &&
@@ -574,8 +575,9 @@ bool MqlDebugProbeCheck(int id) {
     if (!__mqldbg_active[id])
         return false;
 
-    // Increment hit counter
-    __mqldbg_hitcount[id]++;
+    // Increment hit counter (saturate to prevent signed overflow)
+    if (__mqldbg_hitcount[id] < 2147483647)
+        __mqldbg_hitcount[id]++;
     int count = __mqldbg_hitcount[id];
 
     // Evaluate hit condition (op 0 = no condition, always fire)
