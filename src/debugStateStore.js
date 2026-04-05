@@ -50,6 +50,9 @@ class DebugStateStore {
         this.hitCounts = new Map(); // label -> number
         /** @type {{ message: string, file: string, func: string, line: number, timestamp: string }[]} */
         this.logMessages = [];
+        /** Monotonic counters — survive shift() so consumers detect new entries */
+        this.totalHitCount = 0;
+        this.totalLogCount = 0;
         this.sessionActive = false;
     }
 
@@ -105,6 +108,7 @@ class DebugStateStore {
                     hitCount:  count,
                 };
                 this.hits.push(hit);
+                this.totalHitCount++;
                 if (this.hits.length > MAX_HITS) this.hits.shift();
                 break;
             }
@@ -147,6 +151,7 @@ class DebugStateStore {
                     line:      event.line,
                     timestamp: event.timestamp,
                 });
+                this.totalLogCount++;
                 if (this.logMessages.length > MAX_HITS) this.logMessages.shift();
                 break;
             }

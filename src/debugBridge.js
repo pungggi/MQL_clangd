@@ -164,14 +164,28 @@ class MqlDebugBridge {
         // (MetaTrader needs the .ex5 which is next to the temp file)
 
         // 4b. Write initial breakpoint config so the EA knows which probes to activate
-        const initialIds = new Set();
+        const initialEntries = [];
+        const seenIds = new Set();
         for (const [normPath, bps] of breakpointMap) {
             for (const bp of bps) {
                 const id = this.resolveProbeId(normPath, bp.line);
-                if (id !== undefined) initialIds.add(id);
+                if (id === undefined || seenIds.has(id)) continue;
+                seenIds.add(id);
+                const hitParsed = this._parseHitCondition(bp.hitCondition);
+                const isLogpoint = !!(bp.logMessage && bp.logMessage.trim());
+                if (hitParsed || isLogpoint) {
+                    initialEntries.push({
+                        id,
+                        hitOp: hitParsed ? hitParsed.op : undefined,
+                        hitVal: hitParsed ? hitParsed.val : undefined,
+                        isLogpoint,
+                    });
+                } else {
+                    initialEntries.push(id);
+                }
             }
         }
-        this.writeBreakpointConfig([...initialIds]);
+        this.writeBreakpointConfig(initialEntries);
 
         // 5. Start debug session
         this._active = true;
@@ -288,6 +302,29 @@ class MqlDebugBridge {
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Parse a DAP hitCondition string into operator + value.
+     * Mirrors the same logic in MqlDebugAdapter._parseHitCondition.
+     * @param {string} hitCondition
+     * @returns {{ op: string, val: number }|null}
+     */
+    _parseHitCondition(hitCondition) {
+        if (!hitCondition || !hitCondition.trim()) return null;
+        const s = hitCondition.trim();
+        const m = s.match(/^(==?|>=?|<=?|%)\s*(\d+)$/);
+        if (m) {
+            const rawOp = m[1];
+            const val = parseInt(m[2], 10);
+            const opMap = { '=': '=', '==': '=', '>': '>', '>=': 'G', '<': '<', '<=': 'S', '%': '%' };
+            return { op: opMap[rawOp] || '=', val };
+        }
+        const num = parseInt(s, 10);
+        if (!isNaN(num) && String(num) === s) {
+            return { op: '=', val: num };
+        }
+        return null;
+    }
 
     /** Log to the MQL output channel (visible in Output panel). */
     _log(msg) {

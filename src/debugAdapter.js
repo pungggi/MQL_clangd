@@ -38,8 +38,8 @@ class MqlDebugAdapter extends EventEmitter {
         this._context = context;
         this._originalPath = originalPath;
 
-        this._lastHitCount = 0;
-        this._lastLogCount = 0;
+        this._lastTotalHitCount = 0;
+        this._lastTotalLogCount = 0;
         this._wasActive = false;
         this._seq = 1;
         this._disposed = false;
@@ -460,18 +460,21 @@ class MqlDebugAdapter extends EventEmitter {
 
         const hits = this._store.hits;
         const logs = this._store.logMessages;
+        const totalHits = this._store.totalHitCount;
+        const totalLogs = this._store.totalLogCount;
 
         // Reset counters if the store was cleared (new session)
-        if (hits.length < this._lastHitCount) {
-            this._lastHitCount = 0;
+        if (totalHits < this._lastTotalHitCount) {
+            this._lastTotalHitCount = 0;
         }
-        if (logs.length < this._lastLogCount) {
-            this._lastLogCount = 0;
+        if (totalLogs < this._lastTotalLogCount) {
+            this._lastTotalLogCount = 0;
         }
 
         // Emit logpoint messages to Debug Console (no stopped event)
-        if (logs.length > this._lastLogCount) {
-            for (let i = this._lastLogCount; i < logs.length; i++) {
+        if (totalLogs > this._lastTotalLogCount) {
+            const newCount = Math.min(totalLogs - this._lastTotalLogCount, logs.length);
+            for (let i = logs.length - newCount; i < logs.length; i++) {
                 const lg = logs[i];
                 const displayLine = this._translateLine(lg.file, lg.line);
                 const sourcePath = lg.file ? this._mapToOriginalPath(lg.file) : undefined;
@@ -483,13 +486,14 @@ class MqlDebugAdapter extends EventEmitter {
                     line: displayLine,
                 });
             }
-            this._lastLogCount = logs.length;
+            this._lastTotalLogCount = totalLogs;
         }
 
         // Emit stopped + console output for each new hit
-        if (hits.length > this._lastHitCount) {
+        if (totalHits > this._lastTotalHitCount) {
+            const newCount = Math.min(totalHits - this._lastTotalHitCount, hits.length);
             let shouldStop = false;
-            for (let i = this._lastHitCount; i < hits.length; i++) {
+            for (let i = hits.length - newCount; i < hits.length; i++) {
                 const h = hits[i];
                 // Output to Debug Console so user sees hit history
                 const displayLine = this._parseOriginalLine(h.label) || this._translateLine(h.file, parseInt(h.line, 10) || 0);
@@ -517,7 +521,7 @@ class MqlDebugAdapter extends EventEmitter {
                     shouldStop = true;
                 }
             }
-            this._lastHitCount = hits.length;
+            this._lastTotalHitCount = totalHits;
 
             if (shouldStop) {
                 // Fire stopped event — VS Code will pause the UI and request
