@@ -151,7 +151,8 @@ const SAFE_READONLY_FUNCTIONS = new Set([
     // Market data
     'SymbolInfoDouble', 'SymbolInfoInteger', 'SymbolInfoString',
     'SymbolInfoTick', 'SymbolInfoSessionQuote', 'SymbolInfoSessionTrade',
-    'MarketBookGet', 'SymbolsTotal', 'SymbolName', 'SymbolSelect',
+    'MarketBookGet', 'SymbolsTotal', 'SymbolName',
+    // Note: SymbolSelect is excluded — SymbolSelect(sym, true) mutates Market Watch
     'SymbolIsSynchronized', 'iOpen', 'iClose', 'iHigh', 'iLow',
     'iVolume', 'iTime', 'iSpread', 'iTickVolume', 'iBars',
     'iBarShift', 'iHighest', 'iLowest',
