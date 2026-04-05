@@ -277,7 +277,7 @@ The dashboard also marks runs that have a snapshot with a small **snapshot** lab
 
 Launch an MT5 Strategy Tester run for your EA directly from VS Code — without touching the MetaTrader UI.
 
-**Requires:** [TradeReportServer](../TradeReportServer/) running (or auto-started) and a `tester.ini` file in the EA's folder.
+**Requires:** TradeReportServer running (or auto-started) and a `tester.ini` file in the EA's folder.
 
 **How to use:**
 
