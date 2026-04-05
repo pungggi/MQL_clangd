@@ -4,6 +4,24 @@
 
 ---
 
+## Table of Contents
+
+- [Differences from MQL Tools](#differences-from-mql-tools)
+- [Smart Compile Targets for Header Files](#smart-compile-targets-for-header-files)
+- [IntelliSense & Semantic Support](#intellisense--semantic-support)
+- [Quick Setup Guide](#quick-setup-guide)
+- [Important Notes](#important-notes)
+- [MetaEditor on macOS / Linux (Wine)](#metaeditor-on-macos--linux-wine)
+- [Live Runtime Log](#live-runtime-log)
+- [Trade Report Dashboard](#trade-report-dashboard)
+- [Run Backtest](#run-backtest)
+- [MQL Debugger (Real-Time Variable Inspection)](#mql-debugger-real-time-variable-inspection)
+- [Troubleshooting clangd diagnostics (MQL-specific)](#troubleshooting-clangd-diagnostics-mql-specific)
+- [FAQ: Common Questions](#faq-common-questions)
+- [Preserving Custom Diagnostic Suppressions](#preserving-custom-diagnostic-suppressions)
+
+---
+
 ### Differences from MQL Tools
 
 | Feature | MQL Tools | MQL Clangd |
