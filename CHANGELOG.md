@@ -1,25 +1,25 @@
 # Changelog
 
-## 1.1.32 (pre-release)
+## 1.1.38
 
-### Features
-- **MQL Debugger** (`Ctrl+Alt+D`): Set breakpoints in VS Code, then debug live MQL EAs/Scripts without leaving the editor. Auto-instruments source files, compiles a debug build, and streams variable state to a live dashboard. → [Full guide](media/tabs/tab-debugger.html)
+### Features (GA)
+The following features, introduced as pre-release in 1.1.32, are now generally available:
+
+- **MQL Debugger** (`Ctrl+Alt+D`): Set breakpoints in VS Code, then debug live MQL EAs/Scripts without leaving the editor. Auto-instruments source files, compiles a debug build, and streams variable state to a live dashboard.
   - Auto-watches locals, parameters, and class members; `// @watch` annotations for manual additions; conditional breakpoints; call stack tracking; 120 s auto-resume safety.
   - Breakpoint probes reload from config every ~200 ms — no recompile needed when breakpoints change.
   - EA auto-attaches to the first chart when the source is inside `MQL5\Experts\`.
-  - New settings: `mql_tools.Debug.DetailLevel` (`default` | `deepAnalysis`), `mql_tools.Debug.CloseTerminalOnExit` (default: `true`).
-- **Trade Report Dashboard**: Interactive webview for MT5 Strategy Tester results — trade summary, P&L, trade table, and filterable log viewer. Click-to-source navigation via LiveLog tags; source snapshots keep links accurate after edits. → [Full guide](media/tabs/tab-tradereport.html)
-- **Run Backtest** (`Ctrl+Alt+T`): Trigger MT5 Strategy Tester from VS Code, monitor progress, and auto-open the Trade Report on completion. → [Full guide](media/tabs/tab-backtest.html)
-  - New settings: `mql_tools.Backtest.ServerPort`, `AutoStartServer`, `PromptForParameters`, `AutoOpenReport`, `mql_tools.ShowButton.RunBacktest`.
-- **LiveLog — Source Location Tags**: `LogDebug/Info/Warn/Error/Trade` macros now embed `{File:Function:Line}` tags for click-to-source in the Trade Report. → [Full guide](media/tabs/tab-livelog.html)
+  - Settings: `mql_tools.Debug.DetailLevel` (`default` | `deepAnalysis`), `mql_tools.Debug.CloseTerminalOnExit`.
+- **Trade Report Dashboard**: Interactive webview for MT5 Strategy Tester results — trade summary, P&L, trade table, and filterable log viewer. Click-to-source navigation via LiveLog tags.
+- **Run Backtest** (`Ctrl+Alt+T`): Trigger MT5 Strategy Tester from VS Code, monitor progress, and auto-open the Trade Report on completion.
+  - Settings: `mql_tools.Backtest.ServerPort`, `AutoStartServer`, `PromptForParameters`, `AutoOpenReport`, `mql_tools.ShowButton.RunBacktest`.
+- **LiveLog — Source Location Tags**: `LogDebug/Info/Warn/Error/Trade` macros embed `{File:Function:Line}` tags for click-to-source in the Trade Report.
 - **Welcome Page**: Opens on first launch of each version with feature guides. Re-open via `MQL: Open Welcome Page`.
 
-### Snippets
-- Added `LogInfo`, `LogDebug`, `LogWarn`, `LogError`, `LogTrade` snippets.
+### Bug Fixes
+- **Log parser**: Fixed missing `wallclock` field in parsed log lines.
+- **Debug instrumentation**: Fixed inverted brace-depth condition in backward scope scan for local variable detection.
 
-### Improvements
-- **Standard Library Stubs**: Regenerated with improved stub generator (better template handling, forward-declaration skipping, manual extras block).
-- **Compatibility Header**: Extended `mql_clangd_compat.h` with additional MQL built-in types and macros.
 
 ## 1.1.37
 
@@ -50,6 +50,27 @@
 - **Go to Definition for MQL4 in generic workspaces**: Fixed "Go to Definition" (F12) and include resolution failing for MQL4 projects opened from generically-named workspace folders. The extension now detects the workspace's dominant MQL version by counting actual `.mq4` vs `.mq5` files instead of relying on the folder name. This ensures correct `-D__MQL4__`/`-D__MQL5__` defines, proper include paths, and working symbol navigation regardless of workspace naming (fixes #28).
 - **Mixed-workspace include paths**: Files whose extension mismatches the workspace's dominant version (e.g. a `.mq5` file in an MQL4-dominant workspace) now get the correct external include directory and defines in `compile_commands.json`.
 - **Stale fallback flags**: Changing `Metaeditor.Include4Dir`/`Include5Dir` settings or the workspace's MQL version no longer leaves stale defines and include paths in `clangd.fallbackFlags`.
+
+## 1.1.32 (pre-release)
+
+### Features
+- **MQL Debugger** (`Ctrl+Alt+D`): Set breakpoints in VS Code, then debug live MQL EAs/Scripts without leaving the editor. Auto-instruments source files, compiles a debug build, and streams variable state to a live dashboard. → [Full guide](media/tabs/tab-debugger.html)
+  - Auto-watches locals, parameters, and class members; `// @watch` annotations for manual additions; conditional breakpoints; call stack tracking; 120 s auto-resume safety.
+  - Breakpoint probes reload from config every ~200 ms — no recompile needed when breakpoints change.
+  - EA auto-attaches to the first chart when the source is inside `MQL5\Experts\`.
+  - New settings: `mql_tools.Debug.DetailLevel` (`default` | `deepAnalysis`), `mql_tools.Debug.CloseTerminalOnExit` (default: `true`).
+- **Trade Report Dashboard**: Interactive webview for MT5 Strategy Tester results — trade summary, P&L, trade table, and filterable log viewer. Click-to-source navigation via LiveLog tags; source snapshots keep links accurate after edits. → [Full guide](media/tabs/tab-tradereport.html)
+- **Run Backtest** (`Ctrl+Alt+T`): Trigger MT5 Strategy Tester from VS Code, monitor progress, and auto-open the Trade Report on completion. → [Full guide](media/tabs/tab-backtest.html)
+  - New settings: `mql_tools.Backtest.ServerPort`, `AutoStartServer`, `PromptForParameters`, `AutoOpenReport`, `mql_tools.ShowButton.RunBacktest`.
+- **LiveLog — Source Location Tags**: `LogDebug/Info/Warn/Error/Trade` macros now embed `{File:Function:Line}` tags for click-to-source in the Trade Report. → [Full guide](media/tabs/tab-livelog.html)
+- **Welcome Page**: Opens on first launch of each version with feature guides. Re-open via `MQL: Open Welcome Page`.
+
+### Snippets
+- Added `LogInfo`, `LogDebug`, `LogWarn`, `LogError`, `LogTrade` snippets.
+
+### Improvements
+- **Standard Library Stubs**: Regenerated with improved stub generator (better template handling, forward-declaration skipping, manual extras block).
+- **Compatibility Header**: Extended `mql_clangd_compat.h` with additional MQL built-in types and macros.
 
 ## 1.1.31
 
