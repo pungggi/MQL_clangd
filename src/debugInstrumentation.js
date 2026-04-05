@@ -211,7 +211,7 @@ const SAFE_READONLY_FUNCTIONS = new Set([
     'iCCI', 'iADX', 'iSAR', 'iOBV', 'iMFI', 'iAD',
     'iCustom', 'CopyBuffer',
     // Normalization
-    'NormalizeDouble', 'SymbolInfoDouble',
+    'NormalizeDouble',
 ]);
 
 /**
