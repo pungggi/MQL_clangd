@@ -583,6 +583,21 @@ struct MqlCalendarCountry { ulong id; string name; string code; string currency;
 // ArrayCopy direction
 #define WHOLE_ARRAY -1
 
+// Handle constants
+#define INVALID_HANDLE -1
+
+// File seek aliases (MQL uses SEEK_SET/SEEK_CUR/SEEK_END as plain identifiers)
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+
+// Time format flags (used by TimeToString / TimeToStr)
+#ifndef TIME_DATE
+#define TIME_DATE    1
+#define TIME_MINUTES 2
+#define TIME_SECONDS 4
+#endif
+
 // Symbol and period functions
 string Symbol();
 ENUM_TIMEFRAMES Period();
@@ -654,6 +669,7 @@ string TerminalInfoString(int property_id);
 
 // Checkup functions
 bool TerminalClose(int ret_code);
+void ExpertRemove();
 bool RefreshRates();
 
 // Account functions
@@ -849,6 +865,7 @@ template<typename T> void ArrayPrint(const T array[], int digits = 16, const str
 template<typename T> bool ArrayIsDynamic(const T array[]);
 template<typename T> bool ArrayIsSeries(const T array[]);
 template<typename T> void ArraySwap(T array1[], T array2[]);
+template<typename T> void ArrayFill(T array[], int start, int count, T value);
 
 // String functions
 int StringLen(string str);
@@ -1359,11 +1376,6 @@ int  MessageBox(string text, string caption = "", int flags = 0);
 void HideTestIndicators(bool hide);
 
 // MQL4 string/conversion aliases (MQL5 equivalents have different names)
-#ifndef TIME_DATE
-#define TIME_DATE    1
-#define TIME_MINUTES 2
-#define TIME_SECONDS 4
-#endif
 string TimeToStr(datetime value, int mode = TIME_DATE | TIME_MINUTES);
 datetime StrToTime(string value);
 string DoubleToStr(double value, int digits = 8);

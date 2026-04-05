@@ -1236,29 +1236,102 @@ function buildInjectionLines(label, watchVars, condition) {
 }
 
 /**
+ * Convert a logpoint message template to an MQL string expression.
+ * Handles `{expression}` interpolation by resolving types from watchVars.
+ *
+ * Example: "x = {x}, name = {name}" with watchVars containing x:int, name:string
+ *   → `"x = " + IntegerToString((long)(x)) + ", name = " + (name)`
+ *
+ * @param {string} template  Logpoint message with {expr} placeholders
+ * @param {{ name: string, type?: string }[]} watchVars  Available variables with type info
+ * @returns {string}  MQL string expression
+ */
+function buildLogExpression(template, watchVars) {
+    if (!template) return '""';
+
+    const varMap = new Map();
+    for (const v of watchVars) {
+        varMap.set(v.name, v.type || '');
+    }
+
+    const parts = [];
+    let pos = 0;
+    while (pos < template.length) {
+        const openIdx = template.indexOf('{', pos);
+        if (openIdx < 0) {
+            // Rest is literal text
+            parts.push(JSON.stringify(template.substring(pos)));
+            break;
+        }
+        // Literal text before {
+        if (openIdx > pos) {
+            parts.push(JSON.stringify(template.substring(pos, openIdx)));
+        }
+        const closeIdx = template.indexOf('}', openIdx + 1);
+        if (closeIdx < 0) {
+            // Unclosed { — treat rest as literal
+            parts.push(JSON.stringify(template.substring(openIdx)));
+            break;
+        }
+        const expr = template.substring(openIdx + 1, closeIdx).trim();
+        if (!expr) {
+            parts.push('"{}"');
+        } else {
+            // Look up the expression type from watch vars
+            const type = varMap.get(expr) || '';
+            const typeLower = type.replace(/\b(const|static|input)\b/g, '').trim().toLowerCase();
+            if (['int', 'uint', 'short', 'ushort', 'char', 'uchar', 'long', 'ulong', 'color'].includes(typeLower) ||
+                typeLower.startsWith('enum_')) {
+                parts.push(`IntegerToString((long)(${expr}))`);
+            } else if (['double', 'float'].includes(typeLower)) {
+                parts.push(`DoubleToString((double)(${expr}), 8)`);
+            } else if (typeLower === 'bool') {
+                parts.push(`((${expr}) ? "true" : "false")`);
+            } else if (typeLower === 'datetime') {
+                parts.push(`TimeToString((datetime)(${expr}), TIME_DATE | TIME_SECONDS)`);
+            } else if (typeLower === 'string') {
+                parts.push(`(${expr})`);
+            } else {
+                // Unknown type — try generic string conversion
+                parts.push(`(string)(${expr})`);
+            }
+        }
+        pos = closeIdx + 1;
+    }
+
+    if (parts.length === 0) return '""';
+    return parts.join(' + ');
+}
+
+/**
  * Generate the macro injection lines for one dynamic probe.
  * Wraps the BREAK + watches + PAUSE inside an `if (MqlDebugProbeCheck(id))` block
  * so the EA only fires the probe when VS Code has activated it via the config file.
  *
- * @param {number}   probeId    Sequential probe index
- * @param {string}   label      Breakpoint label (e.g. "bp_SMC_mq5_310")
+ * If a logMessage is provided, generates a dual code path:
+ * - Logpoint mode (runtime flag): emits a LOG event with the interpolated message, no pause.
+ * - Break mode (default): emits BREAK + watches + PAUSE as before.
+ *
+ * @param {number}   probeId      Sequential probe index
+ * @param {string}   label        Breakpoint label (e.g. "bp_SMC_mq5_310")
  * @param {{ name: string, type?: string, isArray?: boolean }[]} watchVars
- * @param {string}   condition  Optional condition string (may be empty)
+ * @param {string}   condition    Optional condition string (may be empty)
+ * @param {string}   [logMessage] Optional logpoint message template with {expr} placeholders
  * @returns {string[]}  Lines to insert
  */
-function buildProbeInjection(probeId, label, watchVars, condition) {
-    const inner = [];
-    inner.push(`MQL_DBG_BREAK("${label}");`);
+function buildProbeInjection(probeId, label, watchVars, condition, logMessage) {
+    const breakInner = [];
+    breakInner.push(`MQL_DBG_BREAK("${label}");`);
     for (const v of watchVars) {
         if (v.isArray) {
             const arrMacro = macroForType(v.type, true);
-            if (arrMacro) inner.push(`${arrMacro}("${v.name}", ${v.name});`);
+            if (arrMacro) breakInner.push(`${arrMacro}("${v.name}", ${v.name});`);
         } else {
             const macro = macroForType(v.type);
-            inner.push(`${macro}("${v.name}", ${v.name});`);
+            breakInner.push(`${macro}("${v.name}", ${v.name});`);
         }
     }
-    inner.push('MQL_DBG_PAUSE;');
+    breakInner.push('MQL_DBG_PAUSE;');
 
     const condExpr = (condition && condition.trim() && isConditionSafe(condition))
         ? ` && (${condition})` : '';
@@ -1267,11 +1340,27 @@ function buildProbeInjection(probeId, label, watchVars, condition) {
     if (condition && condition.trim() && !isConditionSafe(condition)) {
         result.push(`// Invalid breakpoint condition: ${sanitizeCondition(condition)}`);
     }
-    result.push(
-        `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
-        ...inner.map(l => `  ${l}`),
-        '}'
-    );
+
+    // If logMessage is provided, generate dual path
+    const hasLogMessage = logMessage && logMessage.trim();
+    if (hasLogMessage) {
+        const logExpr = buildLogExpression(logMessage, watchVars);
+        result.push(
+            `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
+            `  if (MqlDebugIsLogpoint(${probeId})) {`,
+            `    MQL_DBG_LOG(${logExpr});`,
+            '  } else {',
+            ...breakInner.map(l => `    ${l}`),
+            '  }',
+            '}'
+        );
+    } else {
+        result.push(
+            `if (MqlDebugProbeCheck(${probeId})${condExpr}) {`,
+            ...breakInner.map(l => `  ${l}`),
+            '}'
+        );
+    }
     return result;
 }
 
@@ -1741,13 +1830,15 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
 
                 let watchVars = [];
                 let condition = '';
+                let logMessage = '';
                 if (bp) {
                     watchVars = collectWatchVars(node.lines, bp.line, typeDB, deepAnalysis);
                     condition = bp.condition || '';
+                    logMessage = bp.logMessage || '';
                 }
 
                 const label = `bp_${sanitizedBase}_${originalLine}`;
-                const macroLines = buildProbeInjection(probeId, label, watchVars, condition);
+                const macroLines = buildProbeInjection(probeId, label, watchVars, condition, logMessage);
                 const braceless = isBracelessBody(node.lines, execLine);
                 injections.push({ targetLine: execLine, macroLines, braceless });
 
@@ -1886,5 +1977,6 @@ module.exports = {
         sanitizeLabel,
         sanitizeCondition,
         braceDepthDelta,
+        buildLogExpression,
     }
 };

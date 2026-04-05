@@ -264,6 +264,10 @@ class MqlDebugLogReader {
             case 'EXIT': {
                 return { type: 'exit', ...base };
             }
+            case 'LOG': {
+                // LOG message may contain '|' — rejoin remaining parts
+                return { type: 'log', ...base, message: rest.join('|') };
+            }
             case 'SESSION_END': {
                 return { type: 'session_end', ...base };
             }

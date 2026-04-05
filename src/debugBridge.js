@@ -242,13 +242,25 @@ class MqlDebugBridge {
     /**
      * Write the active probe IDs to the BP config file.
      * The EA reads this file every ~200 ms and activates/deactivates probes.
-     * @param {number[]} activeIds  Array of probe IDs that should fire
+     *
+     * Extended format: each entry is `id[h<op><val>][L]` where
+     *   h<op><val> = hit condition (op: = > G < S %)
+     *   L          = logpoint flag
+     *
+     * @param {Array<number|{id: number, hitOp?: string, hitVal?: number, isLogpoint?: boolean}>} entries
      */
-    writeBreakpointConfig(activeIds) {
+    writeBreakpointConfig(entries) {
         if (!this._mql5Root) return;
         const configPath = path.join(this._mql5Root, 'Files', 'MqlDebugBPConfig.txt');
         try {
-            fs.writeFileSync(configPath, activeIds.join(','), 'utf-8');
+            const parts = entries.map(e => {
+                if (typeof e === 'number') return String(e);
+                let s = String(e.id);
+                if (e.hitOp && e.hitVal != null) s += `h${e.hitOp}${e.hitVal}`;
+                if (e.isLogpoint) s += 'L';
+                return s;
+            });
+            fs.writeFileSync(configPath, parts.join(','), 'utf-8');
         } catch (err) {
             console.warn('[MqlDebugBridge] Failed to write BP config:', err.message);
         }
@@ -380,7 +392,7 @@ class MqlDebugBridge {
 
     /**
      * Collect all VS Code breakpoints mapped by lowercase file path.
-     * @returns {Map<string, Array<{line: number, condition?: string}>>}
+     * @returns {Map<string, Array<{line: number, condition?: string, hitCondition?: string, logMessage?: string}>>}
      */
     _collectAllBreakpoints() {
         const bpMap = new Map();
@@ -392,6 +404,8 @@ class MqlDebugBridge {
             bpMap.get(bpPath).push({
                 line: bp.location.range.start.line + 1, // VS Code is 0-based, MQL is 1-based
                 condition: bp.condition || '',
+                hitCondition: bp.hitCondition || '',
+                logMessage: bp.logMessage || '',
             });
         }
         return bpMap;

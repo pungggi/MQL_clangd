@@ -22,6 +22,7 @@ function getMql5DocsUrl(keyword) {
     let docPath = docsMap[keyLower];
     if (!docPath) return null;
     if (Array.isArray(docPath)) docPath = docPath[0];
+    if (!docPath) return null;
     const lang = getMql5DocLang();
     if (docPath.includes('/')) {
         return `https://www.mql5.com/${lang}/docs/${docPath}`;

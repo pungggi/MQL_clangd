@@ -48,6 +48,8 @@ class DebugStateStore {
         this.latestWatches = new Map(); // varName -> WatchEntry
         /** Per-breakpoint hit counts, keyed by label */
         this.hitCounts = new Map(); // label -> number
+        /** @type {{ message: string, file: string, func: string, line: number, timestamp: string }[]} */
+        this.logMessages = [];
         this.sessionActive = false;
     }
 
@@ -135,6 +137,17 @@ class DebugStateStore {
                     this.callStack.push({ func: event.func, file: event.file, line: event.line, state: 'exited' });
                     if (this.callStack.length > MAX_CALL_FRAMES) this.callStack.shift();
                 }
+                break;
+            }
+            case 'log': {
+                this.logMessages.push({
+                    message:   event.message,
+                    file:      event.file,
+                    func:      event.func,
+                    line:      event.line,
+                    timestamp: event.timestamp,
+                });
+                if (this.logMessages.length > MAX_HITS) this.logMessages.shift();
                 break;
             }
             case 'session_end': {

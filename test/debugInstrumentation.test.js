@@ -11,6 +11,7 @@ const {
     parseFunctionParams,
     sanitizeLabel,
     sanitizeCondition,
+    buildLogExpression,
 } = _test;
 
 suite('debugInstrumentation', function () {
@@ -377,6 +378,108 @@ suite('debugInstrumentation', function () {
         test('returns empty for null/undefined', function () {
             assert.strictEqual(sanitizeCondition(null), '');
             assert.strictEqual(sanitizeCondition(undefined), '');
+        });
+    });
+
+    // =========================================================================
+    // buildLogExpression
+    // =========================================================================
+
+    suite('buildLogExpression', function () {
+        test('plain text without interpolation', function () {
+            const result = buildLogExpression('hello world', []);
+            assert.strictEqual(result, '"hello world"');
+        });
+
+        test('empty/null template returns empty string literal', function () {
+            assert.strictEqual(buildLogExpression('', []), '""');
+            assert.strictEqual(buildLogExpression(null, []), '""');
+            assert.strictEqual(buildLogExpression(undefined, []), '""');
+        });
+
+        test('single {expr} with int type', function () {
+            const vars = [{ name: 'count', type: 'int' }];
+            const result = buildLogExpression('count={count}', vars);
+            assert.strictEqual(result, '"count=" + IntegerToString((long)(count))');
+        });
+
+        test('single {expr} with double type', function () {
+            const vars = [{ name: 'price', type: 'double' }];
+            const result = buildLogExpression('price={price}', vars);
+            assert.strictEqual(result, '"price=" + DoubleToString((double)(price), 8)');
+        });
+
+        test('single {expr} with string type', function () {
+            const vars = [{ name: 'name', type: 'string' }];
+            const result = buildLogExpression('name={name}', vars);
+            assert.strictEqual(result, '"name=" + (name)');
+        });
+
+        test('single {expr} with bool type', function () {
+            const vars = [{ name: 'flag', type: 'bool' }];
+            const result = buildLogExpression('flag={flag}', vars);
+            assert.strictEqual(result, '"flag=" + ((flag) ? "true" : "false")');
+        });
+
+        test('single {expr} with datetime type', function () {
+            const vars = [{ name: 'ts', type: 'datetime' }];
+            const result = buildLogExpression('time={ts}', vars);
+            assert.strictEqual(result, '"time=" + TimeToString((datetime)(ts), TIME_DATE | TIME_SECONDS)');
+        });
+
+        test('single {expr} with long type', function () {
+            const vars = [{ name: 'ticket', type: 'ulong' }];
+            const result = buildLogExpression('ticket={ticket}', vars);
+            assert.strictEqual(result, '"ticket=" + IntegerToString((long)(ticket))');
+        });
+
+        test('single {expr} with enum type', function () {
+            const vars = [{ name: 'ot', type: 'ENUM_ORDER_TYPE' }];
+            const result = buildLogExpression('type={ot}', vars);
+            assert.strictEqual(result, '"type=" + IntegerToString((long)(ot))');
+        });
+
+        test('multiple interpolations', function () {
+            const vars = [
+                { name: 'x', type: 'int' },
+                { name: 'y', type: 'double' },
+            ];
+            const result = buildLogExpression('x={x}, y={y}', vars);
+            assert.strictEqual(result, '"x=" + IntegerToString((long)(x)) + ", y=" + DoubleToString((double)(y), 8)');
+        });
+
+        test('unknown type falls back to (string) cast', function () {
+            const vars = [{ name: 'obj', type: 'CMyClass' }];
+            const result = buildLogExpression('obj={obj}', vars);
+            assert.strictEqual(result, '"obj=" + (string)(obj)');
+        });
+
+        test('expression not in watchVars falls back to (string) cast', function () {
+            const result = buildLogExpression('val={unknown}', []);
+            assert.strictEqual(result, '"val=" + (string)(unknown)');
+        });
+
+        test('unclosed brace treated as literal', function () {
+            const result = buildLogExpression('hello {world', []);
+            // Implementation splits at '{', then finds no '}', treats rest as literal
+            assert.strictEqual(result, '"hello " + "{world"');
+        });
+
+        test('empty braces produce literal {}', function () {
+            const result = buildLogExpression('a {} b', []);
+            assert.strictEqual(result, '"a " + "{}" + " b"');
+        });
+
+        test('strips const/static from type before matching', function () {
+            const vars = [{ name: 'x', type: 'const int' }];
+            const result = buildLogExpression('{x}', vars);
+            assert.strictEqual(result, 'IntegerToString((long)(x))');
+        });
+
+        test('float type uses DoubleToString', function () {
+            const vars = [{ name: 'f', type: 'float' }];
+            const result = buildLogExpression('{f}', vars);
+            assert.strictEqual(result, 'DoubleToString((double)(f), 8)');
         });
     });
 });
