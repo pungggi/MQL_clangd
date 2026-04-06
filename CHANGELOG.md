@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.39
 
 ### Features
 - **Hit Conditional Breakpoints**: Breakpoints can now specify a hit count condition (e.g. `> 5`, `% 3`, `== 10`) so they only fire after the Nth hit. Supports `=`, `>`, `>=`, `<`, `<=`, and `%` (modulo) operators.
