@@ -1,4 +1,4 @@
-> **Note**: This project was originally based on [MQL Tools](https://github.com/L-I-V/MQL-Tools) by **L-I-V**, but has since evolved into an independent project with significant architectural changes including **clangd** support and major performance optimizations.
+> **Note**: Originally based on [MQL Tools](https://github.com/L-I-V/MQL-Tools) by **L-I-V**. Now an independent project with **clangd** support and major performance optimizations.
 >
 > **[View Changelog](CHANGELOG.md)** for the latest updates and improvements.
 
@@ -62,9 +62,9 @@ When editing `.mqh` header files, the extension now intelligently determines whi
 ### IntelliSense & Semantic Support
 This extension now uses **clangd** to provide state-of-the-art IntelliSense, code completion, and navigation for MQL4/5.
 
-*   **Why clangd?** It provides faster, more accurate semantic analysis and better support for complex MQL projects compared to the default Microsoft C++ engine.
-*   **Automatic Configuration**: When you run the `"MQL: Create configuration"` command, the extension automatically configures `clangd` with the correct include paths and compiler flags for your MQL version (MQL4 or MQL5). **clangd is automatically restarted** after configuration to immediately apply the new settings.
-*   **Conflict Prevention**: To ensure the best experience, this extension automatically disables the Microsoft C++ "IntelliSense Engine" (while keeping the extension installed for other features) to prevent duplicate errors and completion items.
+*   **Why clangd?** Faster, more accurate semantic analysis than the default Microsoft C++ engine — especially for complex MQL projects.
+*   **Automatic Configuration**: Run `"MQL: Create configuration"` to set up the correct include paths and compiler flags for your MQL version. **clangd restarts automatically** to apply the new settings.
+*   **Conflict Prevention**: The extension automatically disables the Microsoft C++ IntelliSense engine (keeping the extension installed for other features) to prevent duplicate diagnostics and completions.
 
 ---
 
@@ -92,8 +92,8 @@ This extension now uses **clangd** to provide state-of-the-art IntelliSense, cod
 ---
 
 ### Important Notes
-*   **Multi-root workspaces**: The configuration tool supports multi-root workspaces and will prioritize settings for the currently active file's folder.
-*   **Settings Merge**: The extension is built to be "clean" - it merges MQL flags with your existing `clangd.fallbackFlags` rather than overwriting them.
+*   **Multi-root workspaces**: Fully supported. Settings are resolved from the active file's folder.
+*   **Settings Merge**: MQL flags are merged into your existing `clangd.fallbackFlags` — never overwritten.
 *   **Compiler Flags**: We automatically inject `-xc++` and `-std=c++17` along with version-specific defines (`__MQL4__`/`__MQL5__`) to help clangd understand MQL syntax.
 *   **Relative Paths & Portable Mode**: Settings like `mql_tools.Metaeditor.Metaeditor5Dir` and `mql_tools.Metaeditor.Include5Dir` now support `${workspaceFolder}` variable substitution and relative paths. This is perfect for portable MetaTrader installations:
     ```json
@@ -168,7 +168,7 @@ Monitor your MQL4/MQL5 terminal logs in real-time directly within VS Code—no n
 | **Standard Journal** | Tails `MQL5/Logs/YYYYMMDD.log` - uses standard `Print()` output | Delayed (MetaTrader buffering) |
 
 **Why two modes?**
-MetaTrader's standard `Print()` function buffers output and doesn't flush to disk immediately, which causes delays in the VS Code log viewer. The **LiveLog** mode solves this by using a custom logging library (`LiveLog.mqh`) that writes directly to a file with immediate flush.
+MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** uses a custom library (`LiveLog.mqh`) that writes directly to disk with immediate flush.
 
 #### Setting up LiveLog (Real-time) Mode
 
@@ -272,7 +272,7 @@ The Trade Report will show:
 
 #### Source Snapshots
 
-Because `{File:Function:Line}` tags reference specific line numbers, modifying your EA source code after a test run can make those links point to the wrong lines. **Source Snapshots** solve this by copying all referenced MQL source files into a `snapshot/` folder next to the log file the first time you open a report.
+Editing your EA after a test run can break `{File:Function:Line}` links. **Source Snapshots** solve this by copying all referenced source files into a `snapshot/` folder next to the log file on first report open.
 
 **Enable it:**
 
@@ -324,7 +324,7 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 
 ### MQL Debugger (Real-Time Variable Inspection)
 
-Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The extension automatically injects telemetry code at your VS Code breakpoints, compiles a temporary instrumented build, and streams variable states back to a live debug dashboard — no MetaEditor debugger required.
+Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The extension injects telemetry at your breakpoints, compiles an instrumented build, and streams variable states to a live debug dashboard — no MetaEditor debugger needed.
 
 **How to use:**
 
@@ -382,7 +382,7 @@ VS Code conditional breakpoints are fully supported. Set a condition in the brea
 
 #### Pause / Continue (blocking breakpoints)
 
-Each breakpoint also injects a `MQL_DBG_PAUSE` call, which spin-waits until VS Code sends a **Continue** command (by stopping the debug session or using the Stop button). This lets you inspect a frozen state before the EA resumes.
+Each breakpoint injects a `MQL_DBG_PAUSE` call that spin-waits until you press **Continue** or **Stop** in VS Code. This lets you inspect a frozen state before the EA resumes.
 
 > **Warning:** The EA thread is fully blocked while paused. No `OnTick`/`OnTimer` events fire. Use only on demo accounts or in the Strategy Tester.
 > Auto-resumes after 120 seconds as a safety failsafe.
@@ -445,9 +445,7 @@ If you open built-in examples like `MQL5/Experts/Examples/MACD/MACD Sample.mq5` 
    ```
 
 5. **Cleaning up old configuration**
-   - If you previously used other extensions (for example the original "MQL Tools" based on the Microsoft C++ engine), you may have leftover `clangd.fallbackFlags` pointing to old compatibility headers or invalid include paths.
-   - Open your workspace `.vscode/settings.json`, search for `clangd.fallbackFlags`, and remove or adjust any flags that reference non-existent paths or other extensions.
-   - Then re-run `MQL: Create configuration` so MQL Clangd can regenerate a clean configuration.
+   - Leftover `clangd.fallbackFlags` from other extensions (e.g. the original MQL Tools) can cause issues. Remove stale flags from `.vscode/settings.json`, then re-run `MQL: Create configuration`.
 
 ---
 
@@ -551,7 +549,7 @@ Configuration option: `mql_tools.Clangd.PreserveSuppressions`
 - **always**: Automatically merge existing suppressions
 - **never**: Always overwrite the `.clangd` file
 
-When merging, your custom suppressions are combined with the default MQL suppressions without duplicates. Set this in your VS Code settings (`.vscode/settings.json` or global settings):
+Merging combines your custom suppressions with the defaults, deduplicating automatically. Set this in your VS Code settings (`.vscode/settings.json` or global settings):
 
 ```json
 {
