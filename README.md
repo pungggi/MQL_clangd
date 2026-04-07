@@ -34,7 +34,7 @@
 | Compilation - not necessary to open MetaEditor | ❌ | ✅ |
 | Smart Compile Target for Headers | ❌ | ✅ |
 | Document Symbols (Outline, Breadcrumbs) | ❌ | ✅ |
-| Run Backtest from VS Code | ❌ | ✅ |
+| Trigger Backtest from VS Code | ❌ | ✅ |
 | Debugging | ❌ | ✅ |
 
 ---
