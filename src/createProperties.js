@@ -1152,5 +1152,6 @@ module.exports = {
     includeSnapshotCache,
     parseClangdSuppressions,
     mergeClangdSuppressions,
-    safeConfigUpdate
+    safeConfigUpdate,
+    CLANGD_BASE_SUPPRESSIONS: baseSuppressions
 };

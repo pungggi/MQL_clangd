@@ -37,7 +37,7 @@ const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, I
 const { IconsInstallation } = require('./addIcon');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
-const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged } = require('./createProperties');
+const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged, CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
 const {
     toWineWindowsPath,
@@ -1184,6 +1184,23 @@ class MqlCodeActionProvider {
                 insertIncludeAction.edit.insert(document.uri, new vscode.Position(0, 0), includeText);
                 insertIncludeAction.diagnostics = [diagnostic];
                 actions.push(insertIncludeAction);
+                continue;
+            }
+
+            // Handle any clangd diagnostic that matches a known MQL false-positive suppression
+            const clangCode = typeof diagnostic.code === 'string' ? diagnostic.code : diagnostic.code?.value;
+            if (diagnostic.source === 'clang' && CLANGD_BASE_SUPPRESSIONS.includes(clangCode)) {
+                const configAction = new vscode.CodeAction(
+                    `MQL: Suppress false positive '${clangCode}' — run 'MQL: Create Configuration'`,
+                    vscode.CodeActionKind.QuickFix
+                );
+                configAction.command = {
+                    command: 'mql_tools.configurations',
+                    title: "Run MQL: Create Configuration",
+                    arguments: []
+                };
+                configAction.diagnostics = [diagnostic];
+                actions.push(configAction);
                 continue;
             }
 
