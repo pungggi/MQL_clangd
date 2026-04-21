@@ -243,6 +243,11 @@
                     "default": "node",
                     "description": "Path to the Node.js executable used to start TradeReportServer. Use the default ('node') if Node is on your PATH, or provide an absolute path for custom Node installations."
                 },
+                "mql_tools.Clangd.UseUtf8Mirror": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Mirror the MetaQuotes include directory as UTF-8 so clangd can index UTF-16-encoded library headers (e.g. `Generic/`, `Expert/`). The mirror lives under `%LOCALAPPDATA%/mql-clangd/mirror` (or `~/.cache/mql-clangd/mirror`) and is refreshed incrementally when `MQL: Create configuration` runs. Disable to use the original include paths directly."
+                },
                 "mql_tools.Clangd.PreserveSuppressions": {
                     "type": "string",
                     "enum": [

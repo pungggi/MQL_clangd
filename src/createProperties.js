@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
 const { parseIncludes, resolveIncludePath } = require('./compileTargetResolver');
+const { ensureUtf8Mirror } = require('./utf8Mirror');
 
 /**
  * Normalizes paths for clangd (forward slashes).
@@ -816,16 +817,27 @@ async function CreateProperties(force = false) {
     const inc4Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include4Dir, workspacepath);
     const inc5Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include5Dir, workspacepath);
 
-    function resolveExternalIncFlag(dir) {
+    // Route external include dirs through a UTF-8 mirror so clangd and the
+    // include-chain walker see UTF-8 for MetaQuotes' UTF-16 library headers.
+    const useUtf8Mirror = configMql.Clangd?.UseUtf8Mirror !== false;
+
+    async function resolveExternalIncRoot(dir) {
         if (!dir || dir.length === 0) return null;
         const sub = pathModule.join(dir, 'Include');
-        if (fs.existsSync(sub)) return `-I${normalizePath(sub)}`;
-        if (fs.existsSync(dir)) return `-I${normalizePath(dir)}`;
-        return null;
+        let resolved;
+        if (fs.existsSync(sub)) resolved = sub;
+        else if (fs.existsSync(dir)) resolved = dir;
+        else return null;
+        return useUtf8Mirror ? await ensureUtf8Mirror(resolved) : resolved;
     }
 
-    const inc4Flag = resolveExternalIncFlag(inc4Dir);
-    const inc5Flag = resolveExternalIncFlag(inc5Dir);
+    async function resolveExternalIncFlag(dir) {
+        const resolved = await resolveExternalIncRoot(dir);
+        return resolved ? `-I${normalizePath(resolved)}` : null;
+    }
+
+    const inc4Flag = await resolveExternalIncFlag(inc4Dir);
+    const inc5Flag = await resolveExternalIncFlag(inc5Dir);
     const primaryIncFlag = workspaceVersion === 'mql4' ? inc4Flag : inc5Flag;
 
     const arrPath = [...baseFlags];
@@ -849,13 +861,9 @@ async function CreateProperties(force = false) {
     // C_Cpp.intelliSenseEngine is optional - silent mode since C++ extension may not be installed
     await safeConfigUpdate('C_Cpp.intelliSenseEngine', 'Disabled', vscode.ConfigurationTarget.Workspace, true);
 
-    // Resolve external include directory for include-chain resolution
-    function resolveExternalIncDir(dir) {
-        if (!dir || dir.length === 0) return undefined;
-        const sub = pathModule.join(dir, 'Include');
-        return fs.existsSync(sub) ? sub : (fs.existsSync(dir) ? dir : undefined);
-    }
-    const resolvedExternalIncDir = resolveExternalIncDir(workspaceVersion === 'mql4' ? inc4Dir : inc5Dir);
+    // Resolve external include directory for include-chain resolution.
+    // Reuses resolveExternalIncRoot so the chain walker reads the mirror too.
+    const resolvedExternalIncDir = (await resolveExternalIncRoot(workspaceVersion === 'mql4' ? inc4Dir : inc5Dir)) || undefined;
 
     // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
     try {

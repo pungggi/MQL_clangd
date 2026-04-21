@@ -38,6 +38,7 @@ const { IconsInstallation } = require('./addIcon');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged, CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
+const { decodeTextBuffer } = require('./textDecoding');
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
 const {
     toWineWindowsPath,
@@ -1045,31 +1046,6 @@ function extractPropertyVersion(text) {
     const version = match && match[1] ? match[1].trim() : '';
 
     return version || null;
-}
-
-function decodeTextBuffer(buffer) {
-    if (!Buffer.isBuffer(buffer) || buffer.length === 0) return '';
-
-    const hasUtf16LeBom = buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe;
-    if (hasUtf16LeBom) {
-        return buffer.toString('utf16le', 2);
-    }
-
-    const utf8Text = buffer.toString('utf8');
-    const sampleLength = Math.min(buffer.length, 256);
-    let nullByteCount = 0;
-
-    for (let i = 0; i < sampleLength; i++) {
-        if (buffer[i] === 0x00) {
-            nullByteCount++;
-        }
-    }
-
-    if (nullByteCount > sampleLength / 4) {
-        return buffer.toString('utf16le');
-    }
-
-    return utf8Text;
 }
 
 function getOpenDocumentText(filePath) {
