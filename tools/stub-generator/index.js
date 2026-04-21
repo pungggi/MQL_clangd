@@ -329,7 +329,9 @@ async function main() {
         const relativePath = path.relative(options.input, file);
 
         try {
-            const source = fs.readFileSync(file, 'utf-8');
+            const buffer = fs.readFileSync(file);
+            const hasUtf16LeBom = buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe;
+            const source = hasUtf16LeBom ? buffer.toString('utf16le', 2) : buffer.toString('utf-8');
             const result = parser.parse(source, relativePath);
 
             if (result.classes.length > 0 || result.enums.length > 0) {

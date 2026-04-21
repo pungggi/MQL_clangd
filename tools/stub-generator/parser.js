@@ -200,14 +200,17 @@ class MqlParser {
      * Parse class and struct declarations
      */
     parseClasses(source) {
-        // Match class/struct declaration with optional inheritance
-        const classRegex = /(class|struct)\s+(\w+)(?:\s*:\s*(?:public|private|protected)?\s*(\w+))?\s*\{/g;
+        // Match class/struct/interface declaration with optional inheritance.
+        // Base class may carry template arguments (one level of nesting) and an
+        // optional trailing `*` (e.g. `IComparable<CKeyValuePair<TKey,TValue>*>`).
+        // `interface` is an MQL5 keyword; treat it as `class` for stub purposes.
+        const classRegex = /(class|struct|interface)\s+(\w+)(?:\s*:\s*(?:public|private|protected)?\s*(\w+(?:\s*<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\s*\*?))?\s*\{/g;
         let match;
 
         while ((match = classRegex.exec(source)) !== null) {
             const isStruct = match[1] === 'struct';
             const className = match[2];
-            const baseClass = match[3] || null;
+            const baseClass = match[3] ? match[3].replace(/\s+/g, '').replace(/\*$/, '') : null;
 
             // Find the class body
             const startPos = match.index + match[0].length;

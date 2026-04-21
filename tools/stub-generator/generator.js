@@ -147,8 +147,8 @@ class StubGenerator {
         const extractParams = (typeStr) => {
             if (!typeStr) return;
             // Match standalone identifiers that could be template params
-            // Look for: T, T*, T&, T[], const T, etc.
-            const matches = typeStr.match(/\b([A-Z][A-Z0-9_]*)\b/g);
+            // Look for: T, T*, T&, T[], TKey, TValue, etc.
+            const matches = typeStr.match(/\b([A-Z]\w*)\b/g);
             if (matches) {
                 for (const m of matches) {
                     if (StubGenerator.TEMPLATE_PARAMS.has(m)) {
