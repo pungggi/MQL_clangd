@@ -816,6 +816,7 @@ async function CreateProperties(force = false) {
             'typecheck_subscript_not_integer',
             'flexible_array_not_at_end',
             'typecheck_invalid_operands',
+            'typecheck_decl_incomplete_type',
             'typecheck_convert_incompatible_pointer',
             'typecheck_invalid_lvalue_addrof',
             'increment_decrement_enum',
@@ -942,7 +943,9 @@ async function CreateProperties(force = false) {
             // MQL const semantics differ from C++ - const params can be reassigned
             'typecheck_assign_const',
             // Clangd driver error when compile command produces multiple jobs
-            'fe_expected_compiler_job'
+            'fe_expected_compiler_job',
+            // False positive for MQL struct pack(8) alignment syntax
+            'typecheck_decl_incomplete_type'
         ];
 
         let finalSuppressions = baseSuppressions;
