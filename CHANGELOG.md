@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.40
 
 ### Features
 - **Quick Fix for Known Clangd False Positives**: When a clang diagnostic matches a known MQL false-positive suppression (e.g. `typecheck_decl_incomplete_type`), the **Quick Fix** menu now offers a one-click action to run **"MQL: Create Configuration"** — regenerating `.clangd` with all suppressions.
