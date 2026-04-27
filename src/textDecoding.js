@@ -1,19 +1,6 @@
 'use strict';
 
-/**
- * Decode a Buffer to a string, auto-detecting UTF-16 LE (with or without BOM)
- * vs UTF-8.  MetaQuotes ships many MQL5 library headers as UTF-16 LE with BOM;
- * Node's default `readFile(path, 'utf8')` would return mojibake for those.
- *
- * Detection:
- *   - UTF-16 LE BOM (FF FE) → decode as utf16le, strip the BOM.
- *   - Otherwise, sample the first 256 bytes; if > 25% are 0x00, treat as
- *     UTF-16 LE without BOM.
- *   - Else, utf8.
- *
- * @param {Buffer} buffer
- * @returns {string}
- */
+// Decode buffer as UTF-16 LE (BOM or >25% null bytes in first 256) or UTF-8.
 function decodeTextBuffer(buffer) {
     if (!Buffer.isBuffer(buffer) || buffer.length === 0) return '';
 
@@ -36,7 +23,7 @@ function decodeTextBuffer(buffer) {
         return buffer.toString('utf16le');
     }
 
-    return utf8Text;
+    return utf8Text.charCodeAt(0) === 0xFEFF ? utf8Text.slice(1) : utf8Text;
 }
 
 module.exports = { decodeTextBuffer };

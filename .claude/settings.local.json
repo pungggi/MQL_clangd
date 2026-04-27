@@ -1,10 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node --check \"c:/Users/Alessandro/source/MQL_clangd/src/debugInstrumentation.js\")",
-      "Bash(node --check \"c:/Users/Alessandro/source/MQL_clangd/src/debugAdapter.js\")",
-      "Bash(node --check \"c:/Users/Alessandro/source/MQL_clangd/src/debugStateStore.js\")",
-      "Bash(node test_instr_temp.js)"
+      "mcp__smart-terminal__terminal_run",
+      "mcp__smart-terminal__terminal_start",
+      "mcp__smart-terminal__terminal_exec",
+      "mcp__smart-terminal__terminal_list",
+      "Skill(update-config)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:claude.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(node *)"
     ]
   }
 }

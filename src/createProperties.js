@@ -831,13 +831,10 @@ async function CreateProperties(force = false) {
         return useUtf8Mirror ? await ensureUtf8Mirror(resolved) : resolved;
     }
 
-    async function resolveExternalIncFlag(dir) {
-        const resolved = await resolveExternalIncRoot(dir);
-        return resolved ? `-I${normalizePath(resolved)}` : null;
-    }
-
-    const inc4Flag = await resolveExternalIncFlag(inc4Dir);
-    const inc5Flag = await resolveExternalIncFlag(inc5Dir);
+    const inc4Root = await resolveExternalIncRoot(inc4Dir);
+    const inc5Root = await resolveExternalIncRoot(inc5Dir);
+    const inc4Flag = inc4Root ? `-I${normalizePath(inc4Root)}` : null;
+    const inc5Flag = inc5Root ? `-I${normalizePath(inc5Root)}` : null;
     const primaryIncFlag = workspaceVersion === 'mql4' ? inc4Flag : inc5Flag;
 
     const arrPath = [...baseFlags];
@@ -863,7 +860,7 @@ async function CreateProperties(force = false) {
 
     // Resolve external include directory for include-chain resolution.
     // Reuses resolveExternalIncRoot so the chain walker reads the mirror too.
-    const resolvedExternalIncDir = (await resolveExternalIncRoot(workspaceVersion === 'mql4' ? inc4Dir : inc5Dir)) || undefined;
+    const resolvedExternalIncDir = (workspaceVersion === 'mql4' ? inc4Root : inc5Root) || undefined;
 
     // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
     try {
