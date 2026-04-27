@@ -3,6 +3,8 @@ const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
 const { parseIncludes, resolveIncludePath } = require('./compileTargetResolver');
+const { ensureUtf8Mirror } = require('./utf8Mirror');
+const { decodeTextBuffer } = require('./textDecoding');
 
 /**
  * Normalizes paths for clangd (forward slashes).
@@ -257,7 +259,8 @@ async function buildIncludeChain(entryPointPath, workspaceRoot, includeDir) {
     async function walk(filePath) {
         let content;
         try {
-            content = await fs.promises.readFile(filePath, 'utf8');
+            const buf = await fs.promises.readFile(filePath);
+            content = decodeTextBuffer(buf);
         } catch {
             return; // file unreadable — skip
         }
@@ -404,7 +407,8 @@ const includeSnapshotCache = new Map();
  */
 async function snapshotIncludes(filePath) {
     try {
-        const content = await fs.promises.readFile(filePath, 'utf8');
+        const buf = await fs.promises.readFile(filePath);
+        const content = decodeTextBuffer(buf);
         return JSON.stringify(parseIncludes(content));
     } catch {
         return '';
@@ -816,16 +820,34 @@ async function CreateProperties(force = false) {
     const inc4Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include4Dir, workspacepath);
     const inc5Dir = resolvePathRelativeToWorkspace(configMql.Metaeditor.Include5Dir, workspacepath);
 
-    function resolveExternalIncFlag(dir) {
+    // Route external include dirs through a UTF-8 mirror so clangd and the
+    // include-chain walker see UTF-8 for MetaQuotes' UTF-16 library headers.
+    const useUtf8Mirror = configMql.Clangd?.UseUtf8Mirror !== false;
+
+    async function resolveExternalIncRoot(dir) {
         if (!dir || dir.length === 0) return null;
         const sub = pathModule.join(dir, 'Include');
-        if (fs.existsSync(sub)) return `-I${normalizePath(sub)}`;
-        if (fs.existsSync(dir)) return `-I${normalizePath(dir)}`;
-        return null;
+        let resolved;
+        if (fs.existsSync(sub)) resolved = sub;
+        else if (fs.existsSync(dir)) resolved = dir;
+        else return null;
+        if (useUtf8Mirror) {
+            try {
+                return await ensureUtf8Mirror(resolved);
+            } catch (err) {
+                console.warn(`MQL Tools: UTF-8 mirror failed for ${resolved}: ${err && err.message}`);
+                return resolved;
+            }
+        }
+        return resolved;
     }
 
-    const inc4Flag = resolveExternalIncFlag(inc4Dir);
-    const inc5Flag = resolveExternalIncFlag(inc5Dir);
+    const [inc4Root, inc5Root] = await Promise.all([
+        resolveExternalIncRoot(inc4Dir),
+        resolveExternalIncRoot(inc5Dir)
+    ]);
+    const inc4Flag = inc4Root ? `-I${normalizePath(inc4Root)}` : null;
+    const inc5Flag = inc5Root ? `-I${normalizePath(inc5Root)}` : null;
     const primaryIncFlag = workspaceVersion === 'mql4' ? inc4Flag : inc5Flag;
 
     const arrPath = [...baseFlags];
@@ -849,13 +871,14 @@ async function CreateProperties(force = false) {
     // C_Cpp.intelliSenseEngine is optional - silent mode since C++ extension may not be installed
     await safeConfigUpdate('C_Cpp.intelliSenseEngine', 'Disabled', vscode.ConfigurationTarget.Workspace, true);
 
-    // Resolve external include directory for include-chain resolution
-    function resolveExternalIncDir(dir) {
-        if (!dir || dir.length === 0) return undefined;
-        const sub = pathModule.join(dir, 'Include');
-        return fs.existsSync(sub) ? sub : (fs.existsSync(dir) ? dir : undefined);
-    }
-    const resolvedExternalIncDir = resolveExternalIncDir(workspaceVersion === 'mql4' ? inc4Dir : inc5Dir);
+    // Resolve external include directory for include-chain resolution.
+    // Reuses resolveExternalIncRoot so the chain walker reads the mirror too.
+    // NOTE: ensureUtf8Mirror may return the original source directory on error
+    // (e.g. if mirroring fails). In that case buildIncludeChain reads files with
+    // readFile(..., 'utf8') which will mis-decode UTF-16 headers. This is an
+    // acceptable degradation — no worse than pre-mirror behaviour — but means
+    // the include chain may be incomplete for MetaQuotes' UTF-16 library files.
+    const resolvedExternalIncDir = (workspaceVersion === 'mql4' ? inc4Root : inc5Root) || undefined;
 
     // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
     try {
