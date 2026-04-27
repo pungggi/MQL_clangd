@@ -4,6 +4,7 @@ const fs = require('fs');
 const pathModule = require('path');
 const { parseIncludes, resolveIncludePath } = require('./compileTargetResolver');
 const { ensureUtf8Mirror } = require('./utf8Mirror');
+const { decodeTextBuffer } = require('./textDecoding');
 
 /**
  * Normalizes paths for clangd (forward slashes).
@@ -258,7 +259,8 @@ async function buildIncludeChain(entryPointPath, workspaceRoot, includeDir) {
     async function walk(filePath) {
         let content;
         try {
-            content = await fs.promises.readFile(filePath, 'utf8');
+            const buf = await fs.promises.readFile(filePath);
+            content = decodeTextBuffer(buf);
         } catch {
             return; // file unreadable — skip
         }
@@ -405,7 +407,8 @@ const includeSnapshotCache = new Map();
  */
 async function snapshotIncludes(filePath) {
     try {
-        const content = await fs.promises.readFile(filePath, 'utf8');
+        const buf = await fs.promises.readFile(filePath);
+        const content = decodeTextBuffer(buf);
         return JSON.stringify(parseIncludes(content));
     } catch {
         return '';
@@ -828,11 +831,21 @@ async function CreateProperties(force = false) {
         if (fs.existsSync(sub)) resolved = sub;
         else if (fs.existsSync(dir)) resolved = dir;
         else return null;
-        return useUtf8Mirror ? await ensureUtf8Mirror(resolved) : resolved;
+        if (useUtf8Mirror) {
+            try {
+                return await ensureUtf8Mirror(resolved);
+            } catch (err) {
+                console.warn(`MQL Tools: UTF-8 mirror failed for ${resolved}: ${err && err.message}`);
+                return resolved;
+            }
+        }
+        return resolved;
     }
 
-    const inc4Root = await resolveExternalIncRoot(inc4Dir);
-    const inc5Root = await resolveExternalIncRoot(inc5Dir);
+    const [inc4Root, inc5Root] = await Promise.all([
+        resolveExternalIncRoot(inc4Dir),
+        resolveExternalIncRoot(inc5Dir)
+    ]);
     const inc4Flag = inc4Root ? `-I${normalizePath(inc4Root)}` : null;
     const inc5Flag = inc5Root ? `-I${normalizePath(inc5Root)}` : null;
     const primaryIncFlag = workspaceVersion === 'mql4' ? inc4Flag : inc5Flag;
@@ -860,6 +873,11 @@ async function CreateProperties(force = false) {
 
     // Resolve external include directory for include-chain resolution.
     // Reuses resolveExternalIncRoot so the chain walker reads the mirror too.
+    // NOTE: ensureUtf8Mirror may return the original source directory on error
+    // (e.g. if mirroring fails). In that case buildIncludeChain reads files with
+    // readFile(..., 'utf8') which will mis-decode UTF-16 headers. This is an
+    // acceptable degradation — no worse than pre-mirror behaviour — but means
+    // the include chain may be incomplete for MetaQuotes' UTF-16 library files.
     const resolvedExternalIncDir = (workspaceVersion === 'mql4' ? inc4Root : inc5Root) || undefined;
 
     // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---

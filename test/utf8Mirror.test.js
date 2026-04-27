@@ -1,8 +1,6 @@
 'use strict';
 
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const { decodeTextBuffer } = require('../src/textDecoding');
@@ -56,8 +54,10 @@ suite('decodeTextBuffer', () => {
         // Place exactly 64 nulls — NOT greater than 64, so UTF-8 path
         for (let i = 0; i < 64; i++) buf[i * 2] = 0x00;
         const result = decodeTextBuffer(buf);
-        // utf8 decode — just verify it doesn't throw and returns a string
-        assert.strictEqual(typeof result, 'string');
+        // At exactly 64/256 nulls (not >25%), the heuristic keeps UTF-8 decoding.
+        // Verify the content survived as UTF-8 and was not misidentified as UTF-16.
+        assert.ok(result.includes('A'), 'UTF-8 decode should contain A chars');
+        assert.notStrictEqual(result, Buffer.from(buf).toString('utf16le'));
     });
 });
 
@@ -75,13 +75,16 @@ suite('mapToMirror', () => {
     }
 
     test('Windows path maps drive letter to segment', () => {
-        const result = withEnv('LOCALAPPDATA', 'C:\\Users\\user\\AppData\\Local', () => {
-            return mapToMirror('C:\\Users\\user\\AppData\\Roaming\\MetaQuotes\\Include');
-        });
-        assert.ok(result.includes(path.join('C', 'Users', 'user', 'AppData', 'Roaming', 'MetaQuotes', 'Include')));
+        if (process.platform !== 'win32') return; // path semantics are Windows-specific
+        const { result, root } = withEnv('LOCALAPPDATA', 'C:\\Users\\user\\AppData\\Local', () => ({
+            result: mapToMirror('C:\\Users\\user\\AppData\\Roaming\\MetaQuotes\\Include'),
+            root: getMirrorRoot()
+        }));
+        assert.strictEqual(result, path.join(root, 'C', 'Users', 'user', 'AppData', 'Roaming', 'MetaQuotes', 'Include'));
     });
 
     test('drive letter normalized to uppercase', () => {
+        if (process.platform !== 'win32') return; // path semantics are Windows-specific
         const lower = withEnv('LOCALAPPDATA', 'C:\\AppData\\Local', () => mapToMirror('c:\\foo\\bar'));
         const upper = withEnv('LOCALAPPDATA', 'C:\\AppData\\Local', () => mapToMirror('C:\\foo\\bar'));
         assert.strictEqual(lower, upper);
@@ -96,6 +99,7 @@ suite('mapToMirror', () => {
     });
 
     test('different drives produce different mirror paths', () => {
+        if (process.platform !== 'win32') return; // path semantics are Windows-specific
         const c = withEnv('LOCALAPPDATA', 'C:\\AppData\\Local', () => mapToMirror('C:\\Include'));
         const d = withEnv('LOCALAPPDATA', 'C:\\AppData\\Local', () => mapToMirror('D:\\Include'));
         assert.notStrictEqual(c, d);

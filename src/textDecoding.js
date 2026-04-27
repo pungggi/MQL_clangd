@@ -9,7 +9,6 @@ function decodeTextBuffer(buffer) {
         return buffer.toString('utf16le', 2);
     }
 
-    const utf8Text = buffer.toString('utf8');
     const sampleLength = Math.min(buffer.length, 256);
     let nullByteCount = 0;
 
@@ -23,6 +22,7 @@ function decodeTextBuffer(buffer) {
         return buffer.toString('utf16le');
     }
 
+    const utf8Text = buffer.toString('utf8');
     return utf8Text.charCodeAt(0) === 0xFEFF ? utf8Text.slice(1) : utf8Text;
 }
 

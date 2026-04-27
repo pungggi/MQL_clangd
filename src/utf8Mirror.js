@@ -24,7 +24,7 @@ const _mirrorPromises = new Map();
 function getMirrorRoot() {
     const base = process.platform === 'win32'
         ? (process.env.LOCALAPPDATA || pathModule.join(os.homedir(), 'AppData', 'Local'))
-        : pathModule.join(os.homedir(), '.cache');
+        : (process.env.XDG_CACHE_HOME || pathModule.join(os.homedir(), '.cache'));
     return pathModule.join(base, 'mql-clangd', 'mirror');
 }
 
@@ -35,23 +35,36 @@ function getMirrorRoot() {
  *
  * UNC paths are normalised into an 'unc' subdirectory to prevent escaping
  * the mirror root.
+ *
+ * Callers must pass a fully resolved absolute path (e.g. from
+ * `pathModule.resolve`).  Relative or bare-drive forms are rejected to avoid
+ * bogus mirror names.
  */
 function mapToMirror(sourceAbsPath) {
+    if (typeof sourceAbsPath !== 'string') {
+        throw new Error('mapToMirror: sourceAbsPath must be a string, got ' + typeof sourceAbsPath);
+    }
+    // Reject non-absolute paths (including bare-drive forms like "C:" or "C:foo").
+    if (!pathModule.isAbsolute(sourceAbsPath) || /^[A-Za-z]:$/.test(sourceAbsPath) || /^[A-Za-z]:[^\\/]/.test(sourceAbsPath)) {
+        throw new Error('mapToMirror: expected a resolved absolute path (pass pathModule.resolve first); got: ' + sourceAbsPath);
+    }
     const root = getMirrorRoot();
-    const driveMatch = /^([A-Za-z]):[\\/](.*)$/.exec(sourceAbsPath);
+    const normalised = pathModule.normalize(sourceAbsPath);
+    const driveMatch = /^([A-Za-z]):[\\/](.*)$/.exec(normalised);
     if (driveMatch) {
         return pathModule.join(root, driveMatch[1].toUpperCase(), driveMatch[2]);
     }
     // UNC paths (\\server\share\... or //server/share/...) — normalise into 'unc' subdirectory.
-    const uncMatch = /^[\\/]{2}([^\\/]+)[\\/](.*)$/.exec(sourceAbsPath);
+    const uncMatch = /^[\\/]{2}([^\\/]+)[\\/](.*)$/.exec(normalised);
     if (uncMatch) {
         return pathModule.join(root, 'unc', uncMatch[1], uncMatch[2]);
     }
-    // POSIX-style absolute — strip the leading slash.
-    if (sourceAbsPath.startsWith('/')) {
-        return pathModule.join(root, sourceAbsPath.slice(1));
+    // POSIX-style absolute — strip ALL leading slashes so path.join stays under root.
+    if (normalised.startsWith('/')) {
+        return pathModule.join(root, normalised.replace(/^\/+/, ''));
     }
-    return pathModule.join(root, sourceAbsPath);
+    // Should not reach here due to isAbsolute check above, but kept as safety fallback.
+    return pathModule.join(root, normalised);
 }
 
 async function fileMtimeMs(filePath) {
@@ -71,13 +84,7 @@ async function transcodeOne(srcPath, dstPath) {
 }
 
 async function walkAndMirror(srcDir, dstDir) {
-    let entries;
-    try {
-        entries = await fs.promises.readdir(srcDir, { withFileTypes: true });
-    } catch (err) {
-        // Propagate so ensureUtf8Mirror can fall back to the source directory.
-        throw err;
-    }
+    const entries = await fs.promises.readdir(srcDir, { withFileTypes: true });
 
     // Prune stale mirror entries that no longer exist in the source.
     const srcNames = new Set(entries.map(e => e.name));
@@ -108,6 +115,8 @@ async function walkAndMirror(srcDir, dstDir) {
         const dstPath = pathModule.join(dstDir, entry.name);
 
         if (entry.isDirectory()) {
+            // Skip symlinked directories to prevent infinite recursion
+            if (entry.isSymbolicLink()) return;
             await walkAndMirror(srcPath, dstPath);
             return;
         }
@@ -159,7 +168,7 @@ async function ensureUtf8Mirror(sourceIncludeDir) {
     let promise = _mirrorPromises.get(mirrorDir);
     if (promise) return promise;
 
-    promise = _performMirror(sourceIncludeDir, mirrorDir, srcStat.mtimeMs);
+    promise = _performMirror(sourceIncludeDir, mirrorDir);
     _mirrorPromises.set(mirrorDir, promise);
     try {
         return await promise;
@@ -168,17 +177,13 @@ async function ensureUtf8Mirror(sourceIncludeDir) {
     }
 }
 
-async function _performMirror(sourceIncludeDir, mirrorDir, srcMtimeMs) {
+async function _performMirror(sourceIncludeDir, mirrorDir) {
     const stampPath = pathModule.join(mirrorDir, STAMP_FILE);
     try {
         await fs.promises.mkdir(mirrorDir, { recursive: true });
 
-        // Skip full walk if mirror was built after the source dir was last modified.
-        const stampMtime = await fileMtimeMs(stampPath);
-        if (stampMtime !== null && stampMtime >= srcMtimeMs) {
-            return mirrorDir;
-        }
-
+        // Always perform the full walk so nested-file changes are detected.
+        // Per-file mtime checks inside walkAndMirror skip up-to-date files.
         await walkAndMirror(sourceIncludeDir, mirrorDir);
         await fs.promises.writeFile(stampPath, '', 'utf8');
         return mirrorDir;
