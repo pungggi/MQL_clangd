@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.41
+
+### Improvements
+- **Better IntelliSense for MetaTrader standard libraries (#34)**: Code completion, Go to Definition, and error checking now work more reliably when your project uses MetaTrader's built-in include libraries such as `Generic/`, `Expert/`, and other Standard Library headers.
+- **Fewer missing-symbol and false-error problems**: The extension now handles MetaTrader library files saved in different text encodings, so clangd can understand more of your project instead of silently skipping important headers.
+- **Automatic setup, with an opt-out**: The improved library support is enabled automatically when you run `MQL: Create Configuration`. If it causes issues in a special setup, you can turn it off with `mql_tools.Clangd.UseUtf8Mirror`.
+
 ## 1.1.40
 
 ### Features

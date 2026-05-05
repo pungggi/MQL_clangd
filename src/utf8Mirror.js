@@ -9,6 +9,28 @@ const { decodeTextBuffer } = require('./textDecoding');
 const MIRRORABLE_EXTS = new Set(['.mqh', '.mq5', '.mq4']);
 const STAMP_FILE = '.mirror-stamp';
 
+// ── Bounded mirroring constants ─────────────────────────────────────────
+const MAX_DEPTH = 20;
+const MAX_FILES = 10000;
+const MAX_TOTAL_BYTES = 200 * 1024 * 1024; // 200 MB
+const MAX_FILE_BYTES = 10 * 1024 * 1024;   // 10 MB per file
+const CONCURRENCY_LIMIT = 16;
+
+/** Simple counting semaphore to cap concurrent async operations. */
+class Semaphore {
+    constructor(max) { this._max = max; this._running = 0; this._queue = []; }
+    acquire() {
+        if (this._running < this._max) { this._running++; return Promise.resolve(); }
+        return new Promise(resolve => this._queue.push(resolve));
+    }
+    release() {
+        if (this._running <= 0) return;
+        this._running--;
+        if (this._queue.length) { this._running++; this._queue.shift()(); }
+    }
+}
+const _ioSem = new Semaphore(CONCURRENCY_LIMIT);
+
 /** Per-mirror-root mutex: deduplicates concurrent ensureUtf8Mirror calls. */
 const _mirrorPromises = new Map();
 
@@ -76,30 +98,59 @@ async function fileMtimeMs(filePath) {
     }
 }
 
-async function transcodeOne(srcPath, dstPath) {
+async function transcodeOne(srcPath, dstPath, srcStat) {
     const buffer = await fs.promises.readFile(srcPath);
     const text = decodeTextBuffer(buffer);
-    await fs.promises.mkdir(pathModule.dirname(dstPath), { recursive: true });
-    await fs.promises.writeFile(dstPath, text, 'utf8');
+    const dir = pathModule.dirname(dstPath);
+    await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+    await fs.promises.writeFile(dstPath, text, { encoding: 'utf8', mode: 0o600 });
+    // Preserve source mtime so future comparisons remain correct even when
+    // installers / sync tools extract files with older timestamps.
+    // Non-fatal: on some platforms/paths utimes may fail (e.g. NTFS EINVAL).
+    if (srcStat) {
+        try {
+            await fs.promises.utimes(dstPath, srcStat.atimeMs, srcStat.mtimeMs);
+        } catch { /* best-effort; mtime may drift by one mirror cycle */ }
+    }
 }
 
-async function walkAndMirror(srcDir, dstDir) {
-    const entries = await fs.promises.readdir(srcDir, { withFileTypes: true });
+async function walkAndMirror(srcDir, dstDir, depth, ctx) {
+    if (depth > MAX_DEPTH) {
+        console.warn(`MQL Tools: mirror depth limit (${MAX_DEPTH}) exceeded at ${srcDir}`);
+        return;
+    }
+    if (ctx.fileCount >= MAX_FILES) {
+        console.warn(`MQL Tools: mirror file limit (${MAX_FILES}) reached`);
+        return;
+    }
+
+    let entries;
+    try {
+        entries = await _ioSem.acquire().then(() =>
+            fs.promises.readdir(srcDir, { withFileTypes: true }).finally(() => _ioSem.release())
+        );
+    } catch {
+        return;
+    }
 
     // Prune stale mirror entries that no longer exist in the source.
     const srcNames = new Set(entries.map(e => e.name));
     let dstEntries;
     try {
-        dstEntries = await fs.promises.readdir(dstDir, { withFileTypes: true });
+        dstEntries = await _ioSem.acquire().then(() =>
+            fs.promises.readdir(dstDir, { withFileTypes: true }).finally(() => _ioSem.release())
+        );
     } catch {
         dstEntries = [];
     }
 
+    // Batch prune with concurrency limiter
     await Promise.all(dstEntries
         .filter(d => d.name !== STAMP_FILE && !srcNames.has(d.name))
         .map(async dEntry => {
             const stalePath = pathModule.join(dstDir, dEntry.name);
             try {
+                await _ioSem.acquire();
                 if (dEntry.isDirectory()) {
                     await fs.promises.rm(stalePath, { recursive: true });
                 } else if (MIRRORABLE_EXTS.has(pathModule.extname(dEntry.name).toLowerCase())) {
@@ -107,35 +158,61 @@ async function walkAndMirror(srcDir, dstDir) {
                 }
             } catch (err) {
                 console.warn(`MQL Tools: failed to prune stale mirror entry ${stalePath}: ${err && err.message}`);
+            } finally {
+                _ioSem.release();
             }
         }));
 
+    // Process entries with concurrency limiter
     await Promise.all(entries.map(async entry => {
         const srcPath = pathModule.join(srcDir, entry.name);
         const dstPath = pathModule.join(dstDir, entry.name);
 
+        // Skip all symlinks (to directories and files) to prevent infinite
+        // recursion and avoid mirroring uncontrolled content.
+        // On most POSIX systems, readdir Dirent reports symlink-to-dir as
+        // isSymbolicLink()=true, isDirectory()=false, so the isDirectory()
+        // branch below would never see them.  On platforms where Dirent
+        // falls back to stat (d_type=DT_UNKNOWN), isDirectory() could be
+        // true — checking isSymbolicLink() first ensures consistent behavior.
+        if (entry.isSymbolicLink()) return;
         if (entry.isDirectory()) {
-            // Skip symlinked directories to prevent infinite recursion
-            if (entry.isSymbolicLink()) return;
-            await walkAndMirror(srcPath, dstPath);
+            await walkAndMirror(srcPath, dstPath, depth + 1, ctx);
             return;
         }
+        // Non-regular files (sockets, FIFOs, etc.) are silently skipped.
+        // Symlink-to-file entries are also skipped here since isFile()
+        // returns false for symlinks on most platforms.  MetaQuotes
+        // headers are never symlinks, so this has no practical impact.
         if (!entry.isFile()) return;
 
         const ext = pathModule.extname(entry.name).toLowerCase();
         if (!MIRRORABLE_EXTS.has(ext)) return;
 
-        const [srcMtime, dstMtime] = await Promise.all([
-            fileMtimeMs(srcPath),
-            fileMtimeMs(dstPath)
-        ]);
-        if (srcMtime === null) return;
-        if (dstMtime !== null && dstMtime >= srcMtime) return;
+        // Fast-path check — may overshoot by up to CONCURRENCY_LIMIT entries
+        // due to concurrent Promise.all iterations.  Acceptable: the limits
+        // are safety bounds, not exact quotas.
+        if (ctx.fileCount >= MAX_FILES) return;
 
         try {
-            await transcodeOne(srcPath, dstPath);
+            await _ioSem.acquire();
+            const [srcStat, dstMtime] = await Promise.all([
+                fs.promises.stat(srcPath),
+                fileMtimeMs(dstPath)
+            ]);
+            if (!srcStat || !srcStat.isFile()) return;
+            if (srcStat.size > MAX_FILE_BYTES) return;
+            if (ctx.totalBytes + srcStat.size > MAX_TOTAL_BYTES) return;
+            if (dstMtime !== null && dstMtime >= srcStat.mtimeMs) return;
+
+            // All checks passed — commit to mirroring this file.
+            ctx.fileCount++;
+            ctx.totalBytes += srcStat.size;
+            await transcodeOne(srcPath, dstPath, srcStat);
         } catch (err) {
             console.warn(`MQL Tools: failed to mirror ${srcPath}: ${err && err.message}`);
+        } finally {
+            _ioSem.release();
         }
     }));
 }
@@ -181,11 +258,16 @@ async function _performMirror(sourceIncludeDir, mirrorDir) {
     const stampPath = pathModule.join(mirrorDir, STAMP_FILE);
     try {
         await fs.promises.mkdir(mirrorDir, { recursive: true });
+        // Explicitly chmod the mirror root: recursive mkdir's mode only applies
+        // to the final directory component and is subject to umask.
+        // On Windows this is a no-op (NTFS uses ACLs).
+        await fs.promises.chmod(mirrorDir, 0o700).catch(() => {});
 
         // Always perform the full walk so nested-file changes are detected.
         // Per-file mtime checks inside walkAndMirror skip up-to-date files.
-        await walkAndMirror(sourceIncludeDir, mirrorDir);
-        await fs.promises.writeFile(stampPath, '', 'utf8');
+        const ctx = { fileCount: 0, totalBytes: 0 };
+        await walkAndMirror(sourceIncludeDir, mirrorDir, 0, ctx);
+        await fs.promises.writeFile(stampPath, '', { encoding: 'utf8', mode: 0o600 });
         return mirrorDir;
     } catch (err) {
         console.warn(`MQL Tools: UTF-8 mirror unavailable for ${sourceIncludeDir}: ${err && err.message}`);

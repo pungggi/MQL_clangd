@@ -875,9 +875,9 @@ async function CreateProperties(force = false) {
     // Reuses resolveExternalIncRoot so the chain walker reads the mirror too.
     // NOTE: ensureUtf8Mirror may return the original source directory on error
     // (e.g. if mirroring fails). In that case buildIncludeChain reads files with
-    // readFile(..., 'utf8') which will mis-decode UTF-16 headers. This is an
-    // acceptable degradation — no worse than pre-mirror behaviour — but means
-    // the include chain may be incomplete for MetaQuotes' UTF-16 library files.
+    // decodeTextBuffer() which auto-detects UTF-16 LE, so it handles both
+    // encodings correctly. The mirror primarily benefits clangd, which reads
+    // files as UTF-8 by default.
     const resolvedExternalIncDir = (workspaceVersion === 'mql4' ? inc4Root : inc5Root) || undefined;
 
     // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
