@@ -89,6 +89,16 @@ This extension now uses **clangd** to provide state-of-the-art IntelliSense, cod
 5.  **Bonus: Icons**:
     *   If you wish, set custom icons for MQL files. Press `Ctrl+Shift+P`, select `"MQL: Add icons to the theme"`, and choose your preferred MQL-supported theme.
 
+#### 💡 Windows Tip: Open MQL5 from Your Projects Folder
+
+MetaTrader stores MQL files deep inside `AppData\Roaming`. You can create a **junction** (like a symlink) so the folder also appears in your usual workspace:
+
+```powershell
+New-Item -ItemType Junction -Path 'C:\Users\<you>\source\MQL5' -Target 'C:\Users\<you>\AppData\Roaming\MetaQuotes\Terminal\<ID>\MQL5'
+```
+
+This creates a zero-cost pointer — no duplication, files exist only once. You can now open `C:\Users\<you>\source\MQL5` in VS Code directly.
+
 ---
 
 ### Important Notes
