@@ -1,10 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node --check \"c:/Users/Alessandro/source/MQL_clangd/src/debugInstrumentation.js\")",
-      "Bash(node --check \"c:/Users/Alessandro/source/MQL_clangd/src/debugAdapter.js\")",
-      "Bash(node --check \"c:/Users/Alessandro/source/MQL_clangd/src/debugStateStore.js\")",
-      "Bash(node test_instr_temp.js)"
     ]
   }
 }

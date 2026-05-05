@@ -28,6 +28,7 @@ mocha.addFile(path.resolve(__dirname, 'debugInstrumentation.test.js'));
 mocha.addFile(path.resolve(__dirname, 'debugFeatures.test.js'));
 mocha.addFile(path.resolve(__dirname, 'suite/logic.test.js'));
 mocha.addFile(path.resolve(__dirname, 'suite/extension.test.js'));
+mocha.addFile(path.resolve(__dirname, 'utf8Mirror.test.js'));
 
 // Run the tests
 mocha.run(failures => {
