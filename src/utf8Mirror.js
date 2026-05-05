@@ -109,7 +109,7 @@ async function transcodeOne(srcPath, dstPath, srcStat) {
     // Non-fatal: on some platforms/paths utimes may fail (e.g. NTFS EINVAL).
     if (srcStat) {
         try {
-            await fs.promises.utimes(dstPath, srcStat.atimeMs, srcStat.mtimeMs);
+            await fs.promises.utimes(dstPath, srcStat.atimeMs / 1000, srcStat.mtimeMs / 1000);
         } catch { /* best-effort; mtime may drift by one mirror cycle */ }
     }
 }
@@ -126,22 +126,24 @@ async function walkAndMirror(srcDir, dstDir, depth, ctx) {
 
     let entries;
     try {
-        entries = await _ioSem.acquire().then(() =>
-            fs.promises.readdir(srcDir, { withFileTypes: true }).finally(() => _ioSem.release())
-        );
+        await _ioSem.acquire();
+        entries = await fs.promises.readdir(srcDir, { withFileTypes: true });
     } catch {
         return;
+    } finally {
+        _ioSem.release();
     }
 
     // Prune stale mirror entries that no longer exist in the source.
     const srcNames = new Set(entries.map(e => e.name));
     let dstEntries;
     try {
-        dstEntries = await _ioSem.acquire().then(() =>
-            fs.promises.readdir(dstDir, { withFileTypes: true }).finally(() => _ioSem.release())
-        );
+        await _ioSem.acquire();
+        dstEntries = await fs.promises.readdir(dstDir, { withFileTypes: true });
     } catch {
         dstEntries = [];
+    } finally {
+        _ioSem.release();
     }
 
     // Batch prune with concurrency limiter

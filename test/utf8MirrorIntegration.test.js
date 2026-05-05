@@ -25,9 +25,9 @@ class Semaphore {
 suite('Semaphore', () => {
     test('allows up to max concurrent acquires', async () => {
         const sem = new Semaphore(3);
-        const r1 = await sem.acquire();
-        const r2 = await sem.acquire();
-        const r3 = await sem.acquire();
+        await sem.acquire();
+        await sem.acquire();
+        await sem.acquire();
         assert.strictEqual(sem._running, 3);
         sem.release(); sem.release(); sem.release();
     });
