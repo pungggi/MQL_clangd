@@ -2,10 +2,19 @@
 
 ## 1.1.43
 
+### Features
+- **Configurable TradeReportServer location**: New `mql_tools.Backtest.ServerDir` setting overrides the default `<MQL5 data folder>/Tools/TradeReportServer` location. Supports `${workspaceFolder}`, `~`, and relative paths. Resolved path is validated (`package.json` + `src/index.js`) before launch, with a clear error and a one-click action to open the setting when the package folder is missing.
+
 ### Bug Fixes
 - **Header Compilation Crash**: Fixed a critical `TypeError: a is not a function` error that occurred when compiling `.mqh` files. This was caused by a circular dependency in the extension's module loading (fixes #36).
 - **Legacy Compile Targets**: Automatically migrates legacy string-based compile targets to arrays to prevent `.map is not a function` errors when resolving header dependencies.
 - **Compile Target Type Guard**: `getCompileTargets` now validates the stored value type — arrays are returned as-is, legacy strings are wrapped, and any other unexpected type emits a console warning and returns `null` instead of silently producing a malformed value.
+
+### Behavior Changes
+- **Headers without a compile target are no longer compiled standalone**: Previously, syntax-check on save (`CheckOnSave`) would fall back to compiling the `.mqh` file directly when no `.mq4`/`.mq5` target was mapped. MetaEditor produces misleading diagnostics for standalone headers (e.g. `'<file>' - not a function`), so the extension now skips compilation in that case. Map a compile target via **MQL: Select Compile Target(s) for Header** to restore diagnostics.
+
+### Security
+- **Limited untrusted-workspace support**: Added the VS Code `untrustedWorkspaces` capability declaration. The new `Backtest.ServerDir` setting can point Node.js at any package on disk, so the extension now opts out of full untrusted-workspace support to prevent a malicious workspace from launching arbitrary code via auto-start.
 
 ## 1.1.41/42
 
