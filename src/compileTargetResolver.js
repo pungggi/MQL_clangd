@@ -2,7 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
-const { detectWorkspaceMqlVersion } = require('./createProperties');
+const createProperties = require('./createProperties');
 
 /**
  * Compile Target Resolver
@@ -78,7 +78,7 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
     );
 
     // Determine workspace MQL version from scanned files
-    const workspaceVersion = detectWorkspaceMqlVersion(files, workspaceRoot, workspaceFolder.name);
+    const workspaceVersion = createProperties.detectWorkspaceMqlVersion(files, workspaceRoot, workspaceFolder.name);
 
     for (const fileUri of files) {
         const filePath = fileUri.fsPath;
@@ -226,8 +226,12 @@ function getCompileTargets(headerUri, workspaceFolder, context) {
 
     const headerRelPath = pathModule.relative(workspaceFolder.uri.fsPath, headerUri.fsPath);
     const normalizedKey = pathModule.normalize(headerRelPath).toLowerCase();
+    
+    const targets = map[normalizedKey];
+    if (!targets) return null;
 
-    return map[normalizedKey] || null;
+    // Migrate legacy string targets (from older extension versions) to array
+    return Array.isArray(targets) ? targets : [targets];
 }
 
 /**
