@@ -22,7 +22,8 @@ const {
     normalizeSpecialLiteralSpacing,
     shouldFocusProblemsPanel,
     shouldRunCompileSuccessAction,
-    runCompileSuccessAction
+    runCompileSuccessAction,
+    resolveHeaderCompilePlan
 } = extension;
 const { normalizePath, generatePortableSwitch, safeConfigUpdate } = require('../../src/createProperties');
 
@@ -151,6 +152,41 @@ suite('Problems panel focus helper tests', () => {
 
     test('returns false for background error runs', () => {
         assert.strictEqual(shouldFocusProblemsPanel(true, { background: true }), false);
+    });
+});
+
+suite('Header compile target planning tests', () => {
+    test('uses resolved .mq4/.mq5 targets for headers', () => {
+        const targets = ['C:\\Project\\Experts\\Main.mq5'];
+        const result = resolveHeaderCompilePlan({ targets });
+
+        assert.deepStrictEqual(result, { pathsToCompile: targets, shouldWarn: false });
+    });
+
+    test('uses legacy magic-comment target when no target was resolved', () => {
+        const magicPath = 'C:\\Project\\Experts\\Main.mq5';
+        const result = resolveHeaderCompilePlan(
+            { targets: [], magicPath },
+            candidate => candidate === magicPath
+        );
+
+        assert.deepStrictEqual(result, { pathsToCompile: [magicPath], shouldWarn: false });
+    });
+
+    test('does not compile a header directly when no target exists', () => {
+        const result = resolveHeaderCompilePlan({ targets: [], magicPath: null });
+
+        assert.deepStrictEqual(result, { pathsToCompile: null, shouldWarn: true });
+    });
+
+    test('skips background header checks silently when no target exists', () => {
+        const result = resolveHeaderCompilePlan({
+            targets: [],
+            magicPath: null,
+            isBackground: true
+        });
+
+        assert.deepStrictEqual(result, { pathsToCompile: null, shouldWarn: false });
     });
 });
 

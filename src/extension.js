@@ -758,6 +758,22 @@ async function runCompileSuccessAction(options = {}, logger = console) {
     }
 }
 
+function resolveHeaderCompilePlan({ targets, magicPath, isBackground = false }, pathExists = fs.existsSync) {
+    if (!Array.isArray(targets)) {
+        return { pathsToCompile: null, shouldWarn: false };
+    }
+
+    if (targets.length > 0) {
+        return { pathsToCompile: targets, shouldWarn: false };
+    }
+
+    if (magicPath && pathExists(magicPath)) {
+        return { pathsToCompile: [magicPath], shouldWarn: false };
+    }
+
+    return { pathsToCompile: null, shouldWarn: !isBackground };
+}
+
 async function Compile(rt, context, options = {}) {
     await FixFormatting();
     // Save after formatting. Guard against re-entrant CheckOnSave triggers.
@@ -795,26 +811,23 @@ async function Compile(rt, context, options = {}) {
             return; // User cancelled or aborted
         }
 
-        if (targets.length === 0) {
-            // No targets resolved by mapping/inference (or user cancelled)
-            // Fall back to magic comment for backward compatibility
-            const magicPath = FindParentFile();
-            if (magicPath && fs.existsSync(magicPath)) {
-                pathsToCompile = [magicPath];
-            } else {
-                // If rt === COMPILE_MODE_CHECK (checking), we can't fall back to current file for headers effectively
-                // but we should check if we should allow checking the header itself or just warn.
-                // Existing behavior for rt !== COMPILE_MODE_CHECK was to warn.
-                if (rt !== COMPILE_MODE_CHECK) {
-                    return vscode.window.showWarningMessage(lg['mqh']);
-                } else {
-                    // For rt === COMPILE_MODE_CHECK, if no target found, just check the header itself as a fallback
-                    pathsToCompile = [document.fileName];
-                }
+        const headerPlan = resolveHeaderCompilePlan({
+            targets,
+            magicPath: targets.length === 0 ? FindParentFile() : undefined,
+            isBackground: Boolean(options.background)
+        });
+
+        if (!headerPlan.pathsToCompile) {
+            // Headers are not standalone translation units. MetaEditor can emit
+            // misleading diagnostics such as "'<file>' - not a function" when
+            // a .mqh is compiled directly, so require a real .mq4/.mq5 target.
+            if (headerPlan.shouldWarn) {
+                return vscode.window.showWarningMessage(lg['mqh']);
             }
-        } else {
-            pathsToCompile = targets;
+            return;
         }
+
+        pathsToCompile = headerPlan.pathsToCompile;
     } else {
         // For .mq4/.mq5, compile the current file
         pathsToCompile = [document.fileName];
@@ -3024,5 +3037,6 @@ module.exports = {
     shouldFocusProblemsPanel,
     shouldRunCompileSuccessAction,
     runCompileSuccessAction,
+    resolveHeaderCompilePlan,
     inferMqlDataDirFromPath
 };
