@@ -228,6 +228,11 @@
                     "default": true,
                     "description": "Automatically start TradeReportServer if it is not running when a backtest is requested."
                 },
+                "mql_tools.Backtest.ServerDir": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Path to the **TradeReportServer Node.js package folder** (the folder containing `package.json` and `src/index.js`). Leave empty to use `<MQL5 data folder>/Tools/TradeReportServer`. Supports `${workspaceFolder}`, `~`, and relative paths."
+                },
                 "mql_tools.Backtest.PromptForParameters": {
                     "type": "boolean",
                     "default": true,

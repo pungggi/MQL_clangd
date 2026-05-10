@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { spawn, exec, spawnSync } = require('child_process');
 const { COMPILE_MODE_CHECK } = require('./debugBridge');
 const util = require('util');
@@ -16,6 +17,12 @@ const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000; // 10 minutes
 const PID_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours — stale PID threshold
 const SERVER_IDLE_TIMEOUT_SEC = 30 * 60; // 30 min — server self-terminates if idle
+const SERVER_DIR_SETTING = 'Backtest.ServerDir';
+const SERVER_DIR_SETTING_ID = `mql_tools.${SERVER_DIR_SETTING}`;
+const AUTO_START_SETTING_ID = 'mql_tools.Backtest.AutoStartServer';
+const DEFAULT_SERVER_RELATIVE_DIR = path.join('Tools', 'TradeReportServer');
+const SERVER_ENTRY_RELATIVE_PATH = path.join('src', 'index.js');
+const OPEN_SERVER_DIR_SETTINGS_ACTION = 'Open ServerDir Settings';
 
 // ---------------------------------------------------------------------------
 // Date helpers
@@ -94,6 +101,83 @@ function httpRequest(method, urlPath, body = null, port = DEFAULT_PORT) {
     });
 }
 
+function getWorkspaceFolderPath() {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+}
+
+/**
+ * Resolve user-configured paths consistently for Backtest settings.
+ * @param {string} rawPath
+ * @param {string} workspaceFolderPath
+ * @returns {string|null}
+ */
+function resolveBacktestPathSetting(rawPath, workspaceFolderPath = getWorkspaceFolderPath()) {
+    if (typeof rawPath !== 'string' || !rawPath.trim()) return null;
+
+    let expanded = rawPath.trim();
+    if (workspaceFolderPath) {
+        expanded = expanded.replace(/\$\{workspaceFolder\}/g, workspaceFolderPath);
+    }
+    if (expanded === '~' || expanded.startsWith(`~${path.sep}`) || expanded.startsWith('~/')) {
+        expanded = path.join(os.homedir(), expanded.slice(1));
+    }
+
+    if (path.isAbsolute(expanded)) return path.normalize(expanded);
+
+    const baseDir = workspaceFolderPath || process.cwd();
+    return path.resolve(baseDir, expanded);
+}
+
+/**
+ * @param {string|null} mql5Root
+ * @param {string} rawServerDir
+ * @param {string} workspaceFolderPath
+ * @returns {string|null}
+ */
+function resolveBacktestServerDir(mql5Root, rawServerDir = '', workspaceFolderPath = getWorkspaceFolderPath()) {
+    const configuredServerDir = resolveBacktestPathSetting(rawServerDir, workspaceFolderPath);
+    if (configuredServerDir) return configuredServerDir;
+
+    if (!mql5Root) return null;
+    return path.join(mql5Root, DEFAULT_SERVER_RELATIVE_DIR);
+}
+
+/**
+ * @param {string|null} serverDir
+ * @returns {boolean}
+ */
+function isTradeReportServerDir(serverDir) {
+    if (!serverDir) return false;
+    return fs.existsSync(path.join(serverDir, 'package.json'))
+        && fs.existsSync(path.join(serverDir, SERVER_ENTRY_RELATIVE_PATH));
+}
+
+/**
+ * @param {string} serverDir
+ * @returns {string}
+ */
+function getTradeReportServerNotFoundMessage(serverDir) {
+    return [
+        `TradeReportServer was not found at ${serverDir}.`,
+        `Set ${SERVER_DIR_SETTING_ID} to the TradeReportServer Node.js package folder (the folder containing package.json and ${SERVER_ENTRY_RELATIVE_PATH}), or disable ${AUTO_START_SETTING_ID} and start it manually.`,
+        'Metaeditor.Include5Dir should point to your MQL5 data folder (the folder containing Include, Experts, Logs), not to TradeReportServer.',
+    ].join(' ');
+}
+
+/**
+ * @param {string} serverDir
+ * @returns {Promise<void>}
+ */
+async function showTradeReportServerNotFound(serverDir) {
+    const selection = await vscode.window.showErrorMessage(
+        getTradeReportServerNotFoundMessage(serverDir),
+        OPEN_SERVER_DIR_SETTINGS_ACTION,
+    );
+    if (selection === OPEN_SERVER_DIR_SETTINGS_ACTION) {
+        await vscode.commands.executeCommand('workbench.action.openSettings', SERVER_DIR_SETTING_ID);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Server lifecycle
 // ---------------------------------------------------------------------------
@@ -144,9 +228,8 @@ async function isProcessOurServer(pid, serverDir) {
  * @returns {Promise<boolean>}
  */
 async function startServer(serverDir, port = DEFAULT_PORT) {
-    const pkgPath = path.join(serverDir, 'package.json');
-    if (!fs.existsSync(pkgPath)) {
-        vscode.window.showErrorMessage(`TradeReportServer not found at ${serverDir}`);
+    if (!isTradeReportServerDir(serverDir)) {
+        await showTradeReportServerNotFound(serverDir);
         return false;
     }
 
@@ -541,20 +624,28 @@ async function runBacktest(context, opts) {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const port = config.get('Backtest.ServerPort', DEFAULT_PORT);
     const autoStart = config.get('Backtest.AutoStartServer', true);
+    const rawServerDir = config.get(SERVER_DIR_SETTING, '');
     const promptParams = config.get('Backtest.PromptForParameters', true);
     const autoOpen = config.get('Backtest.AutoOpenReport', true);
 
     // 1. Ensure server is alive
     let alive = await pingServer(port);
     if (!alive && autoStart) {
-        const mql5Root = opts.findMql5Root();
-        if (!mql5Root) {
+        let serverDir = resolveBacktestServerDir(null, rawServerDir);
+        if (!serverDir) {
+            const mql5Root = opts.findMql5Root();
+            serverDir = resolveBacktestServerDir(mql5Root, rawServerDir);
+        }
+        if (!serverDir) {
             vscode.window.showErrorMessage(
-                'Cannot find MQL5 folder. Please configure your MQL Include directory setting.',
+                `Cannot find MQL5 folder. Configure mql_tools.Metaeditor.Include5Dir or set ${SERVER_DIR_SETTING_ID}.`,
             );
             return;
         }
-        const serverDir = path.join(mql5Root, 'Tools', 'TradeReportServer');
+        if (!isTradeReportServerDir(serverDir)) {
+            await showTradeReportServerNotFound(serverDir);
+            return;
+        }
         alive = await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Starting TradeReportServer...' },
             () => startServer(serverDir, port),
@@ -620,4 +711,11 @@ async function runBacktest(context, opts) {
     }
 }
 
-module.exports = { runBacktest, stopServer };
+module.exports = {
+    runBacktest,
+    stopServer,
+    resolveBacktestPathSetting,
+    resolveBacktestServerDir,
+    isTradeReportServerDir,
+    getTradeReportServerNotFoundMessage,
+};

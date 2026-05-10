@@ -59,7 +59,7 @@ const {
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
 const { TradeReportDashboard } = require('./tradeReportDashboard');
-const { runBacktest, stopServer: stopBacktestServer } = require('./backtestRunner');
+const { runBacktest, stopServer: stopBacktestServer, resolveBacktestServerDir } = require('./backtestRunner');
 const {
     bridge: debugBridge,
     COMPILE_MODE_CHECK,
@@ -758,6 +758,39 @@ async function runCompileSuccessAction(options = {}, logger = console) {
     }
 }
 
+/**
+ * Resolve which paths to compile for a .mqh header file.
+ *
+ * Decision order:
+ * 1. `targets` not an array → `{ pathsToCompile: null, shouldWarn: false }` (caller already warned/aborted)
+ * 2. `targets` is a non-empty array → `{ pathsToCompile: targets, shouldWarn: false }`
+ * 3. `targets` is empty AND `magicPath` exists on disk → `{ pathsToCompile: [magicPath], shouldWarn: false }`
+ * 4. Otherwise → `{ pathsToCompile: null, shouldWarn: !isBackground }`
+ *    (`isBackground` suppresses the warning for silent auto-check runs)
+ *
+ * @param {object}   opts
+ * @param {string[]|null} opts.targets      Resolved compile targets (from resolveCompileTargets).
+ *                                          Pass `null` to signal abort; pass `[]` to trigger fallback.
+ * @param {string}  [opts.magicPath]        Magic-comment parent path (from FindParentFile()).
+ *                                          Used only when `targets` is empty.
+ * @param {boolean} [opts.isBackground=false] True for silent background checks (CheckOnSave).
+ *                                          Suppresses the "no target" warning when true.
+ * @param {function(string):boolean} [pathExists=fs.existsSync] Injected for unit-testing.
+ *
+ * @returns {{ pathsToCompile: string[]|null, shouldWarn: boolean }}
+ *   `pathsToCompile` — paths to hand to compilePath(), or null to skip compilation.
+ *   `shouldWarn`     — true when the caller should show a "no compile target" warning.
+ *
+ * @example
+ * // User-triggered compile, one mapped target
+ * resolveHeaderCompilePlan({ targets: ['C:\\EA\\MyEA.mq5'] })
+ * // → { pathsToCompile: ['C:\\EA\\MyEA.mq5'], shouldWarn: false }
+ *
+ * @example
+ * // Background check, no targets found — suppress warning
+ * resolveHeaderCompilePlan({ targets: [], isBackground: true })
+ * // → { pathsToCompile: null, shouldWarn: false }
+ */
 function resolveHeaderCompilePlan({ targets, magicPath, isBackground = false }, pathExists = fs.existsSync) {
     if (!Array.isArray(targets)) {
         return { pathsToCompile: null, shouldWarn: false };
@@ -3004,7 +3037,8 @@ function deactivate() {
 
     try {
         const mql5Root = findMql5Root();
-        const serverDir = mql5Root ? pathModule.join(mql5Root, 'Tools', 'TradeReportServer') : null;
+        const rawServerDir = vscode.workspace.getConfiguration('mql_tools').get('Backtest.ServerDir', '');
+        const serverDir = resolveBacktestServerDir(mql5Root, rawServerDir);
         stopBacktestServer(undefined, serverDir);
     } catch (error) {
         console.error('Error during stopBacktestServer():', error);

@@ -188,6 +188,40 @@ suite('Header compile target planning tests', () => {
 
         assert.deepStrictEqual(result, { pathsToCompile: null, shouldWarn: false });
     });
+
+    test('returns all targets when multiple are mapped', () => {
+        const targets = ['C:\\Project\\Experts\\EA1.mq5', 'C:\\Project\\Experts\\EA2.mq4'];
+        const result = resolveHeaderCompilePlan({ targets });
+
+        assert.deepStrictEqual(result, { pathsToCompile: targets, shouldWarn: false });
+    });
+
+    test('targets takes precedence over magicPath when both are present', () => {
+        const targets = ['C:\\Project\\Experts\\Main.mq5'];
+        const magicPath = 'C:\\Project\\Experts\\Other.mq5';
+        const result = resolveHeaderCompilePlan(
+            { targets, magicPath },
+            candidate => candidate === magicPath
+        );
+
+        assert.deepStrictEqual(result, { pathsToCompile: targets, shouldWarn: false });
+    });
+
+    test('undefined targets treated as non-array: returns null without warning', () => {
+        const result = resolveHeaderCompilePlan({ targets: undefined });
+
+        assert.deepStrictEqual(result, { pathsToCompile: null, shouldWarn: false });
+    });
+
+    test('magicPath present but pathExists returns false: warns and skips', () => {
+        const magicPath = 'C:\\Project\\Experts\\Main.mq5';
+        const result = resolveHeaderCompilePlan(
+            { targets: [], magicPath },
+            () => false
+        );
+
+        assert.deepStrictEqual(result, { pathsToCompile: null, shouldWarn: true });
+    });
 });
 
 suite('Compile success action helper tests', () => {

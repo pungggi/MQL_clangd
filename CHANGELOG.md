@@ -1,6 +1,13 @@
 # Changelog
 
-## 1.1.41
+## 1.1.43
+
+### Bug Fixes
+- **Header Compilation Crash**: Fixed a critical `TypeError: a is not a function` error that occurred when compiling `.mqh` files. This was caused by a circular dependency in the extension's module loading (fixes #36).
+- **Legacy Compile Targets**: Automatically migrates legacy string-based compile targets to arrays to prevent `.map is not a function` errors when resolving header dependencies.
+- **Compile Target Type Guard**: `getCompileTargets` now validates the stored value type — arrays are returned as-is, legacy strings are wrapped, and any other unexpected type emits a console warning and returns `null` instead of silently producing a malformed value.
+
+## 1.1.41/42
 
 ### Improvements
 - **Better IntelliSense for MetaTrader standard libraries (#34)**: Code completion, Go to Definition, and error checking now work more reliably when your project uses MetaTrader's built-in include libraries such as `Generic/`, `Expert/`, and other Standard Library headers.

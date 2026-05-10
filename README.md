@@ -323,12 +323,15 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 | `mql_tools.Backtest.PromptForParameters` | `true` | Show symbol/date prompts before running. Set `false` to use `tester.ini` defaults silently. |
 | `mql_tools.Backtest.AutoOpenReport` | `true` | Open the Trade Report Dashboard when the test completes. |
 | `mql_tools.Backtest.AutoStartServer` | `true` | Auto-start TradeReportServer if it isn't already running. |
+| `mql_tools.Backtest.ServerDir` | empty | Optional path to the TradeReportServer Node.js package folder. When empty, auto-start uses `<MQL5 data folder>/Tools/TradeReportServer`. |
 | `mql_tools.Backtest.ServerPort` | `3002` | Port used by TradeReportServer. |
 | `mql_tools.ShowButton.RunBacktest` | `true` | Show/hide the toolbar button on MQL files. |
 
 **Notes:**
 - The test runs fully inside MT5 — cancelling the VS Code progress notification only stops monitoring, not the MT5 test itself.
 - A `tester.ini` file must exist in the EA's folder (e.g. `Experts/Trading/MyEA/tester.ini`) for the server to know the default test configuration.
+- `mql_tools.Metaeditor.Include5Dir` should point to the MQL5 data folder (the folder containing `Include`, `Experts`, `Logs`, etc.). On Linux/Wine this is usually a host path under your Wine prefix, for example `/home/<user>/.wine/drive_c/Program Files/<Vendor> MT5 Terminal/MQL5`.
+- If your terminal does not contain `MQL5/Tools/TradeReportServer`, set `mql_tools.Backtest.ServerDir` to the actual TradeReportServer package folder, or set `mql_tools.Backtest.AutoStartServer` to `false` and start the server manually on `mql_tools.Backtest.ServerPort`.
 
 ---
 

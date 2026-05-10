@@ -230,8 +230,10 @@ function getCompileTargets(headerUri, workspaceFolder, context) {
     const targets = map[normalizedKey];
     if (!targets) return null;
 
-    // Migrate legacy string targets (from older extension versions) to array
-    return Array.isArray(targets) ? targets : [targets];
+    if (Array.isArray(targets)) return targets;
+    if (typeof targets === 'string') return [targets];
+    console.warn(`CompileTarget: unexpected type "${typeof targets}" for key "${normalizedKey}"`);
+    return null;
 }
 
 /**
