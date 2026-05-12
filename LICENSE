@@ -30,13 +30,11 @@ Commercial purposes include, but are not limited to, any use of the software:
 
 ## Trading Strategy Development Exception
 
-Notwithstanding the No Commercial Use rule, you are expressly permitted to use the software to develop, write, test, and run your own algorithmic trading strategies and MQL5 code, including strategies that generate monetary returns through trading financial instruments. This exception applies to personal and proprietary trading and does not extend to:
+Notwithstanding the No Commercial Use rule, you are expressly permitted to use the software to develop, write, test, and run algorithmic trading strategies and MQL5 code, including strategies that generate monetary returns through trading financial instruments.
 
-* offering a service or platform to others that is powered by or built upon this software
+This license applies solely to the software (the extension/tooling) itself. MQL5 code, Expert Advisors, scripts, and any other outputs you author using the software are your own work and are not subject to this license. You retain full ownership of and all rights to that code, including the right to sell, license, or distribute it freely.
 
-* embedding this software in a commercial product
-
-For the avoidance of doubt, this exception does not permit selling, licensing, sublicensing, distributing, offering as a service, or otherwise making derived strategies, MQL5 code, or outputs available to third parties, nor embedding them in commercial products.
+This exception does not extend to redistributing, embedding, or offering the software itself as part of a commercial product or service.
 
 ## Examples of Noncommercial Use
 
