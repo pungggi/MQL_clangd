@@ -28,11 +28,23 @@ Commercial purposes include, but are not limited to, any use of the software:
 
 * to develop another product or service that you intend to sell
 
+## Trading Strategy Development Exception
+
+Notwithstanding the No Commercial Use rule, you are expressly permitted to use the software to develop, write, test, and run your own algorithmic trading strategies and MQL5 code, including strategies that generate monetary returns through trading financial instruments. This exception applies to personal and proprietary trading and does not extend to:
+
+* selling, licensing, or distributing the strategies or code you develop to third parties for payment
+
+* offering a service or platform to others that is powered by or built upon this software
+
+* embedding this software in a commercial product
+
 ## Examples of Noncommercial Use
 
 Noncommercial purposes include, but are not limited to, any use of the software:
 
 * for personal use
+
+* for developing and running your own trading strategies
 
 * for educational or research purposes by a student or staff member of an educational institution
 
