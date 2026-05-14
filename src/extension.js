@@ -59,7 +59,7 @@ const {
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
 const { TradeReportDashboard } = require('./tradeReportDashboard');
-const { runBacktest, stopServer: stopBacktestServer, resolveBacktestServerDir } = require('./backtestRunner');
+const { runBacktest, stopServer: stopBacktestServer } = require('./backtestRunner');
 const {
     bridge: debugBridge,
     COMPILE_MODE_CHECK,
@@ -1218,7 +1218,7 @@ class MqlCodeActionProvider {
                 );
                 configAction.command = {
                     command: 'mql_tools.configurations',
-                    title: "Run MQL: Create Configuration",
+                    title: 'Run MQL: Create Configuration',
                     arguments: []
                 };
                 configAction.diagnostics = [diagnostic];
@@ -3036,10 +3036,7 @@ function deactivate() {
     }
 
     try {
-        const mql5Root = findMql5Root();
-        const rawServerDir = vscode.workspace.getConfiguration('mql_tools').get('Backtest.ServerDir', '');
-        const serverDir = resolveBacktestServerDir(mql5Root, rawServerDir);
-        stopBacktestServer(undefined, serverDir);
+        stopBacktestServer();
     } catch (error) {
         console.error('Error during stopBacktestServer():', error);
     }

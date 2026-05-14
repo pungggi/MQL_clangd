@@ -221,17 +221,20 @@
                 "mql_tools.Backtest.ServerPort": {
                     "type": "number",
                     "default": 3002,
-                    "description": "Port number for the TradeReportServer."
+                    "description": "Deprecated. The built-in backtest runner no longer requires TradeReportServer.",
+                    "deprecationMessage": "Deprecated. The built-in backtest runner no longer requires TradeReportServer."
                 },
                 "mql_tools.Backtest.AutoStartServer": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Automatically start TradeReportServer if it is not running when a backtest is requested."
+                    "description": "Deprecated. The built-in backtest runner no longer starts an external TradeReportServer.",
+                    "deprecationMessage": "Deprecated. The built-in backtest runner no longer starts an external TradeReportServer."
                 },
                 "mql_tools.Backtest.ServerDir": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "Path to the **TradeReportServer Node.js package folder** (the folder containing `package.json` and `src/index.js`). Leave empty to use `<MQL5 data folder>/Tools/TradeReportServer`. Supports `${workspaceFolder}`, `~`, and relative paths."
+                    "markdownDescription": "Deprecated. Run Backtest is now extension-owned and no longer requires a separate TradeReportServer folder.",
+                    "markdownDeprecationMessage": "Deprecated. Run Backtest is now extension-owned and no longer requires a separate TradeReportServer folder."
                 },
                 "mql_tools.Backtest.PromptForParameters": {
                     "type": "boolean",
@@ -243,10 +246,16 @@
                     "default": true,
                     "description": "Automatically open the Trade Report Dashboard when a backtest completes."
                 },
+                "mql_tools.Backtest.TesterLogDir": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Optional Strategy Tester agent log directory override. Leave empty to auto-detect from the MQL5 data folder. Supports `${workspaceFolder}`, `~`, and relative paths."
+                },
                 "mql_tools.Backtest.NodePath": {
                     "type": "string",
                     "default": "node",
-                    "description": "Path to the Node.js executable used to start TradeReportServer. Use the default ('node') if Node is on your PATH, or provide an absolute path for custom Node installations."
+                    "description": "Deprecated. The built-in backtest runner no longer launches a Node.js TradeReportServer.",
+                    "deprecationMessage": "Deprecated. The built-in backtest runner no longer launches a Node.js TradeReportServer."
                 },
                 "mql_tools.Clangd.UseUtf8Mirror": {
                     "type": "boolean",
@@ -692,7 +701,7 @@
     "capabilities": {
         "untrustedWorkspaces": {
             "supported": "limited",
-            "description": "The mql_tools.Backtest.ServerDir setting can launch an arbitrary Node.js package; do not enable AutoStartServer in untrusted workspaces."
+            "description": "Backtest commands can launch the configured MetaTrader terminal and write tester.ini files; review terminal and MQL data-folder settings before running them in untrusted workspaces."
         }
     }
 }
