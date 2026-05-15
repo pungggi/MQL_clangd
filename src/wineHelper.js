@@ -458,19 +458,27 @@ async function execWineBatch(programWinPath, args, wineBinary, winePrefix, wineE
 
     const batContent = buildBatchContent(programWinPath, args);
     const batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
-    const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
 
-    const proc = spawn(wineCmd.executable, wineCmd.args, {
-        shell: false,
-        detached,
-        stdio: 'ignore',
-        env: wineEnv,
-    });
+    let proc;
+    try {
+        const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
+        proc = spawn(wineCmd.executable, wineCmd.args, {
+            shell: false,
+            detached,
+            stdio: 'ignore',
+            env: wineEnv,
+        });
+    } catch (err) {
+        cleanupBatchFile(batFile.unixPath);
+        throw err;
+    }
 
     proc.on('error', (err) => {
-        logError(`[Wine] Process error: ${err.message}`);
+        const displayMsg = opts.errorMessage ? `${opts.errorMessage}: ${err.message}` : `[Wine] Process error: ${err.message}`;
+        logError(displayMsg);
         if (typeof opts.onError === 'function') {
-            opts.onError(err);
+            const finalErr = opts.errorMessage ? new Error(`${opts.errorMessage}: ${err.message}`) : err;
+            opts.onError(finalErr);
         }
     });
 

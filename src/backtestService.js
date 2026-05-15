@@ -457,7 +457,7 @@ async function startBacktest(options) {
  * Tracks launcher PID only — not the real MT5 PID.
  */
 async function startBacktestWine(ctx) {
-    const { ea, _mql5Root, mql5TesterIni, terminalPath, params,
+    const { ea, mql5TesterIni, terminalPath, params,
         wineBinary, winePrefix, wineEnv, portableMode,
         logDir, latestAtStart, startTime } = ctx;
 

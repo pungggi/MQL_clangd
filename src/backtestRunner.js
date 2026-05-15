@@ -25,7 +25,6 @@ const {
     validateWinePath,
     validateWineSetup,
 } = require('./wineHelper');
-const { generatePortableSwitch } = require('./createProperties');
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000;
@@ -359,7 +358,7 @@ async function runBacktest(context, opts) {
         wineBinary,
         winePrefix,
         wineEnv,
-        portableMode: !!generatePortableSwitch(portableMode),
+        portableMode,
     });
 
     if (completed && autoOpen) vscode.commands.executeCommand('mql_tools.openTradeReport');
