@@ -26,6 +26,7 @@ suite('backtestRunner — internal runner helpers', function () {
 
     test('validates MQL date strings calendrically', function () {
         assert.ok(isValidDate('2025.02.28'));
+        assert.ok(isValidDate('2024.02.29'));
         assert.strictEqual(isValidDate('2025.02.29'), false);
         assert.strictEqual(isValidDate('2025-02-28'), false);
     });
@@ -36,5 +37,11 @@ suite('backtestRunner — internal runner helpers', function () {
         assert.strictEqual(parsed.getFullYear(), 2025);
         assert.strictEqual(parsed.getMonth(), 11);
         assert.strictEqual(parsed.getDate(), 31);
+    });
+
+    test('parseMqlDate handles invalid dates appropriately', function () {
+        assert.strictEqual(parseMqlDate('invalid-date'), null);
+        assert.strictEqual(parseMqlDate('2025.13.01'), null);
+        assert.strictEqual(parseMqlDate('2025.02.30'), null);
     });
 });

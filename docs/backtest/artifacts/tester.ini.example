@@ -1,0 +1,17 @@
+; Minimal example for manual backtest smoke testing.
+; Copy this file to:
+;   MQL5/Experts/<YourEA>/tester.ini
+; Then adjust Symbol, dates, and inputs for your EA.
+
+[Tester]
+Expert=<YourEA>
+Symbol=EURUSD
+Period=M5
+Model=0
+ExecutionMode=0
+Optimization=0
+FromDate=2025.01.01
+ToDate=2025.01.31
+
+[Inputs]
+RiskPercentage=1.0||1||0.1||10||Y

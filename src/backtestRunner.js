@@ -17,6 +17,15 @@ const {
     cancelBacktest,
     cancelAllBacktests,
 } = require('./backtestService');
+const {
+    isWineEnabled,
+    getWineBinary,
+    getWinePrefix,
+    getWineEnv,
+    validateWinePath,
+    validateWineSetup,
+} = require('./wineHelper');
+const { generatePortableSwitch } = require('./createProperties');
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000;
@@ -75,7 +84,7 @@ function resolveConfiguredTesterLogDir(config) {
     return resolveBacktestPathSetting(config.get(TESTER_LOG_DIR_SETTING, ''));
 }
 
-function assertUsableMql5Root(mql5Root) {
+function isUsableMql5Root(mql5Root) {
     return mql5Root && fs.existsSync(path.join(mql5Root, 'Experts'));
 }
 
@@ -132,7 +141,8 @@ async function resolveCandidateEAName(context, editor, resolveCompileTargets) {
         });
         const target = targets && targets[0];
         return target ? path.basename(target, path.extname(target)) : null;
-    } catch {
+    } catch (err) {
+        console.error(`resolveCompileTargets failed for ${filePath}:`, err);
         return null;
     }
 }
@@ -214,19 +224,20 @@ function getSilentParameters(mql5Root, eaName) {
 // ---------------------------------------------------------------------------
 
 async function executeBacktest(eaName, params, options) {
-    const startResult = startBacktest({ eaName, params, ...options });
+    const startResult = await startBacktest({ eaName, params, ...options });
     if (!startResult.started) {
         showStartFailure(eaName, startResult);
         return false;
     }
 
+    const isWine = !!options.useWine;
     return vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
             title: `Backtest: ${eaName} on ${params.symbol}`,
             cancellable: true,
         },
-        async (progress, token) => monitorBacktest(options.mql5Root, eaName, progress, token),
+        async (progress, token) => monitorBacktest(options.mql5Root, eaName, progress, token, isWine),
     );
 }
 
@@ -238,7 +249,7 @@ function showStartFailure(eaName, result) {
     vscode.window.showErrorMessage(`Failed to start backtest: ${result.message}`);
 }
 
-async function monitorBacktest(mql5Root, eaName, progress, token) {
+async function monitorBacktest(mql5Root, eaName, progress, token, isWine = false) {
     const startTime = Date.now();
     progress.report({ message: 'Starting...' });
 
@@ -266,10 +277,11 @@ async function monitorBacktest(mql5Root, eaName, progress, token) {
     }
 
     const cancelled = cancelBacktest(mql5Root, eaName);
+    const cancelMsg = isWine
+        ? 'Backtest monitor was cancelled. MT5 may still be running inside Wine (best-effort termination).'
+        : `Backtest for ${eaName} was cancelled.`;
     vscode.window.showInformationMessage(
-        cancelled
-            ? `Backtest for ${eaName} was cancelled.`
-            : 'Backtest monitor was cancelled. The test may still be running in MT5.',
+        cancelled ? cancelMsg : 'Backtest monitor was cancelled. The test may still be running in MT5.',
     );
     return false;
 }
@@ -285,9 +297,35 @@ async function runBacktest(context, opts) {
     const autoOpen = config.get('Backtest.AutoOpenReport', true);
     const mql5Root = opts.findMql5Root();
 
-    if (!assertUsableMql5Root(mql5Root)) {
+    if (!isUsableMql5Root(mql5Root)) {
         vscode.window.showErrorMessage('Cannot find MQL5 folder. Configure mql_tools.Metaeditor.Include5Dir to your MQL5 data folder.');
         return;
+    }
+
+    // --- Wine detection and validation ---
+    const useWine = isWineEnabled(config);
+    let wineBinary, winePrefix, wineEnv;
+
+    if (process.platform !== 'win32' && !useWine) {
+        vscode.window.showErrorMessage(
+            'Backtest launch requires Wine on this platform. Enable mql_tools.Wine.Enabled and configure your Wine prefix.',
+            'Open Settings',
+        ).then(sel => {
+            if (sel === 'Open Settings') vscode.commands.executeCommand('workbench.action.openSettings', 'mql_tools.Wine');
+        });
+        return;
+    }
+
+    if (useWine) {
+        wineBinary = getWineBinary(config);
+        winePrefix = getWinePrefix(config);
+        wineEnv = getWineEnv(config);
+
+        const validation = await validateWineSetup(config);
+        if (!validation.valid) {
+            vscode.window.showErrorMessage(`Wine setup invalid: ${validation.errors.join('; ')}`);
+            return;
+        }
     }
 
     const terminalPath = resolveConfiguredTerminalPath(config);
@@ -296,28 +334,44 @@ async function runBacktest(context, opts) {
         return;
     }
 
+    // Validate terminal path format when Wine is active
+    if (useWine) {
+        const pathCheck = validateWinePath(terminalPath);
+        if (!pathCheck.valid) {
+            vscode.window.showErrorMessage(`Wine Configuration Error: ${pathCheck.error}`);
+            return;
+        }
+    }
+
     const eaName = await resolveEAName(context, mql5Root, opts.resolveCompileTargets);
     if (!eaName) return;
 
     const params = promptParams ? await getTestParameters(mql5Root, eaName) : getSilentParameters(mql5Root, eaName);
     if (!params) return;
 
+    const portableMode = config.get('Metaeditor.Portable5', false);
+
     const completed = await executeBacktest(eaName, params, {
         mql5Root,
         terminalPath,
         testerLogDir: resolveConfiguredTesterLogDir(config),
+        useWine,
+        wineBinary,
+        winePrefix,
+        wineEnv,
+        portableMode: !!generatePortableSwitch(portableMode),
     });
 
     if (completed && autoOpen) vscode.commands.executeCommand('mql_tools.openTradeReport');
 }
 
-function stopServer() {
+function cancelBacktests() {
     cancelAllBacktests();
 }
 
 module.exports = {
     runBacktest,
-    stopServer,
+    cancelBacktests,
     resolveBacktestPathSetting,
     parseMqlDate,
     isValidDate,

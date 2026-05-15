@@ -426,6 +426,66 @@ async function validateWineSetup(config, metaEditorPath = '') {
     };
 }
 
+const DEFAULT_BATCH_CLEANUP_DELAY_MS = 5000;
+
+/**
+ * Executes a program via a Wine batch file with consistent error handling and cleanup.
+ *
+ * Creates a temporary .bat file, converts its path to Wine Windows format, and
+ * spawns `wine cmd /c <bat>` as a detached process.  By default the batch file
+ * is cleaned up after a short delay.
+ *
+ * @param {string} programWinPath - Windows path to the program to execute
+ * @param {string[]} args - Arguments to pass to the program
+ * @param {string} wineBinary - Path to the Wine binary
+ * @param {string} winePrefix - Wine prefix path
+ * @param {object} wineEnv - Environment variables for Wine
+ * @param {object} [opts={}] - Additional options
+ * @param {string} [opts.errorMessage] - Error message to display on failure (legacy callers)
+ * @param {number} [opts.cleanupDelayMs] - Delay before deleting the temp .bat file (default 5000)
+ * @param {boolean} [opts.detached=true] - Whether to detach the spawned process
+ * @param {function} [opts.onError] - Custom error handler; receives the Error object
+ * @returns {Promise<{proc: import('child_process').ChildProcess, pid: number|undefined, batUnixPath: string}>}
+ */
+async function execWineBatch(programWinPath, args, wineBinary, winePrefix, wineEnv, opts = {}) {
+    // Support legacy call-site: 6th arg may be an errorMessage string
+    if (typeof opts === 'string') {
+        opts = { errorMessage: opts };
+    }
+
+    const cleanupDelayMs = opts.cleanupDelayMs ?? DEFAULT_BATCH_CLEANUP_DELAY_MS;
+    const detached = opts.detached !== false;
+
+    const batContent = buildBatchContent(programWinPath, args);
+    const batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
+    const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
+
+    const proc = spawn(wineCmd.executable, wineCmd.args, {
+        shell: false,
+        detached,
+        stdio: 'ignore',
+        env: wineEnv,
+    });
+
+    proc.on('error', (err) => {
+        logError(`[Wine] Process error: ${err.message}`);
+        if (typeof opts.onError === 'function') {
+            opts.onError(err);
+        }
+    });
+
+    if (detached) {
+        proc.unref();
+    }
+
+    // Clean up batch file after cmd.exe has read it
+    if (cleanupDelayMs > 0) {
+        setTimeout(() => cleanupBatchFile(batFile.unixPath), cleanupDelayMs);
+    }
+
+    return { proc, pid: proc.pid, batUnixPath: batFile.unixPath };
+}
+
 module.exports = {
     setOutputChannel,
     isWineInstalled,
@@ -440,6 +500,7 @@ module.exports = {
     getWineEnv,
     spawnWineProcess,
     validateWineSetup,
+    execWineBatch,
     log,
     logWarning,
     logError,

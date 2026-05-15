@@ -59,7 +59,7 @@ const {
 } = require('./wineHelper');
 const logTailer = require('./logTailer');
 const { TradeReportDashboard } = require('./tradeReportDashboard');
-const { runBacktest, stopServer: stopBacktestServer } = require('./backtestRunner');
+const { runBacktest, cancelBacktests } = require('./backtestRunner');
 const {
     bridge: debugBridge,
     COMPILE_MODE_CHECK,
@@ -3036,9 +3036,9 @@ function deactivate() {
     }
 
     try {
-        stopBacktestServer();
+        cancelBacktests();
     } catch (error) {
-        console.error('Error during stopBacktestServer():', error);
+        console.error('Error during cancelBacktests():', error);
     }
 
     try {

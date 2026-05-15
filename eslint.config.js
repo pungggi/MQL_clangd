@@ -39,7 +39,7 @@ module.exports = [
         languageOptions: {
             ecmaVersion: 'latest',
             sourceType: 'commonjs',
-            globals: { ...commonGlobals, ...mochaGlobals },
+            globals: { ...commonGlobals },
         },
         rules: {
             indent: ['error', 4, { SwitchCase: 1 }],
@@ -49,6 +49,12 @@ module.exports = [
             'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
             'no-console': 'off',
             'no-constant-condition': ['error', { checkLoops: false }],
+        },
+    },
+    {
+        files: ['**/*.test.js', '**/*.spec.js', '**/test/**/*.js', '**/tests/**/*.js'],
+        languageOptions: {
+            globals: { ...mochaGlobals },
         },
     },
 ];

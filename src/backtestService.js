@@ -5,6 +5,12 @@ const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { parseLogSummary } = require('./logParser');
+const {
+    toWineWindowsPath,
+    validateWinePath,
+    execWineBatch,
+    log: wineLog,
+} = require('./wineHelper');
 
 const TESTER_AGENT_LOG_DIR = path.join('Agent-127.0.0.1-3000', 'logs');
 const DEFAULT_MAX_SCAN_DEPTH = 5;
@@ -34,7 +40,7 @@ class BacktestEAInfo {
                 .filter(fileName => fileName.toLowerCase().endsWith('.log'))
                 .map(fileName => {
                     const filePath = path.join(this.runsDir, fileName);
-                    return { name: fileName, fileName, path: filePath, mtime: fs.statSync(filePath).mtime };
+                    return { name: fileName, path: filePath, mtime: fs.statSync(filePath).mtime };
                 })
                 .sort((a, b) => b.mtime - a.mtime);
         } catch {
@@ -155,8 +161,9 @@ function readTesterConfig(ea) {
     return testerConfigFromIni(parseTesterIni(ea.testerIniPath));
 }
 
-function updateTesterIniContent(content, params) {
+function updateTesterIniContent(content, params, lineEnding) {
     const lines = content.split(/\r?\n/);
+    const detectedEnding = lineEnding || (content.includes('\r\n') ? '\r\n' : '\n');
     const result = [];
     let currentSection = '';
 
@@ -181,7 +188,7 @@ function updateTesterIniContent(content, params) {
         result.push(line);
     }
 
-    return result.join(os.EOL);
+    return result.join(detectedEnding);
 }
 
 function getTesterIniReplacement(section, key, oldValue, params) {
@@ -225,9 +232,14 @@ function listSymbols(mql5Root) {
     return Array.from(symbols).sort((a, b) => a.localeCompare(b));
 }
 
-function findTesterLogDir(mql5Root, configuredDir = '') {
+function findTesterLogDir(mql5Root, configuredDir = '', wineOptions = null) {
     if (configuredDir && isDirectory(configuredDir)) return configuredDir;
     if (!mql5Root) return null;
+
+    // Wine mode: search under the Wine prefix instead of native APPDATA
+    if (wineOptions && wineOptions.winePrefix) {
+        return findWineTesterLogDir(mql5Root, wineOptions.winePrefix);
+    }
 
     const terminalDataDir = path.dirname(mql5Root);
     const terminalId = path.basename(terminalDataDir);
@@ -241,6 +253,62 @@ function findTesterLogDir(mql5Root, configuredDir = '') {
 
     if (candidates.length === 0) return null;
     return candidates.sort((a, b) => getDirMtimeMs(b) - getDirMtimeMs(a))[0];
+}
+
+/**
+ * Discover tester agent log directories under a Wine prefix.
+ *
+ * Resolution strategy:
+ *  1. Derive the terminal ID from the MQL5 root path.
+ *  2. Scan {prefix}/drive_c/users/[any]/AppData/Roaming/MetaQuotes/Tester/{terminalId}/Agent-[any]/logs.
+ *  3. If no terminal-specific match, do a bounded fallback under MetaQuotes/Tester/[any]/Agent-[any]/logs.
+ *  4. Return the freshest valid directory.
+ *
+ * @param {string} mql5Root
+ * @param {string} winePrefix
+ * @returns {string|null}
+ */
+function findWineTesterLogDir(mql5Root, winePrefix) {
+    const terminalDataDir = path.dirname(mql5Root);
+    const terminalId = path.basename(terminalDataDir);
+    const driveCUsers = path.join(winePrefix, 'drive_c', 'users');
+
+    const candidates = [];
+
+    // Scan users/* under the Wine prefix
+    const userDirs = listSubdirectories(driveCUsers);
+    for (const userDir of userDirs) {
+        const testerBase = path.join(userDir, 'AppData', 'Roaming', 'MetaQuotes', 'Tester');
+
+        // Strategy 1: deterministic — use terminal ID
+        if (terminalId && terminalId !== '.' && terminalId !== '..') {
+            const testerTerminalDir = path.join(testerBase, terminalId);
+            candidates.push(
+                path.join(testerTerminalDir, TESTER_AGENT_LOG_DIR),
+                ...findAgentLogDirs(testerTerminalDir),
+            );
+        }
+
+        // Strategy 2: bounded fallback — scan Tester/*/Agent-*/logs
+        for (const testerSubDir of listSubdirectories(testerBase)) {
+            candidates.push(...findAgentLogDirs(testerSubDir));
+        }
+    }
+
+    const unique = candidates.filter((dir, i, arr) => dir && arr.indexOf(dir) === i && isDirectory(dir));
+    if (unique.length === 0) return null;
+    return unique.sort((a, b) => getDirMtimeMs(b) - getDirMtimeMs(a))[0];
+}
+
+function listSubdirectories(parentDir) {
+    if (!isDirectory(parentDir)) return [];
+    try {
+        return fs.readdirSync(parentDir, { withFileTypes: true })
+            .filter(e => e.isDirectory())
+            .map(e => path.join(parentDir, e.name));
+    } catch {
+        return [];
+    }
 }
 
 function findAgentLogDirs(testerTerminalDir) {
@@ -322,15 +390,17 @@ function resolveTerminalPath(rawTerminalPath, fallbackPaths = []) {
     return candidates.find(candidate => fs.existsSync(candidate)) || null;
 }
 
-function startBacktest(options) {
-    const { mql5Root, eaName, params, terminalPath, testerLogDir } = options;
+async function startBacktest(options) {
+    const { mql5Root, eaName, params, terminalPath, testerLogDir,
+        useWine, wineBinary, winePrefix, wineEnv, portableMode } = options;
     const ea = findBacktestEA(mql5Root, eaName);
     if (!ea) return { started: false, code: 'EA_NOT_FOUND', message: 'EA not found' };
     if (runningTests.has(ea.dir)) return { started: false, code: 'ALREADY_RUNNING', message: 'Test already running for this EA' };
     if (!ea.hasTesterConfig()) return { started: false, code: 'NO_TESTER_INI', message: 'No tester.ini found in EA folder' };
     if (!terminalPath) return { started: false, code: 'NO_TERMINAL', message: 'MT5 terminal not found' };
 
-    const logDir = findTesterLogDir(mql5Root, testerLogDir);
+    const wineOpts = useWine ? { winePrefix } : null;
+    const logDir = findTesterLogDir(mql5Root, testerLogDir, wineOpts);
     if (!logDir) {
         return { started: false, code: 'NO_TESTER_LOG_DIR', message: 'Strategy Tester agent log directory not found. Configure mql_tools.Backtest.TesterLogDir.' };
     }
@@ -345,9 +415,21 @@ function startBacktest(options) {
     const latestAtStart = findLatestTesterLog(logDir);
     const startTime = Date.now();
 
+    // --- Wine launch path ---
+    if (useWine) {
+        return startBacktestWine({
+            ea, mql5Root, mql5TesterIni, terminalPath, params,
+            wineBinary, winePrefix, wineEnv, portableMode,
+            logDir, latestAtStart, startTime,
+        });
+    }
+
+    // --- Native Windows launch path ---
     let child;
+    const launchArgs = [`/config:${mql5TesterIni}`];
+    if (portableMode) launchArgs.push('/portable');
     try {
-        child = spawn(terminalPath, [`/config:${mql5TesterIni}`], { detached: true, stdio: 'ignore' });
+        child = spawn(terminalPath, launchArgs, { detached: true, stdio: 'ignore' });
     } catch (error) {
         return { started: false, code: 'LAUNCH_FAILED', message: `Failed to launch MT5 terminal: ${error.message}` };
     }
@@ -365,7 +447,70 @@ function startBacktest(options) {
     });
 
     child.unref();
+    wineLog(`[Backtest] Launch mode: windows | PID: ${child.pid}`);
     return { started: true, pid: child.pid, config: effectiveConfig };
+}
+
+/**
+ * Wine-specific backtest launch.
+ * Converts paths, builds batch arguments, and spawns MT5 through Wine.
+ * Tracks launcher PID only — not the real MT5 PID.
+ */
+async function startBacktestWine(ctx) {
+    const { ea, _mql5Root, mql5TesterIni, terminalPath, params,
+        wineBinary, winePrefix, wineEnv, portableMode,
+        logDir, latestAtStart, startTime } = ctx;
+
+    // Validate terminal path format (must be Unix, not Windows)
+    const pathCheck = validateWinePath(terminalPath);
+    if (!pathCheck.valid) {
+        return { started: false, code: 'INVALID_TERMINAL_PATH', message: pathCheck.error };
+    }
+
+    // Convert terminal executable to Wine Windows path
+    const termResult = await toWineWindowsPath(terminalPath, wineBinary, winePrefix);
+    if (!termResult.success) {
+        return { started: false, code: 'PATH_CONVERSION_FAILED', message: `Failed to convert terminal path: ${termResult.error}` };
+    }
+
+    // Convert tester.ini to Wine Windows path
+    const iniResult = await toWineWindowsPath(mql5TesterIni, wineBinary, winePrefix);
+    if (!iniResult.success) {
+        return { started: false, code: 'PATH_CONVERSION_FAILED', message: `Failed to convert tester.ini path: ${iniResult.error}` };
+    }
+
+    const args = [`/config:${iniResult.path}`];
+    if (portableMode) args.push('/portable');
+
+    wineLog('[Backtest] Launch mode: wine');
+    wineLog(`[Backtest] Terminal (host): ${terminalPath}`);
+    wineLog(`[Backtest] Terminal (wine): ${termResult.path}`);
+    wineLog(`[Backtest] Config  (wine): /config:${iniResult.path}`);
+    wineLog(`[Backtest] Tester log dir: ${logDir}`);
+
+    let result;
+    try {
+        result = await execWineBatch(termResult.path, args, wineBinary, winePrefix, wineEnv);
+    } catch (error) {
+        return { started: false, code: 'LAUNCH_FAILED', message: `Failed to launch MT5 via Wine: ${error.message}` };
+    }
+
+    const effectiveConfig = { ...readTesterConfig(ea), ...params, eaVersion: ea.getVersion() || 'Unknown' };
+    runningTests.set(ea.dir, {
+        // launcherPid — this is the Wine launcher process, NOT the real MT5 PID
+        pid: result.pid,
+        process: result.proc,
+        startTime,
+        ea,
+        logDir,
+        latestLogPathAtStart: latestAtStart?.path || null,
+        initialStopCount: latestAtStart ? countTesterStops(latestAtStart.path) : 0,
+        config: effectiveConfig,
+        isWine: true,
+    });
+
+    wineLog(`[Backtest] Launcher PID: ${result.pid} (Wine — best-effort cancellation)`);
+    return { started: true, pid: result.pid, config: effectiveConfig };
 }
 
 function getBacktestStatus(mql5Root, eaName) {
@@ -378,9 +523,14 @@ function getBacktestStatus(mql5Root, eaName) {
     if (latestLog && latestLog.mtimeMs >= running.startTime - COMPLETION_TIME_SKEW_MS) {
         const expectedStops = latestLog.path === running.latestLogPathAtStart ? running.initialStopCount + 1 : 1;
         if (isTesterLogComplete(latestLog.path, eaName, expectedStops)) {
-            const logName = copyTesterLogToRuns(running.ea, latestLog.path);
-            runningTests.delete(ea.dir);
-            return { running: false, status: 'completed', logName: logName || latestLog.name };
+            try {
+                const logName = copyTesterLogToRuns(running.ea, latestLog.path);
+                return { running: false, status: 'completed', logName: logName || latestLog.name };
+            } catch (err) {
+                return { running: false, status: 'error', error: err.message, logName: latestLog.name };
+            } finally {
+                runningTests.delete(ea.dir);
+            }
         }
     }
 

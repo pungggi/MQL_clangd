@@ -14,13 +14,9 @@ const {
     getWinePrefix,
     getWineEnv,
     validateWinePath,
-    buildWineCmd,
-    buildBatchContent,
-    createWineBatchFile,
-    cleanupBatchFile
+    execWineBatch
 } = require('./wineHelper');
 
-const BATCH_FILE_CLEANUP_DELAY_MS = 5000;
 const TERMINAL_KILL_DELAY_MS = 1500;
 const STARTUP_INI_CLEANUP_DELAY_MS = 60_000;
 
@@ -31,30 +27,6 @@ function getMqlDebugChannel() {
         _mqlDebugChannel = vscode.window.createOutputChannel('MQL Debug', { log: false });
     }
     return _mqlDebugChannel;
-}
-
-/**
- * Executes a Wine batch file with consistent error handling and cleanup
- * @param {string} programWinPath - Windows path to the program to execute
- * @param {string[]} args - Arguments to pass to the program
- * @param {string} wineBinary - Path to the Wine binary
- * @param {string} winePrefix - Wine prefix path
- * @param {object} wineEnv - Environment variables for Wine
- * @param {string} errorMessage - Error message to display on failure
- * @returns {Promise<void>}
- */
-async function execWineBatch(programWinPath, args, wineBinary, winePrefix, wineEnv, errorMessage) {
-    const batContent = buildBatchContent(programWinPath, args);
-    const batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
-    const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
-    const proc = childProcess.spawn(wineCmd.executable, wineCmd.args, { shell: false, detached: true, stdio: 'ignore', env: wineEnv });
-    proc.on('error', (err) => {
-        console.error('Wine process error:', err);
-        vscode.window.showErrorMessage(errorMessage);
-    });
-    proc.unref();
-    // Clean up batch file after cmd.exe has read it
-    setTimeout(() => cleanupBatchFile(batFile.unixPath), BATCH_FILE_CLEANUP_DELAY_MS);
 }
 
 function ShowFiles(...args) {
