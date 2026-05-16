@@ -36,6 +36,7 @@ Notes:
 - `Include5Dir` must point to the MQL5 data folder containing `Experts`.
 - `Terminal5Dir` must point to `terminal64.exe`.
 - Only set `mql_tools.Backtest.TesterLogDir` if auto-detection fails.
+- Each Run Backtest **overwrites** `<MQL5>/tester.ini` with the EA's tester.ini plus the parameters chosen for the run. Back up `<MQL5>/tester.ini` first if you have hand-tuned values there.
 
 ### Required EA fixture
 Pick or create one EA folder under `MQL5/Experts/<YourEA>/` with:
@@ -68,7 +69,7 @@ Expected results:
 - MT5 launches automatically
 - progress notification shows elapsed seconds
 - after completion, a new `.log` file is copied into `MQL5/Experts/<YourEA>/runs/`
-- if `AutoOpenReport=true`, the Trade Report opens automatically
+- if `mql_tools.Backtest.AutoOpenReport=true`, the Trade Report opens automatically
 
 ## Test case 2 — Silent mode from `tester.ini`
 1. Set `"mql_tools.Backtest.PromptForParameters": false`.
