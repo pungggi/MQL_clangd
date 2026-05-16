@@ -36,19 +36,24 @@ function analyzeDocument(document) {
         const trimmed = line.trim();
 
         // --- Character scanner: always runs to maintain state ---
-        // Tracks block comments, strings, char literals, and escape sequences
+        // Tracks block comments, strings, char literals, and escape sequences.
+        // Also builds `codeLine`: a copy of `line` with comment characters
+        // replaced by spaces, preserving column positions for diagnostic ranges.
         let inString = inMultiLineString;
         let escaped = false;
         let quoteCount = 0;
         const hasLineContinuation = line.endsWith('\\');
         let lineIsCode = !inBlockComment && !inMultiLineString;
+        let codeLine = '';
 
         for (let j = 0; j < line.length; j++) {
             const char = line[j];
 
             // Handle block comment state
             if (inBlockComment) {
+                codeLine += ' ';
                 if (char === '*' && j < line.length - 1 && line[j + 1] === '/') {
+                    codeLine += ' ';
                     inBlockComment = false;
                     j++; // skip the '/'
                 }
@@ -58,28 +63,33 @@ function analyzeDocument(document) {
             // Skip escaped characters inside strings
             if (escaped) {
                 escaped = false;
+                codeLine += char;
                 continue;
             }
 
             if (inString && char === '\\') {
                 escaped = true;
+                codeLine += char;
                 continue;
             }
 
             // Outside strings: detect comment starts
             if (!inString) {
-                // Single-line comment: stop scanning this line
+                // Single-line comment: blank out the rest of the line
                 if (char === '/' && j < line.length - 1 && line[j + 1] === '/') {
+                    codeLine += ' '.repeat(line.length - j);
                     break;
                 }
                 // Block comment start
                 if (char === '/' && j < line.length - 1 && line[j + 1] === '*') {
                     inBlockComment = true;
+                    codeLine += '  ';
                     j++; // skip the '*'
                     continue;
                 }
                 // Character literal containing a double quote: skip '"'
                 if (char === '\'' && j + 2 < line.length && line[j + 1] === '"' && line[j + 2] === '\'') {
+                    codeLine += line.substr(j, 3);
                     j += 2; // skip the '"' and closing '
                     continue;
                 }
@@ -97,6 +107,7 @@ function analyzeDocument(document) {
                     inString = false;
                 }
             }
+            codeLine += char;
         }
 
         // Update multi-line string state for next iteration
@@ -115,8 +126,8 @@ function analyzeDocument(document) {
         if (trimmed === '' || trimmed.startsWith('//')) continue;
 
         // CHECK 1: Semicolon after closing brace (common typo, not struct/class/enum)
-        if (/\}\s*;/.test(line) && !/^\s*(struct|class|enum)/.test(trimmed)) {
-            const m = line.match(/\}\s*;/);
+        if (/\}\s*;/.test(codeLine) && !/^\s*(struct|class|enum)/.test(trimmed)) {
+            const m = codeLine.match(/\}\s*;/);
             const col = m.index + m[0].lastIndexOf(';');
             const diag = new vscode.Diagnostic(
                 new vscode.Range(i, col, i, col + 1),
@@ -130,7 +141,7 @@ function analyzeDocument(document) {
 
         // CHECK 2: Assignment in condition (= instead of ==)
         // Skip intentional patterns like: if((x=expr)!=0) or if((x=func())!=NULL)
-        const conditionMatch = line.match(/\b(if|while)\s*\(\s*(.+)\s*\)(?:\s*\{|\s*$)/);
+        const conditionMatch = codeLine.match(/\b(if|while)\s*\(\s*(.+)\s*\)(?:\s*\{|\s*$)/);
         if (conditionMatch) {
             const condition = conditionMatch[2];
             // Remove string literals before checking for assignment
@@ -141,7 +152,7 @@ function analyzeDocument(document) {
             const hasComparison = /[=!<>]=|!=|==|<=|>=/.test(conditionNoStrings);
             // Simple assignment like if(x=5) but NOT if((x=5)!=0)
             if (hasAssignment && !hasComparison) {
-                const condStart = line.indexOf(conditionMatch[0]);
+                const condStart = codeLine.indexOf(conditionMatch[0]);
                 const diag = new vscode.Diagnostic(
                     new vscode.Range(i, condStart, i, condStart + conditionMatch[0].length),
                     'Possible assignment in condition (did you mean "==" instead of "="?)',

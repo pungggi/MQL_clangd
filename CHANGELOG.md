@@ -6,6 +6,7 @@
 - **Configurable TradeReportServer location**: New `mql_tools.Backtest.ServerDir` setting overrides the default `<MQL5 data folder>/Tools/TradeReportServer` location. Supports `${workspaceFolder}`, `~`, and relative paths. Resolved path is validated (`package.json` + `src/index.js`) before launch, with a clear error and a one-click action to open the setting when the package folder is missing.
 
 ### Bug Fixes
+- **Lightweight diagnostics false positives in comments**: The `mql-lightweight` checks for `assignment-in-condition` and `unnecessary-semicolon` no longer parse `=` or `};` characters inside line/block comments as code (fixes #39).
 - **Header Compilation Crash**: Fixed a critical `TypeError: a is not a function` error that occurred when compiling `.mqh` files. This was caused by a circular dependency in the extension's module loading (fixes #36).
 - **Legacy Compile Targets**: Automatically migrates legacy string-based compile targets to arrays to prevent `.map is not a function` errors when resolving header dependencies.
 - **Compile Target Type Guard**: `getCompileTargets` now validates the stored value type — arrays are returned as-is, legacy strings are wrapped, and any other unexpected type emits a console warning and returns `null` instead of silently producing a malformed value.
