@@ -31,6 +31,7 @@ mocha.addFile(path.resolve(__dirname, 'suite/logic.test.js'));
 mocha.addFile(path.resolve(__dirname, 'suite/extension.test.js'));
 mocha.addFile(path.resolve(__dirname, 'utf8Mirror.test.js'));
 mocha.addFile(path.resolve(__dirname, 'utf8MirrorIntegration.test.js'));
+mocha.addFile(path.resolve(__dirname, 'lightweightDiagnostics.test.js'));
 
 // Run the tests
 mocha.run(failures => {

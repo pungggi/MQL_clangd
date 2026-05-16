@@ -29,6 +29,14 @@ const DiagnosticSeverity = {
     Hint: 3
 };
 
+class Diagnostic {
+    constructor(range, message, severity) {
+        this.range = range;
+        this.message = message;
+        this.severity = severity;
+    }
+}
+
 const ConfigurationTarget = {
     Global: 1,
     Workspace: 2,
@@ -40,6 +48,7 @@ module.exports = {
     Position,
     RelativePattern,
     DiagnosticSeverity,
+    Diagnostic,
     ConfigurationTarget,
     env: {
         language: 'en'

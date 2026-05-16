@@ -305,4 +305,5 @@ function registerLightweightDiagnostics(context) {
 }
 
 // Export getter function instead of the collection itself
-module.exports = { registerLightweightDiagnostics, getLightweightDiagnostics };
+// analyzeDocument is exported for unit testing.
+module.exports = { registerLightweightDiagnostics, getLightweightDiagnostics, analyzeDocument };
