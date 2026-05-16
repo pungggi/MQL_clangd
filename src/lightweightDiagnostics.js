@@ -43,7 +43,10 @@ function analyzeDocument(document) {
         let escaped = false;
         let quoteCount = 0;
         const hasLineContinuation = line.endsWith('\\');
-        let lineIsCode = !inBlockComment && !inMultiLineString;
+        // Lines that began inside a multi-line string are not analyzable as code
+        // (strings are not blanked in codeLine, so we'd otherwise treat string
+        // content as if it were source).
+        const lineStartedInMultilineString = inMultiLineString;
         let codeLine = '';
 
         for (let j = 0; j < line.length; j++) {
@@ -89,7 +92,7 @@ function analyzeDocument(document) {
                 }
                 // Character literal containing a double quote: skip '"'
                 if (char === '\'' && j + 2 < line.length && line[j + 1] === '"' && line[j + 2] === '\'') {
-                    codeLine += line.substr(j, 3);
+                    codeLine += line.substring(j, j + 3);
                     j += 2; // skip the '"' and closing '
                     continue;
                 }
@@ -119,14 +122,16 @@ function analyzeDocument(document) {
         }
 
         // --- Skip diagnostics for non-code lines ---
-        // If the entire line is inside a block comment or multi-line string
-        // that started before this line, skip diagnostic checks
-        if (!lineIsCode) continue;
-        // Skip empty lines and pure single-line comment lines
-        if (trimmed === '' || trimmed.startsWith('//')) continue;
+        // Lines wholly inside a multi-line string, or with no real code after
+        // comment-stripping (pure comment / blank / mid-block-comment lines),
+        // are not analyzable.
+        const codeTrimmed = codeLine.trim();
+        if (lineStartedInMultilineString || codeTrimmed === '') continue;
 
         // CHECK 1: Semicolon after closing brace (common typo, not struct/class/enum)
-        if (/\}\s*;/.test(codeLine) && !/^\s*(struct|class|enum)/.test(trimmed)) {
+        // The struct/class/enum guard runs on the comment-stripped line so
+        // leading comments like `/*...*/ struct Foo { ... };` are recognized.
+        if (/\}\s*;/.test(codeLine) && !/^(struct|class|enum)/.test(codeTrimmed)) {
             const m = codeLine.match(/\}\s*;/);
             const col = m.index + m[0].lastIndexOf(';');
             const diag = new vscode.Diagnostic(

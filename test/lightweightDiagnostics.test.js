@@ -74,4 +74,37 @@ suite('lightweightDiagnostics — comment stripping (issue #39)', () => {
         const doc = makeDoc('/* this is\n  if (x = 5)\n  end */\nint y = 1;');
         assert.deepStrictEqual(codes(analyzeDocument(doc)), []);
     });
+
+    test('flags assignment-in-condition when a block comment closes earlier on the same line', () => {
+        // Regression: previously this whole line was skipped because the line
+        // began inside a block comment, so the trailing `if (x = 5)` slipped
+        // past the analyzer.
+        const doc = makeDoc('/* hdr */ if (x = 5)\n{\n}');
+        assert.deepStrictEqual(codes(analyzeDocument(doc)), ['assignment-in-condition']);
+    });
+
+    test('does not flag }; in struct preceded by a block comment', () => {
+        // Regression: the struct/class/enum guard now runs on the
+        // comment-stripped line so leading comments do not defeat it.
+        const doc = makeDoc('/* hdr */ struct Foo { int x; };');
+        assert.deepStrictEqual(codes(analyzeDocument(doc)), []);
+    });
+
+    test('does not flag escaped quotes inside a string in condition', () => {
+        const doc = makeDoc('if (s == "a \\"=\\" b")\n{\n}');
+        assert.deepStrictEqual(codes(analyzeDocument(doc)), []);
+    });
+
+    test('does not crash on an unterminated block comment at EOF', () => {
+        const doc = makeDoc('/* unterminated\n   if (x = 5)\n   no closer here');
+        // The scanner must not throw, and content inside the unterminated
+        // comment must not produce diagnostics.
+        const diags = analyzeDocument(doc);
+        assert.deepStrictEqual(codes(diags), []);
+    });
+
+    test('does not flag = inside an MQL char literal', () => {
+        const doc = makeDoc("if (delim == '=')\n{\n}");
+        assert.deepStrictEqual(codes(analyzeDocument(doc)), []);
+    });
 });
