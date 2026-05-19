@@ -165,6 +165,11 @@
                     "maximum": 300000,
                     "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
+                "mql_tools.Wine.RestartTerminalOnCompileSuccess": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "When running under Wine (macOS/Linux), automatically kill and relaunch the MetaTrader terminal after a successful compile so it picks up the new `.ex5`. Required because Wine's Win32 file-change notifications don't reliably propagate between MetaEditor and a running `terminal64.exe`. Only takes effect with the **Compile and Open Terminal** command. **Ignored on Windows and when `mql_tools.Wine.Enabled` is false.**"
+                },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
                     "enum": [
