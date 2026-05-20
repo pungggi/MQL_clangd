@@ -2,7 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
-const createProperties = require('./createProperties');
+// createProperties is required lazily inside buildReverseIndex to avoid a circular-require cycle that captures a stale empty exports reference.
 
 /**
  * Compile Target Resolver
@@ -78,6 +78,7 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
     );
 
     // Determine workspace MQL version from scanned files
+    const createProperties = require('./createProperties');
     const workspaceVersion = createProperties.detectWorkspaceMqlVersion(files, workspaceRoot, workspaceFolder.name);
 
     for (const fileUri of files) {

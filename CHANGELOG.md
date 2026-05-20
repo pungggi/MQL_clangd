@@ -5,6 +5,9 @@
 ### Features
 - **Post-compile task hook**: New `mql_tools.Compile.RunTaskOnSuccess` setting runs a named VS Code task (defined in `.vscode/tasks.json`) after every successful compile. Useful for triggering EA-reload workflows on Wine/macOS — e.g. write a flag file that an MT5 Service watches, so it can reload the freshly compiled EA via `ChartApplyTemplate()` without restarting the terminal. Task variables like `${fileBasenameNoExtension}` are resolved by VS Code against the active editor at task run time, so one task definition can serve all EAs. Leave the setting empty (default) to disable (refs #41).
 
+### Bug Fixes
+- **Header Compilation Crash (regression)**: Fixed `a.detectWorkspaceMqlVersion is not a function` thrown when compiling `.mqh` files. A circular `require` between `compileTargetResolver.js` and `createProperties.js` left the resolver holding a stale empty exports reference; the call site now lazy-loads `createProperties` to break the cycle (fixes #42).
+
 ## 1.1.44
 
 ### Bug Fixes
