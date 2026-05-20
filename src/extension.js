@@ -758,6 +758,23 @@ async function runCompileSuccessAction(options = {}, logger = console) {
     }
 }
 
+function shouldRunConfiguredPostCompileTask(hasErrors, config) {
+    if (hasErrors) return false;
+    const cfg = config || vscode.workspace.getConfiguration('mql_tools');
+    const taskLabel = cfg.get('Compile.RunTaskOnSuccess');
+    return typeof taskLabel === 'string' && taskLabel.trim().length > 0;
+}
+
+async function runConfiguredPostCompileTask(logger = console) {
+    const taskLabel = (vscode.workspace.getConfiguration('mql_tools').get('Compile.RunTaskOnSuccess') || '').trim();
+    if (!taskLabel) return;
+    try {
+        await vscode.commands.executeCommand('workbench.action.tasks.runTask', taskLabel);
+    } catch (error) {
+        logger.error(`Compile succeeded, but the post-compile task "${taskLabel}" failed to start:`, error);
+    }
+}
+
 /**
  * Resolve which paths to compile for a .mqh header file.
  *
@@ -911,6 +928,9 @@ async function Compile(rt, context, options = {}) {
 
     if (shouldRunCompileSuccessAction(hasErrors, options)) {
         await runCompileSuccessAction(options);
+    }
+    if (shouldRunConfiguredPostCompileTask(hasErrors)) {
+        await runConfiguredPostCompileTask();
     }
 }
 
@@ -3068,6 +3088,8 @@ module.exports = {
     shouldFocusProblemsPanel,
     shouldRunCompileSuccessAction,
     runCompileSuccessAction,
+    shouldRunConfiguredPostCompileTask,
+    runConfiguredPostCompileTask,
     resolveHeaderCompilePlan,
     inferMqlDataDirFromPath
 };

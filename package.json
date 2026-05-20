@@ -170,6 +170,11 @@
                     "default": false,
                     "markdownDescription": "When running under Wine (macOS/Linux), automatically kill and relaunch the MetaTrader terminal after a successful compile so it picks up the new `.ex5`. Required because Wine's Win32 file-change notifications don't reliably propagate between MetaEditor and a running `terminal64.exe`. Only takes effect with the **Compile and Open Terminal** command. **Ignored on Windows and when `mql_tools.Wine.Enabled` is false.**"
                 },
+                "mql_tools.Compile.RunTaskOnSuccess": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Label of a VS Code task (defined in `.vscode/tasks.json`) to run after every successful compile. Leave empty to disable. Useful for triggering EA-reload workflows on Wine — e.g. write a flag file that an MQL5 Service inside MT5 watches, so it can reload the freshly compiled EA via `ChartApplyTemplate()`. Task variables like `${fileBasenameNoExtension}` are resolved by VS Code against the active editor at task run time."
+                },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
                     "enum": [
