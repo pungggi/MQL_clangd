@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+- **Header Compilation Crash (regression)**: Fixed `a.detectWorkspaceMqlVersion is not a function` thrown when compiling `.mqh` files. A circular `require` between `compileTargetResolver.js` and `createProperties.js` left the resolver holding a stale empty exports reference; the call site now lazy-loads `createProperties` to break the cycle (fixes #42).
+
 ## 1.1.44
 
 ### Bug Fixes
