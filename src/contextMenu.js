@@ -330,33 +330,6 @@ function _killTerminal(exeName) {
     });
 }
 
-/** Check if a Wine terminal process is running via host pgrep. */
-function _isTerminalRunningWine(exeName) {
-    return new Promise(resolve => {
-        if (!/^[A-Za-z0-9._-]+$/.test(exeName)) {
-            resolve(false);
-            return;
-        }
-        // -f matches the full argv ("...terminal64.exe ..."); Wine's host-side
-        // process is wine64-preloader or similar, so a plain image match fails.
-        childProcess.execFile('pgrep', ['-f', exeName], { timeout: 3000 }, (err) => {
-            // pgrep exits 0 when matched, 1 when not, >1 on error
-            resolve(!err);
-        });
-    });
-}
-
-/** Kill a running Wine terminal process via host pkill. */
-function _killTerminalWine(exeName) {
-    return new Promise(resolve => {
-        if (!/^[A-Za-z0-9._-]+$/.test(exeName)) {
-            resolve();
-            return;
-        }
-        childProcess.execFile('pkill', ['-f', exeName], { timeout: 5000 }, () => resolve());
-    });
-}
-
 /**
  * Build a startup INI file so MetaTrader auto-attaches an EA on launch.
  *
@@ -505,18 +478,6 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
                     // User chose manual attach or dismissed — skip INI
                     iniPath = null;
                 }
-            }
-        } else if (config.Wine && config.Wine.RestartTerminalOnCompileSuccess) {
-            // Wine's Win32 file-change notifications don't reliably propagate
-            // between MetaEditor and a running terminal64.exe, so MT5 never sees
-            // the freshly compiled .ex5. When the user opts in, kill the running
-            // terminal so the relaunch below picks up the new build (and /config:
-            // is honored on the fresh launch).
-            const running = await _isTerminalRunningWine(lowNm);
-            if (running) {
-                _oc.appendLine(`[Auto-attach] Wine: killing running ${lowNm} to pick up new build.`);
-                await _killTerminalWine(lowNm);
-                await new Promise(r => setTimeout(r, TERMINAL_KILL_DELAY_MS));
             }
         }
     } else if (eaPath) {
