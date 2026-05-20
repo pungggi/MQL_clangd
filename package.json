@@ -165,6 +165,11 @@
                     "maximum": 300000,
                     "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
+                "mql_tools.Compile.RunTaskOnSuccess": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Label of a VS Code task (defined in `.vscode/tasks.json`) to run after every successful compile. Leave empty to disable. Useful for triggering EA-reload workflows on Wine — e.g. write a flag file that an MQL5 Service inside MT5 watches, so it can reload the freshly compiled EA via `ChartApplyTemplate()`. Task variables like `${fileBasenameNoExtension}` are resolved by VS Code against the active editor at task run time."
+                },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
                     "enum": [
