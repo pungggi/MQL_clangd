@@ -12,6 +12,7 @@
 - [Quick Setup Guide](#quick-setup-guide)
 - [Important Notes](#important-notes)
 - [MetaEditor on macOS / Linux (Wine)](#metaeditor-on-macos--linux-wine)
+- [Auto-Reload EA After Compile (MT5 Service)](#auto-reload-ea-after-compile-mt5-service)
 - [Live Runtime Log](#live-runtime-log)
 - [Trade Report Dashboard](#trade-report-dashboard)
 - [Run Backtest](#run-backtest)
@@ -158,6 +159,35 @@ When `mql_tools.Wine.Enabled` is `true` on macOS/Linux:
 - Compile / Check commands run MetaEditor via Wine instead of executing the `.exe` directly.
 - Paths for source files, include directories and logs are automatically converted with `winepath -w`, so MetaEditor sees them as `Z:\\...` paths.
 - Behaviour on Windows is unchanged (the wrapper is ignored on Windows, or when `Wine.Enabled` is `false`).
+
+---
+
+### Auto-Reload EA After Compile (MT5 Service)
+
+On Wine/macOS (and any setup where MetaTrader doesn't auto-reload the running EA after compile) you can close the loop with a tiny MT5 Service that watches for flag files written by the post-compile task hook.
+
+A ready-to-use service ships under [`files/CompileListenerService.mq5`](files/CompileListenerService.mq5). Drop it into `MQL5/Services/`, compile, then start it from **Navigator → Services**.
+
+**How it works**
+
+1. The extension's post-compile task hook (`mql_tools.Compile.RunTaskOnSuccess`) runs a VS Code task after a successful compile. Configure that task to write a flag file, e.g. `MQL5/Files/COMPILEFLAGS/<EA>.flag`.
+2. `CompileListenerService.mq5` polls the `COMPILEFLAGS` folder once per second. When `<EA>.flag` appears it:
+   - deletes the flag file,
+   - finds the chart whose `CHART_EXPERT_NAME` matches `<EA>`,
+   - calls `ChartApplyTemplate(chartId, "<EA>.tpl")` — which reloads the EA from the named template.
+
+**Service inputs**
+
+| Input | Default | Purpose |
+|-------|---------|---------|
+| `expertNames` | `"EA_Name_1,EA_Name_2"` | Comma-separated EA names to watch (no extension). Whitespace around names is trimmed. |
+| `showDebugOutput` | `true` | Print per-chart scan info and "applying template" lines to the Experts log. |
+
+**Notes**
+
+- It is a real MT5 service (`#property service` + `OnStart`), so it runs independently of any chart and survives terminal reload.
+- For each EA, save a template named `<EA>.tpl` in `MQL5/Profiles/Templates/`. The service applies that template on reload.
+- Failures from `FileDelete` and `ChartApplyTemplate` are always logged with `GetLastError()` so silent retry loops are easy to spot.
 
 ---
 

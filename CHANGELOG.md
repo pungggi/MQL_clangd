@@ -1,6 +1,9 @@
-# Changelog
+## 1.1.46
 
-## Unreleased
+### Features
+- **CompileListenerService for MT5**: New companion service `files/CompileListenerService.mq5` (true `#property service` with `OnStart`/`Sleep` loop, runs independently of charts). Polls `MQL5/Files/COMPILEFLAGS/<EA>.flag` once per second, deletes the flag, locates the chart running the named EA, and calls `ChartApplyTemplate("<EA>.tpl")` to reload it. Configure via the `expertNames` input (comma-separated; whitespace trimmed) and `showDebugOutput`. Pairs with the post-compile task hook above to close the Wine/macOS reload gap (refs #41, #45).
+
+## 1.1.45
 
 ### Features
 - **Post-compile task hook**: New `mql_tools.Compile.RunTaskOnSuccess` setting runs a named VS Code task (defined in `.vscode/tasks.json`) after every successful compile. Useful for triggering EA-reload workflows on Wine/macOS — e.g. write a flag file that an MT5 Service watches, so it can reload the freshly compiled EA via `ChartApplyTemplate()` without restarting the terminal. Task variables like `${fileBasenameNoExtension}` are resolved by VS Code against the active editor at task run time, so one task definition can serve all EAs. Leave the setting empty (default) to disable (refs #41).
