@@ -57,11 +57,7 @@ void CheckCompileFlags() {
       if (name == "") { continue; }
 
       string filePath = "COMPILEFLAGS\\" + name + ".flag";
-      int handle = FileOpen(filePath, FILE_READ|FILE_TXT);
-
-      if (handle == INVALID_HANDLE) { continue; }
-
-      FileClose(handle);
+      if (!FileIsExist(filePath)) { continue; }
 
       if (!FileDelete(filePath)) {
          Print("Failed to delete flag ", filePath, " error=", GetLastError());
