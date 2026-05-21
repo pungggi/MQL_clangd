@@ -28,7 +28,7 @@ string expertNamesArray[];
 //==============================================================================
 // FIND AN EA AMONGST CURRENTLY OPEN CHARTS FROM EA NAME
 //==============================================================================
-long IsExpertAdvisorOnChart(string expertNameWanted) {
+long GetChartIdForExpert(string expertNameWanted) {
 
    long chartId = ChartFirst();
 
@@ -64,7 +64,7 @@ void CheckCompileFlags() {
          continue;
       }
 
-      long chartId = IsExpertAdvisorOnChart(name);
+      long chartId = GetChartIdForExpert(name);
       if (chartId == -1) {
          if (showDebugOutput) { Print("EA ", name, " not found on any chart, skipping template apply."); }
          continue;
@@ -83,18 +83,36 @@ void CheckCompileFlags() {
 //==============================================================================
 void OnStart() {
 
+   string lastExpertNames = expertNames;
+
    if (expertNames == "") {
-      Print("Expert name(s) configuration missing.");
-      return;
+      Print("Warning: Expert name(s) configuration is empty.");
+      ArrayFree(expertNamesArray);
    }
-
-   StringSplit(expertNames, ',', expertNamesArray);
-
-   for (int i = 0; i < ArraySize(expertNamesArray); i++) {
-      expertNamesArray[i] = StringTrimLeft(StringTrimRight(expertNamesArray[i]));
+   else {
+      StringSplit(expertNames, ',', expertNamesArray);
+      for (int i = 0; i < ArraySize(expertNamesArray); i++) {
+         expertNamesArray[i] = StringTrimLeft(StringTrimRight(expertNamesArray[i]));
+      }
    }
 
    while (!IsStopped()) {
+      // Allow dynamic updates to expertNames input at runtime
+      if (expertNames != lastExpertNames) {
+         lastExpertNames = expertNames;
+         if (expertNames == "") {
+            Print("Warning: Expert name(s) configuration is empty.");
+            ArrayFree(expertNamesArray);
+         }
+         else {
+            StringSplit(expertNames, ',', expertNamesArray);
+            for (int i = 0; i < ArraySize(expertNamesArray); i++) {
+               expertNamesArray[i] = StringTrimLeft(StringTrimRight(expertNamesArray[i]));
+            }
+            if (showDebugOutput) { Print("Expert name(s) configuration updated to: ", expertNames); }
+         }
+      }
+
       CheckCompileFlags();
       Sleep(1000);
    }
