@@ -191,12 +191,25 @@ async function getClangdClient() {
     return _clangdClient;
 }
 
-function rangeContainsPosition(range, pos) {
+/**
+ * Checks if a position falls within a range.
+ * @param {vscode.Range|any} range 
+ * @param {vscode.Position|any} pos 
+ * @param {Object} [options]
+ * @param {boolean} [options.endExclusive=false] - If true, pos.character >= range.end.character is considered out of bounds.
+ */
+function rangeContainsPosition(range, pos, { endExclusive = false } = {}) {
     if (!range || !pos) return false;
     const startLine = range.start.line, endLine = range.end.line;
     if (pos.line < startLine || pos.line > endLine) return false;
     if (pos.line === startLine && pos.character < range.start.character) return false;
-    if (pos.line === endLine && pos.character > range.end.character) return false;
+    if (pos.line === endLine) {
+        if (endExclusive) {
+            if (pos.character >= range.end.character) return false;
+        } else {
+            if (pos.character > range.end.character) return false;
+        }
+    }
     return true;
 }
 
@@ -242,7 +255,7 @@ async function probeDefinition(document, position) {
         const range = loc.range || loc.targetSelectionRange || loc.targetRange;
         // Same-doc hit that contains the probe position is the call-site itself
         // or a textual fallback to the very token we typed — not a real def.
-        return !rangeContainsPosition(range, position);
+        return !rangeContainsPosition(range, position, { endExclusive: false });
     });
     if (realHits.length === 0) {
         return { resolved: false, reason: 'self-only' };
@@ -257,6 +270,11 @@ async function probeDefinition(document, position) {
 let decorationType = null;
 let diagnosticCollection = null;
 const inFlight = new Map();
+
+// Map<uri.toString(), Array<{ range, name, kind: 'unresolved' | 'file-dark' }>>
+// Populated by runScan, read by the CodeLens provider.
+const unresolvedByDoc = new Map();
+const codeLensEmitter = { fire: () => { /* set in activate() */ } };
 
 function activate(context, getIncludeDir) {
     // Defensive: reset module-scoped state on re-entry (Reload Window keeps the
@@ -282,6 +300,8 @@ function activate(context, getIncludeDir) {
     context.subscriptions.push(
         vscode.workspace.onDidCloseTextDocument((doc) => {
             diagnosticCollection.delete(doc.uri);
+            unresolvedByDoc.delete(doc.uri.toString());
+            codeLensEmitter.fire();
             for (const ed of vscode.window.visibleTextEditors) {
                 if (ed.document.uri.toString() === doc.uri.toString()) {
                     ed.setDecorations(decorationType, []);
@@ -295,6 +315,16 @@ function activate(context, getIncludeDir) {
             [{ language: 'mql5' }, { language: 'mql4' }, { pattern: '**/*.{mq4,mq5,mqh}' }],
             new UnresolvedCodeActionProvider(),
             { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+        )
+    );
+
+    const emitter = new vscode.EventEmitter();
+    codeLensEmitter.fire = () => emitter.fire();
+    context.subscriptions.push(emitter);
+    context.subscriptions.push(
+        vscode.languages.registerCodeLensProvider(
+            [{ language: 'mql5' }, { language: 'mql4' }, { pattern: '**/*.{mq4,mq5,mqh}' }],
+            new UnresolvedCodeLensProvider(emitter.event)
         )
     );
 }
@@ -335,7 +365,7 @@ async function runScan(doc, token, getIncludeDir) {
         const range = new vscode.Range(0, 0, 0, 0);
         const diag = new vscode.Diagnostic(
             range,
-            `clangd cannot resolve any symbol in this file. The file may be missing from compile_commands.json or clangd failed to parse it.`,
+            'clangd cannot resolve any symbol in this file. The file may be missing from compile_commands.json or clangd failed to parse it.',
             vscode.DiagnosticSeverity.Hint
         );
         diag.source = DIAG_SOURCE;
@@ -346,6 +376,8 @@ async function runScan(doc, token, getIncludeDir) {
                 ed.setDecorations(decorationType, [range]);
             }
         }
+        unresolvedByDoc.set(doc.uri.toString(), [{ range, name: '(file)', kind: 'file-dark' }]);
+        codeLensEmitter.fire();
         return;
     }
 
@@ -375,10 +407,12 @@ async function runScan(doc, token, getIncludeDir) {
 
     const unresolvedRanges = [];
     const diagnostics = [];
+    const lensEntries = [];
     for (const r of probeResults) {
         if (!r || r.probe.resolved) continue;
         for (const occ of r.occurrences) {
             unresolvedRanges.push(occ.range);
+            lensEntries.push({ range: occ.range, name: r.name, kind: 'unresolved' });
             const diag = new vscode.Diagnostic(
                 occ.range,
                 `clangd has no definition for '${r.name}'. Header may be parsed outside its compile target.`,
@@ -397,6 +431,8 @@ async function runScan(doc, token, getIncludeDir) {
             ed.setDecorations(decorationType, unresolvedRanges);
         }
     }
+    unresolvedByDoc.set(doc.uri.toString(), lensEntries);
+    codeLensEmitter.fire();
 }
 
 async function probeCanary(doc, token) {
@@ -460,7 +496,7 @@ async function mapWithConcurrency(items, limit, fn) {
 function collectLocalNamesFromText(rawText) {
     const text = maskCommentsAndStrings(rawText);
     const names = new Set();
-    const defs = extractTopLevelFunctionDefs(text);
+    const defs = extractTopLevelFunctionDefs(rawText);
     for (const d of defs) names.add(d.name);
     const classRegex = /\b(?:class|struct|enum)\s+([A-Za-z_]\w*)/g;
     let m;
@@ -482,6 +518,39 @@ function collectLocalNames(doc) {
 // =============================================================================
 // CodeActionProvider
 // =============================================================================
+
+class UnresolvedCodeLensProvider {
+    constructor(onDidChange) {
+        this.onDidChangeCodeLenses = onDidChange;
+    }
+
+    provideCodeLenses(document) {
+        const entries = unresolvedByDoc.get(document.uri.toString());
+        if (!entries || entries.length === 0) return [];
+
+        // De-dup by line so a long file with many unresolved calls does not
+        // get a CodeLens on every line — one per identifier name per line.
+        const seen = new Set();
+        const lenses = [];
+        for (const e of entries) {
+            const lineKey = `${e.range.start.line}:${e.name}`;
+            if (seen.has(lineKey)) continue;
+            seen.add(lineKey);
+
+            const title = e.kind === 'file-dark'
+                ? '$(lightbulb) clangd cannot resolve any symbol in this file — click to fix'
+                : `$(lightbulb) Unresolved: ${e.name} — click to fix`;
+
+            const lens = new vscode.CodeLens(e.range, {
+                title,
+                command: 'mql_tools.configurations',
+                tooltip: 'Regenerate compile_commands.json via MQL: Create Configuration'
+            });
+            lenses.push(lens);
+        }
+        return lenses;
+    }
+}
 
 class UnresolvedCodeActionProvider {
     provideCodeActions(document, range, context) {
@@ -530,6 +599,8 @@ module.exports = {
     rangeContainsPosition,
     escapeRegExp,
     UnresolvedCodeActionProvider,
+    UnresolvedCodeLensProvider,
+    unresolvedByDoc,
     KEYWORDS,
     DIAG_SOURCE,
     ALLOWLIST_TTL_MS,

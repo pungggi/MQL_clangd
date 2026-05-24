@@ -1485,6 +1485,20 @@ suite('generateAutoForwardsHeader', () => {
 });
 
 suite('extractTopLevelFunctionDefs — regression cases', () => {
+    test('ignores functions inside strings and comments', () => {
+        const src = `
+            void realFunc() {}
+            /*
+            void commentedFunc() {}
+            */
+            // void lineCommentFunc() {}
+            string s = "void stringFunc() {}";
+        `;
+        const defs = extractTopLevelFunctionDefs(src);
+        const names = defs.map(d => d.name);
+        assert.deepStrictEqual(names, ['realFunc']);
+    });
+
     test('skips out-of-line class member definitions (`void CFoo::bar() {}`)', () => {
         const src = 'void CFoo::bar(int x) {\n    Print(x);\n}\nvoid topLevel() {}\n';
         const defs = extractTopLevelFunctionDefs(src);
@@ -1529,6 +1543,44 @@ suite('buildAllHeaderEntries — auto-forwards integration', () => {
             const hasAutoForwards = includeFlags.some(f => f.includes(AUTO_FORWARDS_DIR));
             assert.ok(hasAutoForwards, `expected an auto-forwards -include flag, got: ${includeFlags.join(' | ')}`);
         } finally { cleanup(); }
+    });
+});
+
+suite('buildCompileCommandEntry — precedingHeaders', () => {
+    test('appends -include flags for each preceding header after the compat -include', () => {
+        const entry = buildCompileCommandEntry(
+            '/ws/Experts/Main.mq5',
+            ['-xc++', '-std=c++17', '-includeC:/compat.h'],
+            '/ws',
+            ['C:/ws/.mql-auto-forwards/Main.abc.auto.mqh']
+        );
+        assert.ok(entry, 'entry should be built');
+        const args = entry.arguments;
+        const compatIdx = args.findIndex(a => a === '-includeC:/compat.h');
+        const fwdIdx = args.findIndex(a => a.includes('.mql-auto-forwards'));
+        assert.ok(compatIdx >= 0, 'compat -include must be present');
+        assert.ok(fwdIdx > compatIdx, 'auto-forwards -include must follow compat -include');
+    });
+
+    test('no extra -include is added when precedingHeaders is empty/omitted', () => {
+        const entry = buildCompileCommandEntry(
+            '/ws/Experts/Main.mq5',
+            ['-xc++', '-includeC:/compat.h'],
+            '/ws'
+        );
+        const includes = entry.arguments.filter(a => a.startsWith('-include'));
+        assert.strictEqual(includes.length, 1);
+        assert.strictEqual(includes[0], '-includeC:/compat.h');
+    });
+
+    test('still returns null for header (.mqh) extensions', () => {
+        const entry = buildCompileCommandEntry(
+            '/ws/Include/foo.mqh',
+            ['-xc++'],
+            '/ws',
+            ['/ws/.mql-auto-forwards/Main.abc.auto.mqh']
+        );
+        assert.strictEqual(entry, null);
     });
 });
 
@@ -1755,6 +1807,14 @@ suite('unresolvedSymbolWatcher — rangeContainsPosition', () => {
         assert.strictEqual(rangeContainsPosition(range, { line: 2, character: 4 }), false);
         assert.strictEqual(rangeContainsPosition(range, { line: 4, character: 4 }), false);
     });
+    test('respects endExclusive option at the exact end boundary', () => {
+        const range = { start: { line: 5, character: 2 }, end: { line: 5, character: 10 } };
+        // Default (inclusive)
+        assert.strictEqual(rangeContainsPosition(range, { line: 5, character: 10 }), true);
+        assert.strictEqual(rangeContainsPosition(range, { line: 5, character: 10 }, { endExclusive: false }), true);
+        // Exclusive
+        assert.strictEqual(rangeContainsPosition(range, { line: 5, character: 10 }, { endExclusive: true }), false);
+    });
 });
 
 suite('unresolvedSymbolWatcher — getBuiltins', () => {
@@ -1817,5 +1877,70 @@ suite('unresolvedSymbolWatcher — UnresolvedCodeActionProvider', () => {
             diagnostics: [makeDiag('cpptools'), makeDiag('clangd')]
         });
         assert.deepStrictEqual(actions, []);
+    });
+});
+
+const {
+    UnresolvedCodeLensProvider,
+    unresolvedByDoc
+} = require('../../src/unresolvedSymbolWatcher');
+
+suite('unresolvedSymbolWatcher — UnresolvedCodeLensProvider', () => {
+    function fakeDoc(uri) {
+        return { uri: { toString: () => uri } };
+    }
+    function fakeRange(line, col) {
+        return { start: { line, character: col }, end: { line, character: col + 4 } };
+    }
+
+    test('returns no lenses when the doc has no recorded unresolved entries', () => {
+        const doc = fakeDoc('file:///empty.mq5');
+        const provider = new UnresolvedCodeLensProvider(() => {});
+        assert.deepStrictEqual(provider.provideCodeLenses(doc), []);
+    });
+
+    test('emits one CodeLens per unresolved name + line', () => {
+        const uri = 'file:///x.mq5';
+        unresolvedByDoc.set(uri, [
+            { range: fakeRange(10, 4), name: 'foo', kind: 'unresolved' },
+            { range: fakeRange(20, 4), name: 'bar', kind: 'unresolved' }
+        ]);
+        try {
+            const provider = new UnresolvedCodeLensProvider(() => {});
+            const lenses = provider.provideCodeLenses(fakeDoc(uri));
+            assert.strictEqual(lenses.length, 2);
+            assert.ok(lenses[0].command.title.includes('foo'));
+            assert.ok(lenses[1].command.title.includes('bar'));
+            for (const l of lenses) {
+                assert.strictEqual(l.command.command, 'mql_tools.configurations');
+            }
+        } finally { unresolvedByDoc.delete(uri); }
+    });
+
+    test('deduplicates repeats of the same identifier on the same line', () => {
+        const uri = 'file:///y.mq5';
+        unresolvedByDoc.set(uri, [
+            { range: fakeRange(5, 4), name: 'foo', kind: 'unresolved' },
+            { range: fakeRange(5, 20), name: 'foo', kind: 'unresolved' },
+            { range: fakeRange(6, 4), name: 'foo', kind: 'unresolved' }
+        ]);
+        try {
+            const provider = new UnresolvedCodeLensProvider(() => {});
+            const lenses = provider.provideCodeLenses(fakeDoc(uri));
+            assert.strictEqual(lenses.length, 2, 'two lines, one lens per line');
+        } finally { unresolvedByDoc.delete(uri); }
+    });
+
+    test('uses a file-level title when kind is "file-dark"', () => {
+        const uri = 'file:///z.mq5';
+        unresolvedByDoc.set(uri, [
+            { range: fakeRange(0, 0), name: '(file)', kind: 'file-dark' }
+        ]);
+        try {
+            const provider = new UnresolvedCodeLensProvider(() => {});
+            const lenses = provider.provideCodeLenses(fakeDoc(uri));
+            assert.strictEqual(lenses.length, 1);
+            assert.ok(/cannot resolve any symbol/i.test(lenses[0].command.title));
+        } finally { unresolvedByDoc.delete(uri); }
     });
 });

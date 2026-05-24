@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.1.47
+
+### Bug Fixes
+- **Same-file forward use broke Go to Definition**: Calling a function defined later in the same `.mq4`/`.mq5` made clangd treat the call as undeclared (C/C++ semantics), so hover fell back to a textual "Local Function" hint. The auto-forwards header is now also `-include`d into the entry-point's own `compile_commands.json` entry.
 
 ### Features
-- **On-save unresolved-symbol watcher**: After saving a `.mq4`/`.mq5`/`.mqh` file, the extension highlights every call site for which clangd cannot produce a definition. Each unresolved call gets an inline wavy underline (using the editor's warning color) and a `Hint`-severity diagnostic — so the marker is visible in the editor but does not clutter the Problems panel. Hovering or pressing Quick Fix on an underlined call offers two one-click actions: **Regenerate MQL configuration** (runs `MQL: Create Configuration` to rebuild `compile_commands.json`) and **Restart clangd**. Built-in MQL functions, names declared in workspace `Include/*.mqh` headers, and local document symbols are filtered out to keep noise low. The watcher queries clangd's LSP directly when its extension is installed (falling back to the aggregated `executeDefinitionProvider` otherwise), and treats results whose only location wraps the probe position as a textual fallback rather than a real definition. A canary probe surfaces a file-level diagnostic when clangd cannot resolve *any* locally-defined symbol in the file (typically caused by a missing `compile_commands.json` entry or a parse failure for that translation unit).
+- **On-save unresolved-symbol watcher**: After saving a `.mq4`/`.mq5`/`.mqh`, every call clangd cannot resolve gets a wavy underline, a CodeLens above the line (`💡 Unresolved: <name> — click to fix`), and a `Hint` diagnostic that keeps the Problems panel clean. Click the CodeLens or hit `Ctrl+.` to run **Regenerate MQL configuration** or **Restart clangd**. MQL built-ins, names declared in `Include/*.mqh`, and local symbols are filtered out. A canary probe surfaces a file-level CodeLens when clangd cannot resolve any symbol in the file (missing `compile_commands.json` entry, parse failure, etc.).
 
 ## 1.1.46
 

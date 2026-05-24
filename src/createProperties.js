@@ -732,7 +732,7 @@ async function haveIncludesChanged(filePath) {
  * @param {string} workspacePath
  * @returns {{directory: string, arguments: string[], file: string} | null}
  */
-function buildCompileCommandEntry(filePath, sharedFlags, workspacePath) {
+function buildCompileCommandEntry(filePath, sharedFlags, workspacePath, precedingHeaders) {
     const normalizedFilePath = normalizePath(filePath);
     const ext = pathModule.extname(normalizedFilePath).toLowerCase();
 
@@ -742,7 +742,17 @@ function buildCompileCommandEntry(filePath, sharedFlags, workspacePath) {
 
     const args = ['clang++'];
     const flags = Array.isArray(sharedFlags) ? sharedFlags : [];
+    const extraIncludes = Array.isArray(precedingHeaders) ? precedingHeaders : [];
 
+    // Match the compat header `-include` flag specifically (not any `-include`)
+    // so an unrelated `-include` added to sharedFlags later cannot accidentally
+    // become the insertion anchor.
+    const isCompatIncludeFlag = (flag) =>
+        typeof flag === 'string' &&
+        flag.startsWith('-include') &&
+        /mql_clangd_compat\.h$/i.test(normalizePath(flag));
+
+    let compatInserted = false;
     flags.forEach(flag => {
         if (!flag) {
             return;
@@ -759,7 +769,25 @@ function buildCompileCommandEntry(filePath, sharedFlags, workspacePath) {
         }
 
         args.push(flag);
+
+        // After the compat header `-include`, inject auto-forwards so the
+        // entry-point sees its own function declarations before parsing the
+        // body. MQL allows forward use within a TU; C/C++ does not, so calls
+        // above the definition site appear as undeclared identifiers without
+        // this prefix.
+        if (!compatInserted && isCompatIncludeFlag(flag)) {
+            compatInserted = true;
+            for (const h of extraIncludes) {
+                args.push(`-include${normalizePath(h)}`);
+            }
+        }
     });
+
+    if (!compatInserted) {
+        for (const h of extraIncludes) {
+            args.push(`-include${normalizePath(h)}`);
+        }
+    }
 
     args.push(ext === '.mq4' ? '-D__MQL4_BUILD__' : '-D__MQL5_BUILD__');
 
@@ -1174,20 +1202,23 @@ async function CreateProperties(force = false) {
 
     // --- Generate compile_commands.json (reuse targetFiles from version detection scan) ---
     try {
-        // 1. Build TU entries (existing behavior)
-        const tuEntries = targetFiles
-            .map(fileUri => {
-                const ext = pathModule.extname(fileUri.fsPath).toLowerCase();
-                // Swap external include dir for files mismatching workspace version
-                const neededIncFlag = ext === '.mq4' ? inc4Flag : inc5Flag;
-                if (neededIncFlag !== primaryIncFlag) {
-                    const fileFlags = arrPath.filter(f => f !== primaryIncFlag);
-                    if (neededIncFlag) fileFlags.push(neededIncFlag);
-                    return buildCompileCommandEntry(fileUri.fsPath, fileFlags, workspacepath);
-                }
-                return buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath);
-            })
-            .filter(Boolean);
+        // 1. Build TU entries with auto-forwards injection so the entry-point
+        // can call its own functions before their definitions (MQL allows
+        // forward use in a TU; C/C++ does not — without the forward-decl
+        // header clangd treats every above-the-line self-call as undeclared).
+        const tuEntries = (await Promise.all(targetFiles.map(async (fileUri) => {
+            const ext = pathModule.extname(fileUri.fsPath).toLowerCase();
+            const autoFwd = await generateAutoForwardsHeader(fileUri.fsPath, workspacepath);
+            const extraIncludes = autoFwd ? [autoFwd] : [];
+            // Swap external include dir for files mismatching workspace version
+            const neededIncFlag = ext === '.mq4' ? inc4Flag : inc5Flag;
+            if (neededIncFlag !== primaryIncFlag) {
+                const fileFlags = arrPath.filter(f => f !== primaryIncFlag);
+                if (neededIncFlag) fileFlags.push(neededIncFlag);
+                return buildCompileCommandEntry(fileUri.fsPath, fileFlags, workspacepath, extraIncludes);
+            }
+            return buildCompileCommandEntry(fileUri.fsPath, arrPath, workspacepath, extraIncludes);
+        }))).filter(Boolean);
 
         // 2. Build header entries with -include injection for preceding siblings
         const headerEntries = await buildAllHeaderEntries(

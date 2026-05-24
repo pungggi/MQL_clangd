@@ -64,6 +64,27 @@ class CodeAction {
     }
 }
 
+class CodeLens {
+    constructor(range, command) {
+        this.range = range;
+        this.command = command;
+    }
+}
+
+class EventEmitter {
+    constructor() {
+        this._listeners = [];
+        this.event = (listener) => {
+            this._listeners.push(listener);
+            return { dispose: () => { this._listeners = this._listeners.filter(l => l !== listener); } };
+        };
+    }
+    fire(value) {
+        for (const l of this._listeners.slice()) l(value);
+    }
+    dispose() { this._listeners = []; }
+}
+
 module.exports = {
     Range,
     Position,
@@ -73,6 +94,8 @@ module.exports = {
     ConfigurationTarget,
     CodeActionKind,
     CodeAction,
+    CodeLens,
+    EventEmitter,
     env: {
         language: 'en'
     },
