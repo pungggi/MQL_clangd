@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.47
+## 1.1.47/48
 
 ### Bug Fixes
 - **Same-file forward use broke Go to Definition**: Calling a function defined later in the same `.mq4`/`.mq5` made clangd treat the call as undeclared (C/C++ semantics), so hover fell back to a textual "Local Function" hint. The auto-forwards header is now also `-include`d into the entry-point's own `compile_commands.json` entry.
