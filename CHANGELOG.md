@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.49
+
+### Features
+- **CompileListenerService for MT5**: New companion service `files/CompileListenerService.mq5` (true `#property service` with `OnStart`/`Sleep` loop, runs independently of charts). Polls `MQL5/Files/COMPILEFLAGS/<EA>.flag` once per second, deletes the flag, locates the chart running the named EA, and calls `ChartApplyTemplate("<EA>.tpl")` to reload it. Configure via the `expertNames` input (comma-separated; whitespace trimmed) and `showDebugOutput`. Pairs with the post-compile task hook above to close the Wine/macOS reload gap (refs #41, #45).
+
 ## 1.1.47/48
 
 ### Bug Fixes
@@ -12,8 +17,6 @@
 
 ### Features
 - **Auto-forwards for parent-defined symbols**: clangd parses each translation unit once, top-down, so a `.mqh` header can never see function definitions whose bodies live in the parent `.mq4`/`.mq5` it is included from. `MQL: Create Configuration` now scans every entry-point `.mq5`/`.mq4` for top-level function definitions and emits a generated `<workspace>/.mql-auto-forwards/<basename>.<hash>.auto.mqh` containing one forward declaration per function (where `<hash>` is a short hash of the entry-point path to prevent name collisions, e.g. between `Experts/Main.mq5` and `Indicators/Main.mq5`). The file is injected via `-include` ahead of all sibling headers in `compile_commands.json`, so every `.mqh` in the chain transparently sees the parent's API — completion, hover, and Go to Definition all work without any per-symbol user action. `#line` directives in the generated file keep Go to Definition jumping straight to the real `.mq4`/`.mq5` source location. Default arguments are stripped from the forward declarations to avoid MQL5's "default argument redefined" error at compile time.
-
-- **CompileListenerService for MT5**: New companion service `files/CompileListenerService.mq5` (true `#property service` with `OnStart`/`Sleep` loop, runs independently of charts). Polls `MQL5/Files/COMPILEFLAGS/<EA>.flag` once per second, deletes the flag, locates the chart running the named EA, and calls `ChartApplyTemplate("<EA>.tpl")` to reload it. Configure via the `expertNames` input (comma-separated; whitespace trimmed) and `showDebugOutput`. Pairs with the post-compile task hook above to close the Wine/macOS reload gap (refs #41, #45).
 
 ### Bug Fixes
 - **Header Compilation Crash (regression)**: Fixed `a.detectWorkspaceMqlVersion is not a function` thrown when compiling `.mqh` files. A circular `require` between `compileTargetResolver.js` and `createProperties.js` left the resolver holding a stale empty exports reference; the call site now lazy-loads `createProperties` to break the cycle (fixes #42).
