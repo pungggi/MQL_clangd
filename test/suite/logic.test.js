@@ -5,7 +5,48 @@ const os = require('os');
 const path = require('path');
 
 // Import functions from createProperties
-const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, detectWorkspaceMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry, buildIncludeChain, buildHeaderCompileEntry, buildAllHeaderEntries, maskCommentsAndStrings, extractTopLevelFunctionDefs, stripParamDefaults, buildAutoForwardsContent, generateAutoForwardsHeader, AUTO_FORWARDS_DIR, haveIncludesChanged, includeSnapshotCache } = require('../../src/createProperties');
+// Import path and workspace resolution utilities from createProperties
+const {
+    normalizePath,
+    expandWorkspaceVariables,
+    resolvePathRelativeToWorkspace,
+    isSourceExtension,
+    isTranslationUnitExtension,
+    detectMqlVersion,
+    detectWorkspaceMqlVersion
+} = require('../../src/createProperties');
+
+// Import compiler flag generators from createProperties
+const {
+    generateIncludeFlag,
+    generateBaseFlags,
+    generateProjectFlags,
+    generatePortableSwitch
+} = require('../../src/createProperties');
+
+// Import build and command entry builders from createProperties
+const {
+    buildCompileCommandEntry,
+    buildIncludeChain,
+    buildHeaderCompileEntry,
+    buildAllHeaderEntries
+} = require('../../src/createProperties');
+
+// Import text processing utilities from createProperties
+const {
+    maskCommentsAndStrings,
+    extractTopLevelFunctionDefs,
+    stripParamDefaults
+} = require('../../src/createProperties');
+
+// Import auto-forwards and caching utilities from createProperties
+const {
+    buildAutoForwardsContent,
+    generateAutoForwardsHeader,
+    AUTO_FORWARDS_DIR,
+    haveIncludesChanged,
+    includeSnapshotCache
+} = require('../../src/createProperties');
 
 // Import Wine helper functions
 const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent, fromWineWindowsPath } = require('../../src/wineHelper');

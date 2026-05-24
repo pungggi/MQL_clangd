@@ -19,6 +19,7 @@
 - [Troubleshooting clangd diagnostics (MQL-specific)](#troubleshooting-clangd-diagnostics-mql-specific)
 - [FAQ: Common Questions](#faq-common-questions)
 - [Preserving Custom Diagnostic Suppressions](#preserving-custom-diagnostic-suppressions)
+- [Developer Setup: Local Claude Settings](#developer-setup-local-claude-settings)
 
 ---
 

@@ -6,3 +6,4 @@ node_modules/
 dist/
 nul
 *.stackdump
+.claude/settings.local.json
