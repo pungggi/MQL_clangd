@@ -1,9 +1,6 @@
 # Changelog
 
-## Unreleased
-
-### Features
-- **Post-compile task hook**: New `mql_tools.Compile.RunTaskOnSuccess` setting runs a named VS Code task (defined in `.vscode/tasks.json`) after every successful compile. Useful for triggering EA-reload workflows on Wine/macOS — e.g. write a flag file that an MT5 Service watches, so it can reload the freshly compiled EA via `ChartApplyTemplate()` without restarting the terminal. Task variables like `${fileBasenameNoExtension}` are resolved by VS Code against the active editor at task run time, so one task definition can serve all EAs. Leave the setting empty (default) to disable (refs #41).
+## 1.1.46
 
 ### Features
 - **Auto-forwards for parent-defined symbols**: clangd parses each translation unit once, top-down, so a `.mqh` header can never see function definitions whose bodies live in the parent `.mq4`/`.mq5` it is included from. `MQL: Create Configuration` now scans every entry-point `.mq5`/`.mq4` for top-level function definitions and emits a generated `<workspace>/.mql-auto-forwards/<basename>.<hash>.auto.mqh` containing one forward declaration per function (where `<hash>` is a short hash of the entry-point path to prevent name collisions, e.g. between `Experts/Main.mq5` and `Indicators/Main.mq5`). The file is injected via `-include` ahead of all sibling headers in `compile_commands.json`, so every `.mqh` in the chain transparently sees the parent's API — completion, hover, and Go to Definition all work without any per-symbol user action. `#line` directives in the generated file keep Go to Definition jumping straight to the real `.mq4`/`.mq5` source location. Default arguments are stripped from the forward declarations to avoid MQL5's "default argument redefined" error at compile time.
@@ -11,6 +8,11 @@
 ### Bug Fixes
 - **Header Compilation Crash (regression)**: Fixed `a.detectWorkspaceMqlVersion is not a function` thrown when compiling `.mqh` files. A circular `require` between `compileTargetResolver.js` and `createProperties.js` left the resolver holding a stale empty exports reference; the call site now lazy-loads `createProperties` to break the cycle (fixes #42).
 - **Go to Definition broken when include directive case differs from disk**: On case-insensitive filesystems (Windows, default macOS), an `#include` directive whose casing did not match the on-disk filename produced a `compile_commands.json` entry with the directive's casing. clangd looks up entries by the URI VS Code provides (disk case), so the lookup missed, the header was parsed as a standalone TU, and symbols defined in sibling/parent files appeared unresolved. Resolved include paths are now canonicalized to actual on-disk casing via `fs.realpathSync.native`.
+
+## 1.1.45
+
+### Features
+- **Post-compile task hook**: New `mql_tools.Compile.RunTaskOnSuccess` setting runs a named VS Code task (defined in `.vscode/tasks.json`) after every successful compile. Useful for triggering EA-reload workflows on Wine/macOS — e.g. write a flag file that an MT5 Service watches, so it can reload the freshly compiled EA via `ChartApplyTemplate()` without restarting the terminal. Task variables like `${fileBasenameNoExtension}` are resolved by VS Code against the active editor at task run time, so one task definition can serve all EAs. Leave the setting empty (default) to disable (refs #41).
 
 ## 1.1.44
 
