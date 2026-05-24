@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.49
+## 1.1.49/50
 
 ### Features
 - **CompileListenerService for MT5**: New companion service `files/CompileListenerService.mq5` (true `#property service` with `OnStart`/`Sleep` loop, runs independently of charts). Polls `MQL5/Files/COMPILEFLAGS/<EA>.flag` once per second, deletes the flag, locates the chart running the named EA, and calls `ChartApplyTemplate("<EA>.tpl")` to reload it. Configure via the `expertNames` input (comma-separated; whitespace trimmed) and `showDebugOutput`. Pairs with the post-compile task hook above to close the Wine/macOS reload gap (refs #41, #45).
