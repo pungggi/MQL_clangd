@@ -3,15 +3,21 @@
     aria-hidden="true">
 
     <div class="card">
-        <h2>Compile Listener Service</h2>
+        <h2>Compile Listener Service (MQL5 Only)</h2>
 
         <p>Automatically reload a running EA in MetaTrader after every successful compile — without touching the
             terminal.</p>
+        <p style="font-size:0.9em; opacity:0.85; margin-top:-10px; margin-bottom:20px;">
+            <em>Note: This feature is strictly MQL5-only (MQL4 does not support services or the required compilation structure).</em>
+        </p>
 
         <div class="highlight-box">
             <strong>How it works:</strong> VS Code writes a flag file after compile. The MT5 Service polls for that
             file, finds the chart running your EA, and calls <span class="code-inline">ChartApplyTemplate()</span> to
             reload it.
+            <div style="margin-top: 8px; font-size: 0.9em; opacity: 0.9;">
+                <em>Note:</em> The hook triggers on all successful compile operations including CheckOnSave/auto-check (meaning it may run on automatic checks). This is entirely intentional: the flag file write is idempotent, and the reload operation runs on a microsecond scale without overhead.
+            </div>
         </div>
 
         <h3>Setup</h3>
@@ -27,23 +33,28 @@
             </li>
             <li>
                 <strong>Save a template for your EA</strong><br>
-                In MT5, open the chart running your EA → right-click → <strong>Templates → Save As</strong> → name it
-                exactly after your EA (e.g. <span class="code-inline">MyEA.tpl</span>). No extension in the service
-                input — just <span class="code-inline">MyEA</span>.
+                In MT5, open the chart running your EA → right-click → <strong>Templates → Save As</strong> → name the template file exactly after your EA, including the <span class="code-inline">.tpl</span> extension (e.g. <span class="code-inline">MyEA.tpl</span>). When configuring the service input inside MT5, enter the EA name strictly <strong>without any file extension</strong> (e.g., enter <span class="code-inline">MyEA</span>, not <span class="code-inline">MyEA.tpl</span> or <span class="code-inline">MyEA.mq5</span>).
             </li>
             <li>
                 <strong>Create the flag folder</strong><br>
-                Run once in a terminal:
-                <pre
-                    style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">mkdir "%APPDATA%\MetaQuotes\Terminal\&lt;ID&gt;\MQL5\Files\COMPILEFLAGS"</pre>
+                Run the command below in your terminal depending on your platform:
+                <div style="margin-top: 10px; border-left: 3px solid var(--accent-color); padding-left: 12px; margin-bottom: 12px;">
+                    <div style="margin-bottom: 4px;"><strong>Windows (Command Prompt / PowerShell):</strong></div>
+                    <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;margin:0 0 12px 0;">mkdir "%APPDATA%\MetaQuotes\Terminal\&lt;ID&gt;\MQL5\Files\COMPILEFLAGS"</pre>
+                    
+                    <div style="margin-bottom: 4px;"><strong>macOS / Linux (Wine):</strong></div>
+                    <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;margin:0;">mkdir -p "$HOME/.wine/drive_c/users/$USER/AppData/Roaming/MetaQuotes/Terminal/&lt;ID&gt;/MQL5/Files/COMPILEFLAGS"</pre>
+                </div>
                 Replace <span class="code-inline">&lt;ID&gt;</span> with your terminal's data folder ID (find it via
                 <strong>File → Open Data Folder</strong> in MT5).
             </li>
             <li>
                 <strong>Add the VS Code task</strong><br>
-                In <span class="code-inline">.vscode/tasks.json</span>:
-                <pre
-                    style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">{
+                Create or open <span class="code-inline">.vscode/tasks.json</span> and add the appropriate configuration for your platform:
+                
+                <div style="margin-top: 10px; border-left: 3px solid var(--accent-color); padding-left: 12px; margin-bottom: 12px;">
+                    <div style="margin-bottom: 4px;"><strong>Windows (cmd.exe variant):</strong></div>
+                    <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;margin:0 0 12px 0;">{
   "version": "2.0.0",
   "tasks": [
     {
@@ -58,12 +69,37 @@
     }
   ]
 }</pre>
+
+                    <div style="margin-bottom: 4px;"><strong>macOS / Linux / Wine (bash variant):</strong></div>
+                    <pre style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;margin:0;">{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "write-compile-flag",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "touch \"$HOME/.wine/drive_c/users/$USER/AppData/Roaming/MetaQuotes/Terminal/&lt;ID&gt;/MQL5/Files/COMPILEFLAGS/${fileBasenameNoExtension}.flag\""
+      ],
+      "presentation": { "reveal": "never" }
+    }
+  ]
+}</pre>
+                </div>
+
+                <div class="highlight-box" style="margin: 12px 0; padding: 12px 15px;">
+                    <strong>💡 Cross-Platform Hint:</strong> You can use VS Code environment variables like <span class="code-inline">${env:APPDATA}</span> or <span class="code-inline">${env:HOME}</span> within task configurations to reference path environments dynamically without hardcoding them.
+                </div>
             </li>
             <li>
                 <strong>Wire the task to compile</strong><br>
                 Add to your VS Code settings:
                 <pre
                     style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">"mql_tools.Compile.RunTaskOnSuccess": "write-compile-flag"</pre>
+                <div style="margin-top: 6px; font-size: 0.9em; opacity: 0.9;">
+                    💡 <strong>Behavior Note:</strong> This hook fires on all successful compile operations, including those triggered by CheckOnSave/auto-check. This behavior is intentional, as writing the flag file is fully idempotent and the reload process is microsecond-scale, causing no performance impact.
+                </div>
             </li>
             <li>
                 <strong>Start the service in MT5</strong><br>

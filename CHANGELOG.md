@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.51
+
+### Features
+- **Install CompileListenerService Command**: Added a new command `MQL: Install Compile Listener Service` (`mql_tools.installCompileListenerService`) and UI button on the Welcome page to automatically copy `CompileListenerService.mq5` to the `MQL5/Services/` folder.
+
+### Bug Fixes
+- **CompileListenerService Multiple Charts**: `CompileListenerService.mq5` has been refactored to apply the template to *all* open charts running the specified EA instead of returning early and only updating the first one it finds.
+
 ## 1.1.49/50
 
 ### Features

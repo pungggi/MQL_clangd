@@ -26,11 +26,12 @@ string expertNamesArray[];
 
 
 //==============================================================================
-// FIND AN EA AMONGST CURRENTLY OPEN CHARTS FROM EA NAME
+// APPLY TEMPLATE TO ALL CHARTS WITH THE MATCHING EA
 //==============================================================================
-long IsExpertAdvisorOnChart(string expertNameWanted) {
+void ApplyTemplateToChartsWithEA(string expertNameWanted) {
 
    long chartId = ChartFirst();
+   bool foundAny = false;
 
    while(chartId >= 0) {
 
@@ -38,11 +39,19 @@ long IsExpertAdvisorOnChart(string expertNameWanted) {
 
       if (showDebugOutput) { Print("CHART INFORMATION:  ChartId=", chartId, " Symbol=", ChartSymbol(chartId), " Expert=", expertNameFound); }
 
-      if (expertNameFound == expertNameWanted) { return chartId; }
-      else { chartId = ChartNext(chartId); }
+      if (expertNameFound == expertNameWanted) {
+         foundAny = true;
+         if (showDebugOutput) { Print("FOUND EA ", expertNameWanted, " on chart ", chartId, ", applying template ", expertNameWanted, ".tpl"); }
+         if (!ChartApplyTemplate(chartId, expertNameWanted + ".tpl")) {
+            Print("ChartApplyTemplate failed for ", expertNameWanted, " on chart ", chartId, " error=", GetLastError());
+         }
+      }
+      chartId = ChartNext(chartId);
    }
 
-   return -1;
+   if (!foundAny) {
+      if (showDebugOutput) { Print("EA ", expertNameWanted, " not found on any chart, skipping template apply."); }
+   }
 }
 
 
@@ -64,16 +73,7 @@ void CheckCompileFlags() {
          continue;
       }
 
-      long chartId = IsExpertAdvisorOnChart(name);
-      if (chartId == -1) {
-         if (showDebugOutput) { Print("EA ", name, " not found on any chart, skipping template apply."); }
-         continue;
-      }
-
-      if (showDebugOutput) { Print("FOUND EA ", name, " on chart ", chartId, ", applying template ", name, ".tpl"); }
-      if (!ChartApplyTemplate(chartId, name + ".tpl")) {
-         Print("ChartApplyTemplate failed for ", name, " on chart ", chartId, " error=", GetLastError());
-      }
+      ApplyTemplateToChartsWithEA(name);
    }
 }
 
@@ -91,7 +91,8 @@ void OnStart() {
    StringSplit(expertNames, ',', expertNamesArray);
 
    for (int i = 0; i < ArraySize(expertNamesArray); i++) {
-      expertNamesArray[i] = StringTrimLeft(StringTrimRight(expertNamesArray[i]));
+      StringTrimLeft(expertNamesArray[i]);
+      StringTrimRight(expertNamesArray[i]);
    }
 
    while (!IsStopped()) {

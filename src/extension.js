@@ -2735,8 +2735,28 @@ function activate(context) {
         const targetPath = pathModule.join(servicesDir, 'CompileListenerService.mq5');
         try {
             await fs.promises.mkdir(servicesDir, { recursive: true });
-            await fs.promises.copyFile(sourcePath, targetPath);
-            vscode.window.showInformationMessage(`CompileListenerService.mq5 installed to: ${targetPath}. Open MetaEditor, compile it, then start it from Navigator → Services.`);
+            try {
+                await fs.promises.copyFile(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+                vscode.window.showInformationMessage(`CompileListenerService.mq5 installed to: ${targetPath}. Open MetaEditor, compile it, then start it from Navigator → Services.`);
+            } catch (copyErr) {
+                if (copyErr.code === 'EEXIST') {
+                    if (outputChannel) {
+                        outputChannel.appendLine(`[CompileListenerService] Target file already exists: ${targetPath} (source: ${sourcePath})`);
+                    }
+                    const answer = await vscode.window.showWarningMessage(
+                        'CompileListenerService.mq5 already exists at destination. Do you want to overwrite it?',
+                        'Yes', 'No'
+                    );
+                    if (answer === 'Yes') {
+                        await fs.promises.copyFile(sourcePath, targetPath);
+                        vscode.window.showInformationMessage(`CompileListenerService.mq5 overwritten at: ${targetPath}. Open MetaEditor, compile it, then start it from Navigator → Services.`);
+                    } else {
+                        vscode.window.showInformationMessage('Installation skipped. Existing CompileListenerService.mq5 was not overwritten.');
+                    }
+                } else {
+                    throw copyErr;
+                }
+            }
         } catch (err) {
             vscode.window.showErrorMessage(`Failed to install CompileListenerService.mq5: ${err.message}`);
         }
