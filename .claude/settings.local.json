@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Bash(rm -rf \"C:/Users/Alessandro/AppData/Roaming/MetaQuotes/Terminal/870072DB5DBAB61841BAE146AFAAFB8A/MQL5/.cache/clangd/index/\"/*)",
+      "Read(//c/Users/Alessandro/AppData/Roaming/MetaQuotes/Terminal/870072DB5DBAB61841BAE146AFAAFB8A/MQL5/.cache/clangd/index/**)"
     ]
   }
 }

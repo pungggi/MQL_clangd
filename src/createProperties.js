@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
+const crypto = require('crypto');
 const { parseIncludes, resolveIncludePath } = require('./compileTargetResolver');
 const { ensureUtf8Mirror } = require('./utf8Mirror');
 const { decodeTextBuffer } = require('./textDecoding');
@@ -362,6 +363,291 @@ function buildHeaderCompileEntry(headerPath, sharedFlags, precedingHeaders, work
     };
 }
 
+const AUTO_FORWARDS_DIR = '.mql-auto-forwards';
+
+const FUNCTION_LIKE_KEYWORDS = new Set([
+    'if', 'for', 'while', 'switch', 'return', 'do', 'else', 'catch',
+    'sizeof', 'typeof', 'static_cast', 'dynamic_cast', 'const_cast', 'reinterpret_cast',
+    'operator', 'new', 'delete'
+]);
+
+// MetaTrader-defined event handlers. The terminal calls these directly; users
+// never need a forward declaration for them, and emitting one only adds noise
+// to the generated auto-forwards header.
+const MQL_EVENT_HANDLERS = new Set([
+    'OnStart',
+    'OnInit', 'OnDeinit',
+    'OnTick', 'OnTimer', 'OnTrade', 'OnTradeTransaction',
+    'OnBookEvent', 'OnChartEvent',
+    'OnCalculate',
+    'OnTester', 'OnTesterInit', 'OnTesterPass', 'OnTesterDeinit',
+    // Legacy MQL4 names
+    'init', 'deinit', 'start'
+]);
+
+/**
+ * Replace comment and string/char-literal contents with spaces, preserving
+ * character positions and newlines. Lets a downstream scanner work on offsets
+ * that still line up with the original text for `#line` directives.
+ */
+function maskCommentsAndStrings(text) {
+    const out = new Array(text.length);
+    let i = 0;
+    while (i < text.length) {
+        const c = text[i];
+        const n = text[i + 1];
+        if (c === '/' && n === '/') {
+            while (i < text.length && text[i] !== '\n') {
+                out[i] = ' ';
+                i++;
+            }
+        } else if (c === '/' && n === '*') {
+            const end = text.indexOf('*/', i + 2);
+            const stop = end < 0 ? text.length : end + 2;
+            for (let j = i; j < stop; j++) {
+                out[j] = text[j] === '\n' ? '\n' : ' ';
+            }
+            i = stop;
+        } else if (c === '"' || c === '\'') {
+            const quote = c;
+            out[i] = ' ';
+            i++;
+            while (i < text.length && text[i] !== quote) {
+                if (text[i] === '\\' && i + 1 < text.length) {
+                    out[i] = ' ';
+                    out[i + 1] = text[i + 1] === '\n' ? '\n' : ' ';
+                    i += 2;
+                } else {
+                    out[i] = text[i] === '\n' ? '\n' : ' ';
+                    i++;
+                }
+            }
+            if (i < text.length) {
+                out[i] = ' ';
+                i++;
+            }
+        } else {
+            out[i] = c;
+            i++;
+        }
+    }
+    return out.join('');
+}
+
+function lineOf(text, pos) {
+    let line = 1;
+    const limit = Math.min(pos, text.length);
+    for (let i = 0; i < limit; i++) {
+        if (text[i] === '\n') line++;
+    }
+    return line;
+}
+
+/**
+ * Find every top-level (brace-depth 0) function definition in MQL source and
+ * return its signature plus the 1-based line where the name token begins.
+ * Used to build the auto-forwards header so a child `.mqh` can see functions
+ * whose bodies live in the parent `.mq4`/`.mq5`.
+ */
+function extractTopLevelFunctionDefs(text) {
+    const masked = maskCommentsAndStrings(text);
+    const out = [];
+    let depth = 0;
+    let i = 0;
+    while (i < masked.length) {
+        const c = masked[i];
+        if (c === '{') { depth++; i++; continue; }
+        if (c === '}') { depth--; i++; continue; }
+        if (depth !== 0 || !/[A-Za-z_]/.test(c)) { i++; continue; }
+
+        const idMatch = masked.slice(i).match(/^([A-Za-z_][A-Za-z0-9_]*)/);
+        if (!idMatch) { i++; continue; }
+        const name = idMatch[1];
+        const idEnd = i + name.length;
+
+        let k = idEnd;
+        while (k < masked.length && /\s/.test(masked[k])) k++;
+        if (masked[k] !== '(') { i = idEnd; continue; }
+        if (FUNCTION_LIKE_KEYWORDS.has(name)) { i = idEnd; continue; }
+        if (MQL_EVENT_HANDLERS.has(name)) { i = idEnd; continue; }
+
+        // Skip out-of-line class member definitions like `void CFoo::bar() {…}`.
+        // The forward decl `void bar();` (with `CFoo::` stripped, or kept verbatim)
+        // is invalid outside the class, and clang would error on the auto-forwards
+        // include and poison every descendant TU.
+        let preCheck = i - 1;
+        while (preCheck >= 0 && /\s/.test(masked[preCheck])) preCheck--;
+        if (preCheck >= 1 && masked[preCheck] === ':' && masked[preCheck - 1] === ':') {
+            i = idEnd;
+            continue;
+        }
+
+        let pd = 1;
+        let j = k + 1;
+        while (j < masked.length && pd > 0) {
+            if (masked[j] === '(') pd++;
+            else if (masked[j] === ')') pd--;
+            j++;
+        }
+        if (pd !== 0) { i = idEnd; continue; }
+        const params = masked.slice(k + 1, j - 1);
+
+        let p = j;
+        while (p < masked.length && /\s/.test(masked[p])) p++;
+        if (masked.startsWith('const', p) && !/[\w]/.test(masked[p + 5] || '')) {
+            p += 5;
+            while (p < masked.length && /\s/.test(masked[p])) p++;
+        }
+        if (masked[p] !== '{') { i = j; continue; }
+
+        let m = i - 1;
+        while (m >= 0 && /\s/.test(masked[m])) m--;
+        const tokensEnd = m + 1;
+        while (m >= 0) {
+            const cc = masked[m];
+            if (cc === ';' || cc === '}' || cc === '{' || cc === '#') break;
+            m--;
+        }
+        const returnTypeRaw = masked.slice(m + 1, tokensEnd).trim();
+        if (!returnTypeRaw || /[(),;{}:]/.test(returnTypeRaw)) {
+            i = p;
+            continue;
+        }
+
+        out.push({
+            name,
+            returnType: returnTypeRaw.replace(/\s+/g, ' '),
+            params: params.replace(/\s+/g, ' ').trim(),
+            line: lineOf(masked, i)
+        });
+
+        // Skip past the function body so we don't recurse into it.
+        let bd = 1;
+        let q = p + 1;
+        while (q < masked.length && bd > 0) {
+            if (masked[q] === '{') bd++;
+            else if (masked[q] === '}') bd--;
+            q++;
+        }
+        i = q;
+        depth = 0;
+    }
+    return out;
+}
+
+/**
+ * Strip default values from a parameter list at top-level (paren/angle/bracket
+ * depth 0). MQL5 errors if a default is repeated at the definition site, so
+ * the forward declaration must not carry one.
+ */
+function stripParamDefaults(params) {
+    if (!params) return params;
+    const groups = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < params.length; i++) {
+        const c = params[i];
+        if (c === '(' || c === '<' || c === '[') depth++;
+        else if (c === ')' || c === '>' || c === ']') depth--;
+        else if (c === ',' && depth === 0) {
+            groups.push(params.slice(start, i));
+            start = i + 1;
+        }
+    }
+    groups.push(params.slice(start));
+
+    return groups
+        .map(g => g.trim())
+        .filter(Boolean)
+        .map(g => {
+            let d = 0;
+            for (let i = 0; i < g.length; i++) {
+                const c = g[i];
+                if (c === '(' || c === '<' || c === '[') d++;
+                else if (c === ')' || c === '>' || c === ']') d--;
+                else if (c === '=' && d === 0) return g.slice(0, i).trim();
+            }
+            return g;
+        })
+        .join(', ');
+}
+
+/**
+ * Stable hash of an entry-point path. Used to disambiguate generated filenames
+ * and include-guard macros when two entry points share a basename, or when
+ * paths share a long common prefix (workspace root, home dir, …).
+ */
+function entryPathHash(entryPath) {
+    return crypto.createHash('sha1').update(normalizePath(entryPath)).digest('hex');
+}
+
+/**
+ * Build the auto-forwards header content for an entry-point file.
+ * `#line N "<entryPath>"` directives keep clangd Go-to-Definition pointing
+ * back at the real `.mq4`/`.mq5` source location.
+ */
+function buildAutoForwardsContent(entryPath, defs) {
+    const forwardPath = normalizePath(entryPath);
+    const guard = 'MQL_AUTO_FORWARDS_INCLUDED_' + entryPathHash(entryPath).slice(0, 16).toUpperCase();
+    const lines = [];
+    lines.push(`#ifndef ${guard}`);
+    lines.push(`#define ${guard}`);
+    lines.push('// Auto-generated by MQL Clangd. Do not edit — regenerated by "MQL: Create Configuration".');
+    lines.push(`// Forward declarations for top-level functions in ${forwardPath}`);
+    lines.push('');
+    for (const def of defs) {
+        const params = stripParamDefaults(def.params);
+        lines.push(`#line ${def.line} "${forwardPath}"`);
+        lines.push(`${def.returnType} ${def.name}(${params});`);
+    }
+    lines.push('');
+    lines.push('#endif');
+    lines.push('');
+    return lines.join('\n');
+}
+
+/**
+ * Generate (or refresh) the per-entry-point auto-forwards header.
+ * Returns the absolute path of the generated file, or null on failure.
+ *
+ * The filename embeds a short hash of the entry-point path so that two
+ * `.mq5` files sharing a basename (e.g. `Experts/Foo.mq5` and
+ * `Indicators/Foo.mq5`) do not overwrite each other's forwards header.
+ *
+ * Compares against any existing content and skips the write when unchanged.
+ * Avoids mtime churn that would otherwise force a clangd reindex on every
+ * `MQL: Create Configuration` invocation even when nothing changed.
+ */
+async function generateAutoForwardsHeader(entryPath, workspacePath) {
+    try {
+        const buf = await fs.promises.readFile(entryPath);
+        const text = decodeTextBuffer(buf);
+        const defs = extractTopLevelFunctionDefs(text);
+
+        const dir = pathModule.join(workspacePath, AUTO_FORWARDS_DIR);
+        await fs.promises.mkdir(dir, { recursive: true });
+
+        const base = pathModule.basename(entryPath, pathModule.extname(entryPath));
+        const shortHash = entryPathHash(entryPath).slice(0, 8);
+        const outPath = pathModule.join(dir, `${base}.${shortHash}.auto.mqh`);
+        const content = buildAutoForwardsContent(entryPath, defs);
+
+        let existing = null;
+        try {
+            existing = await fs.promises.readFile(outPath, 'utf8');
+        } catch {
+            // file does not exist yet — fall through to write
+        }
+        if (existing !== content) {
+            await fs.promises.writeFile(outPath, content);
+        }
+        return outPath;
+    } catch (err) {
+        console.error(`MQL Tools: Failed to generate auto-forwards for ${entryPath}`, err);
+        return null;
+    }
+}
+
 /**
  * For all entry-point files, build include chains and emit compile entries
  * for every .mqh file encountered.  When multiple entry points include the
@@ -379,11 +665,17 @@ async function buildAllHeaderEntries(entryPointPaths, sharedFlags, workspacePath
 
     for (const ep of entryPointPaths) {
         const epVersion = pathModule.extname(ep).toLowerCase() === '.mq4' ? 'mql4' : 'mql5';
+        const autoForwardsPath = await generateAutoForwardsHeader(ep, workspacePath);
         const chain = await buildIncludeChain(ep, workspacePath, includeDir);
         for (const [headerNorm, preceding] of chain) {
+            // Prepend the auto-forwards header so every descendant `.mqh` sees
+            // function declarations defined in its parent `.mq4`/`.mq5`.
+            const precedingWithForwards = autoForwardsPath
+                ? [normalizePath(autoForwardsPath), ...preceding]
+                : preceding;
             const existing = bestContext.get(headerNorm);
-            if (!existing || preceding.length > existing.precedingHeaders.length) {
-                bestContext.set(headerNorm, { precedingHeaders: preceding, mqlVersion: epVersion });
+            if (!existing || precedingWithForwards.length > existing.precedingHeaders.length) {
+                bestContext.set(headerNorm, { precedingHeaders: precedingWithForwards, mqlVersion: epVersion });
             }
         }
     }
@@ -1175,6 +1467,12 @@ module.exports = {
     buildIncludeChain,
     buildHeaderCompileEntry,
     buildAllHeaderEntries,
+    maskCommentsAndStrings,
+    extractTopLevelFunctionDefs,
+    stripParamDefaults,
+    buildAutoForwardsContent,
+    generateAutoForwardsHeader,
+    AUTO_FORWARDS_DIR,
     haveIncludesChanged,
     includeSnapshotCache,
     parseClangdSuppressions,

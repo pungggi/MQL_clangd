@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 
 // Import functions from createProperties
-const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, detectWorkspaceMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry, buildIncludeChain, buildHeaderCompileEntry, buildAllHeaderEntries, haveIncludesChanged, includeSnapshotCache } = require('../../src/createProperties');
+const { normalizePath, expandWorkspaceVariables, resolvePathRelativeToWorkspace, isSourceExtension, isTranslationUnitExtension, detectMqlVersion, detectWorkspaceMqlVersion, generateIncludeFlag, generateBaseFlags, generateProjectFlags, generatePortableSwitch, buildCompileCommandEntry, buildIncludeChain, buildHeaderCompileEntry, buildAllHeaderEntries, maskCommentsAndStrings, extractTopLevelFunctionDefs, stripParamDefaults, buildAutoForwardsContent, generateAutoForwardsHeader, AUTO_FORWARDS_DIR, haveIncludesChanged, includeSnapshotCache } = require('../../src/createProperties');
 
 // Import Wine helper functions
 const { isWineEnabled, getWineBinary, getWinePrefix, getWineTimeout, validateWinePath, buildWineCmd, buildSpawnOptions, buildBatchContent, fromWineWindowsPath } = require('../../src/wineHelper');
@@ -948,6 +948,42 @@ suite('buildIncludeChain', () => {
             assert.ok(keys[0].includes('exists.mqh'));
         } finally { cleanup(); }
     });
+
+    // Regression: on case-insensitive filesystems (Windows, default macOS),
+    // a `#include "Keys.mqh"` directive must resolve to the actual on-disk
+    // casing (`keys.mqh`). Otherwise compile_commands.json stores the wrong
+    // case and clangd — which looks up entries by the URI VS Code provides
+    // (disk case) — misses, parses the header as a standalone TU, and loses
+    // visibility of symbols declared in sibling/parent files.
+    test('case-insensitive FS: include directive case must not override disk case', async function () {
+        const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mql-case-probe-'));
+        const probeLower = path.join(probeDir, 'probe.txt');
+        fs.writeFileSync(probeLower, '');
+        const caseInsensitive = fs.existsSync(path.join(probeDir, 'PROBE.TXT'));
+        fs.rmSync(probeDir, { recursive: true, force: true });
+        if (!caseInsensitive) {
+            this.skip();
+            return;
+        }
+
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '#include "Keys.mqh"\n',
+            'keys.mqh': '// lowercase on disk, included with capital K\n'
+        });
+        try {
+            const chain = await buildIncludeChain(path.join(base, 'main.mq5'), base, '');
+            const keys = Array.from(chain.keys());
+            assert.strictEqual(keys.length, 1);
+            assert.ok(
+                keys[0].endsWith('keys.mqh'),
+                `expected lowercase disk name in chain key, got: ${keys[0]}`
+            );
+            assert.ok(
+                !keys[0].endsWith('Keys.mqh'),
+                `chain key must not preserve include-directive case: ${keys[0]}`
+            );
+        } finally { cleanup(); }
+    });
 });
 
 suite('buildHeaderCompileEntry', () => {
@@ -1160,6 +1196,297 @@ suite('haveIncludesChanged', () => {
             fs.writeFileSync(filePath, '#include "a.mqh"\nvoid OnStart() { Print("hello"); }\n');
             const result = await haveIncludesChanged(filePath);
             assert.strictEqual(result, false);
+        } finally { cleanup(); }
+    });
+});
+
+suite('maskCommentsAndStrings', () => {
+    test('preserves length and newlines', () => {
+        const src = 'int a;\n// comment\nint b;\n';
+        const out = maskCommentsAndStrings(src);
+        assert.strictEqual(out.length, src.length);
+        assert.strictEqual(out.split('\n').length, src.split('\n').length);
+    });
+    test('blanks line comments but keeps the newline', () => {
+        const src = 'x// hidden\ny';
+        const out = maskCommentsAndStrings(src);
+        assert.strictEqual(out, 'x         \ny');
+    });
+    test('blanks block comments across multiple lines', () => {
+        const src = 'a/* line1\nline2 */b';
+        const out = maskCommentsAndStrings(src);
+        assert.ok(!out.includes('line1'));
+        assert.ok(!out.includes('line2'));
+        assert.strictEqual(out.length, src.length);
+        assert.ok(out.includes('\n'));
+    });
+    test('blanks string contents', () => {
+        const src = 'Print("trigger_Forward");';
+        const out = maskCommentsAndStrings(src);
+        assert.ok(!out.includes('trigger_Forward'));
+        assert.ok(out.startsWith('Print('));
+    });
+    test('handles escape sequences inside strings', () => {
+        const src = 'Print("a\\"b");';
+        const out = maskCommentsAndStrings(src);
+        assert.strictEqual(out.length, src.length);
+        assert.ok(!out.includes('a'));
+    });
+});
+
+suite('extractTopLevelFunctionDefs', () => {
+    test('finds simple top-level def', () => {
+        const src = 'void trigger_Forward() {\n    Print("hi");\n}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].name, 'trigger_Forward');
+        assert.strictEqual(defs[0].returnType, 'void');
+        assert.strictEqual(defs[0].params, '');
+        assert.strictEqual(defs[0].line, 1);
+    });
+    test('finds multiple top-level defs with correct lines', () => {
+        const src = 'void a() {}\n\nvoid b(int x) {}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 2);
+        assert.strictEqual(defs[0].name, 'a');
+        assert.strictEqual(defs[0].line, 1);
+        assert.strictEqual(defs[1].name, 'b');
+        assert.strictEqual(defs[1].line, 3);
+    });
+    test('skips nested functions inside another function body', () => {
+        // MQL5 disallows this but clangd would parse it; we still must not surface inner names as top-level.
+        const src = 'void outer() {\n    void inner() {}\n}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].name, 'outer');
+    });
+    test('skips control-flow keywords that look like function calls', () => {
+        const src = 'void f() {\n    if (x) { Print(""); }\n}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].name, 'f');
+    });
+    test('does not match function declarations without bodies', () => {
+        const src = 'void onlyDecl();\nvoid real() { }\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].name, 'real');
+    });
+    test('handles multi-line parameter list', () => {
+        const src = 'int compute(\n    double price,\n    int digits\n) {\n    return 0;\n}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].name, 'compute');
+        assert.strictEqual(defs[0].params, 'double price, int digits');
+        assert.strictEqual(defs[0].line, 1);
+    });
+    test('handles multi-word return type', () => {
+        const src = 'unsigned int hashOf(string s) { return 0; }\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].returnType, 'unsigned int');
+    });
+    test('ignores identifiers inside string literals that look like calls', () => {
+        const src = 'void f() { Print("looks_like_a_call()"); }\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].name, 'f');
+    });
+    test('ignores identifiers inside comments that look like calls', () => {
+        const src = '// void hidden() {}\nvoid real() {}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs.length, 1);
+        assert.strictEqual(defs[0].name, 'real');
+    });
+    test('reports line of name not the brace', () => {
+        const src = '\n\n\nvoid foo(int x)\n{\n}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.strictEqual(defs[0].line, 4);
+    });
+});
+
+suite('stripParamDefaults', () => {
+    test('removes simple default', () => {
+        assert.strictEqual(stripParamDefaults('int x = 5'), 'int x');
+    });
+    test('handles default-with-call containing commas', () => {
+        assert.strictEqual(
+            stripParamDefaults('int x = MathMax(0, 1), int y = 2'),
+            'int x, int y'
+        );
+    });
+    test('passthrough when no defaults', () => {
+        assert.strictEqual(stripParamDefaults('int x, double y'), 'int x, double y');
+    });
+});
+
+suite('buildAutoForwardsContent', () => {
+    test('emits guard, #line directives, and forward declarations', () => {
+        const defs = [
+            { name: 'trigger_Forward', returnType: 'void', params: '', line: 12 },
+            { name: 'changeTimeframe', returnType: 'void', params: 'ENUM_TIMEFRAMES tf', line: 42 }
+        ];
+        const out = buildAutoForwardsContent('C:/ws/Experts/SMC.mq5', defs);
+        assert.ok(out.startsWith('#ifndef MQL_AUTO_FORWARDS_INCLUDED_'));
+        assert.ok(out.includes('#endif'));
+        assert.ok(out.includes('#line 12 "C:/ws/Experts/SMC.mq5"'));
+        assert.ok(out.includes('void trigger_Forward();'));
+        assert.ok(out.includes('#line 42 "C:/ws/Experts/SMC.mq5"'));
+        assert.ok(out.includes('void changeTimeframe(ENUM_TIMEFRAMES tf);'));
+    });
+    test('strips default arguments from forwarded params', () => {
+        const defs = [{ name: 'seed', returnType: 'void', params: 'int x = MathMax(0, 1)', line: 1 }];
+        const out = buildAutoForwardsContent('C:/ws/SMC.mq5', defs);
+        assert.ok(out.includes('void seed(int x);'));
+        assert.ok(!out.includes('MathMax'));
+    });
+    test('different entry paths produce different guard macros', () => {
+        const a = buildAutoForwardsContent('C:/ws/SMC.mq5', []);
+        const b = buildAutoForwardsContent('C:/ws/Other.mq5', []);
+        const guardA = a.match(/#ifndef (\S+)/)[1];
+        const guardB = b.match(/#ifndef (\S+)/)[1];
+        assert.notStrictEqual(guardA, guardB);
+    });
+});
+
+suite('generateAutoForwardsHeader', () => {
+    test('writes a file at <workspace>/.mql-auto-forwards/<basename>.<hash>.auto.mqh', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'Experts/SMC.mq5': 'void trigger_Forward() {}\nvoid changeTimeframe(int tf) {}\n'
+        });
+        try {
+            const entry = path.join(base, 'Experts', 'SMC.mq5');
+            const outPath = await generateAutoForwardsHeader(entry, base);
+            assert.ok(outPath);
+            assert.ok(fs.existsSync(outPath));
+            assert.ok(outPath.includes(AUTO_FORWARDS_DIR));
+            assert.ok(/SMC\.[a-f0-9]{8}\.auto\.mqh$/.test(outPath), `filename should include hash, got: ${outPath}`);
+
+            const content = fs.readFileSync(outPath, 'utf8');
+            assert.ok(content.includes('void trigger_Forward();'));
+            assert.ok(content.includes('void changeTimeframe(int tf);'));
+            assert.ok(content.includes('#line '));
+            assert.ok(content.includes('SMC.mq5'));
+        } finally { cleanup(); }
+    });
+    test('emits an empty (guard-only) header when the entry has no top-level functions', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '// no functions here\n#property strict\n'
+        });
+        try {
+            const outPath = await generateAutoForwardsHeader(path.join(base, 'main.mq5'), base);
+            assert.ok(outPath);
+            const content = fs.readFileSync(outPath, 'utf8');
+            assert.ok(content.includes('#ifndef MQL_AUTO_FORWARDS_INCLUDED_'));
+            assert.ok(content.includes('#endif'));
+            assert.ok(!content.includes('#line '));
+        } finally { cleanup(); }
+    });
+    test('two entry-points sharing a basename do not collide on filename', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'Experts/Foo.mq5': 'void fromExperts() {}\n',
+            'Indicators/Foo.mq5': 'void fromIndicators() {}\n'
+        });
+        try {
+            const a = await generateAutoForwardsHeader(path.join(base, 'Experts', 'Foo.mq5'), base);
+            const b = await generateAutoForwardsHeader(path.join(base, 'Indicators', 'Foo.mq5'), base);
+            assert.ok(a && b);
+            assert.notStrictEqual(a, b);
+            const ca = fs.readFileSync(a, 'utf8');
+            const cb = fs.readFileSync(b, 'utf8');
+            assert.ok(ca.includes('void fromExperts();'));
+            assert.ok(cb.includes('void fromIndicators();'));
+            // Guards must also differ — otherwise the second include is a no-op
+            // when both files are pulled in by the same TU.
+            const guardA = ca.match(/#ifndef (\S+)/)[1];
+            const guardB = cb.match(/#ifndef (\S+)/)[1];
+            assert.notStrictEqual(guardA, guardB);
+        } finally { cleanup(); }
+    });
+    test('guard macro uses a hash, not a path prefix (no collision on long shared prefixes)', () => {
+        const longPrefix = 'C:/Users/SomeReallyLongUserName/source/workspace/Experts/';
+        const a = buildAutoForwardsContent(longPrefix + 'A.mq5', []);
+        const b = buildAutoForwardsContent(longPrefix + 'B.mq5', []);
+        const guardA = a.match(/#ifndef (\S+)/)[1];
+        const guardB = b.match(/#ifndef (\S+)/)[1];
+        assert.notStrictEqual(guardA, guardB);
+    });
+    test('idempotent — second call with unchanged source does not bump mtime', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': 'void f() {}\n'
+        });
+        try {
+            const entry = path.join(base, 'main.mq5');
+            const out1 = await generateAutoForwardsHeader(entry, base);
+            const stat1 = fs.statSync(out1);
+            await new Promise(r => setTimeout(r, 30));
+            const out2 = await generateAutoForwardsHeader(entry, base);
+            const stat2 = fs.statSync(out2);
+            assert.strictEqual(out1, out2);
+            assert.strictEqual(stat1.mtimeMs, stat2.mtimeMs, 'mtime should not change when content is identical');
+        } finally { cleanup(); }
+    });
+    test('rewrites when source changes', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': 'void f() {}\n'
+        });
+        try {
+            const entry = path.join(base, 'main.mq5');
+            const out = await generateAutoForwardsHeader(entry, base);
+            const before = fs.readFileSync(out, 'utf8');
+            fs.writeFileSync(entry, 'void f() {}\nvoid g(int x) {}\n');
+            await generateAutoForwardsHeader(entry, base);
+            const after = fs.readFileSync(out, 'utf8');
+            assert.notStrictEqual(before, after);
+            assert.ok(after.includes('void g(int x);'));
+        } finally { cleanup(); }
+    });
+});
+
+suite('extractTopLevelFunctionDefs — regression cases', () => {
+    test('skips out-of-line class member definitions (`void CFoo::bar() {}`)', () => {
+        const src = 'void CFoo::bar(int x) {\n    Print(x);\n}\nvoid topLevel() {}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        const names = defs.map(d => d.name);
+        assert.deepStrictEqual(names, ['topLevel'], `expected only top-level, got: ${names.join(',')}`);
+    });
+    test('skips MetaTrader event handlers', () => {
+        const src = [
+            'int OnInit() { return 0; }',
+            'void OnTick() {}',
+            'void OnDeinit(const int reason) {}',
+            'double OnTester() { return 0.0; }',
+            'void userFunc() {}'
+        ].join('\n');
+        const defs = extractTopLevelFunctionDefs(src);
+        const names = defs.map(d => d.name);
+        assert.deepStrictEqual(names, ['userFunc']);
+    });
+    test('skips legacy MQL4 entry points (init/deinit/start)', () => {
+        const src = 'int init() { return 0; }\nint start() { return 0; }\nint deinit() { return 0; }\nvoid mine() {}\n';
+        const defs = extractTopLevelFunctionDefs(src);
+        assert.deepStrictEqual(defs.map(d => d.name), ['mine']);
+    });
+});
+
+suite('buildAllHeaderEntries — auto-forwards integration', () => {
+    test('prepends the auto-forwards header to every descendant .mqh entry', async () => {
+        const { base, cleanup } = makeTmpProject({
+            'main.mq5': '#include "keys.mqh"\nvoid trigger_Forward() {}\n',
+            'keys.mqh': '// uses trigger_Forward()\n'
+        });
+        try {
+            const entries = await buildAllHeaderEntries(
+                [path.join(base, 'main.mq5')],
+                ['-xc++', '-std=c++17', '-includeC:/compat.h'],
+                base,
+                ''
+            );
+            const keysEntry = entries.find(e => e.file.endsWith('keys.mqh'));
+            assert.ok(keysEntry, 'keys.mqh entry should exist');
+            const includeFlags = keysEntry.arguments.filter(a => a.startsWith('-include'));
+            const hasAutoForwards = includeFlags.some(f => f.includes(AUTO_FORWARDS_DIR));
+            assert.ok(hasAutoForwards, `expected an auto-forwards -include flag, got: ${includeFlags.join(' | ')}`);
         } finally { cleanup(); }
     });
 });

@@ -39,6 +39,22 @@ function parseIncludes(text) {
 }
 
 /**
+ * Canonicalize a path to its actual on-disk casing. On Windows the filesystem
+ * is case-insensitive, so `fs.existsSync('Keys.mqh')` succeeds even when the
+ * file on disk is `keys.mqh`. clangd looks up compile_commands.json entries by
+ * the URI VS Code hands it (disk case), so mismatched-case entries become
+ * invisible — the header gets parsed as a standalone TU. Always return the
+ * canonical disk-cased path.
+ */
+function toDiskCase(p) {
+    try {
+        return fs.realpathSync.native(p);
+    } catch {
+        return p;
+    }
+}
+
+/**
  * Resolve an include path to absolute file path(s)
  */
 function resolveIncludePath(includePath, currentFileDir, workspaceRoot, includeDir) {
@@ -46,18 +62,18 @@ function resolveIncludePath(includePath, currentFileDir, workspaceRoot, includeD
 
     const relPath = pathModule.join(currentFileDir, includePath);
     if (fs.existsSync(relPath)) {
-        candidates.push(relPath);
+        candidates.push(toDiskCase(relPath));
     }
 
     const wsIncludePath = pathModule.join(workspaceRoot, 'Include', includePath);
     if (fs.existsSync(wsIncludePath)) {
-        candidates.push(wsIncludePath);
+        candidates.push(toDiskCase(wsIncludePath));
     }
 
     if (includeDir && fs.existsSync(includeDir)) {
         const extIncludePath = pathModule.join(includeDir, includePath);
         if (fs.existsSync(extIncludePath)) {
-            candidates.push(extIncludePath);
+            candidates.push(toDiskCase(extIncludePath));
         }
     }
 
