@@ -2715,6 +2715,33 @@ function activate(context) {
         }
     }));
 
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.installCompileListenerService', async () => {
+        const config = vscode.workspace.getConfiguration('mql_tools');
+        let rawIncDir = config.get('Metaeditor.Include5Dir');
+        if (!rawIncDir) {
+            rawIncDir = logTailer.inferDataFolder('mql5');
+        }
+        if (!rawIncDir) {
+            vscode.window.showErrorMessage('Cannot determine MQL5 folder path. Please configure mql_tools.Metaeditor.Include5Dir.');
+            return;
+        }
+        let basePath = rawIncDir;
+        if (pathModule.basename(basePath).toLowerCase() === 'include') {
+            basePath = pathModule.dirname(basePath);
+        }
+        const servicesDir = pathModule.join(basePath, 'Services');
+        const extensionPath = context.extensionPath;
+        const sourcePath = pathModule.join(extensionPath, 'files', 'CompileListenerService.mq5');
+        const targetPath = pathModule.join(servicesDir, 'CompileListenerService.mq5');
+        try {
+            await fs.promises.mkdir(servicesDir, { recursive: true });
+            await fs.promises.copyFile(sourcePath, targetPath);
+            vscode.window.showInformationMessage(`CompileListenerService.mq5 installed to: ${targetPath}. Open MetaEditor, compile it, then start it from Navigator → Services.`);
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to install CompileListenerService.mq5: ${err.message}`);
+        }
+    }));
+
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.switchLogMode', async () => {
         const current = logTailer.mode;
         const items = [

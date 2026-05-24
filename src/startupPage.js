@@ -36,6 +36,9 @@ function showStartupPage(context, force = false) {
                 case 'dismiss':
                     panel.dispose();
                     return;
+                case 'installCompileListenerService':
+                    vscode.commands.executeCommand('mql_tools.installCompileListenerService');
+                    return;
             }
         },
         undefined,
@@ -43,7 +46,7 @@ function showStartupPage(context, force = false) {
     );
 }
 
-const TAB_NAMES = ['debugger', 'livelog', 'backtest', 'tradereport'];
+const TAB_NAMES = ['debugger', 'livelog', 'backtest', 'compilelistener'];
 
 function readTabPartial(extensionPath, tabName) {
     const tabPath = path.join(extensionPath, 'media', 'tabs', `tab-${tabName}.html`);

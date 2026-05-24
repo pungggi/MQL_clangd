@@ -1,0 +1,138 @@
+<!-- ─── Tab 4: Compile Listener Service ─── -->
+<div id="tab-compilelistener" class="tab-panel" role="tabpanel" aria-labelledby="btn-compilelistener"
+    aria-hidden="true">
+
+    <div class="card">
+        <h2>Compile Listener Service</h2>
+
+        <p>Automatically reload a running EA in MetaTrader after every successful compile — without touching the
+            terminal.</p>
+
+        <div class="highlight-box">
+            <strong>How it works:</strong> VS Code writes a flag file after compile. The MT5 Service polls for that
+            file, finds the chart running your EA, and calls <span class="code-inline">ChartApplyTemplate()</span> to
+            reload it.
+        </div>
+
+        <h3>Setup</h3>
+        <ul class="step-list">
+            <li>
+                <strong>Install and compile the service</strong><br>
+                Click the button below — the extension copies <span
+                    class="code-inline">CompileListenerService.mq5</span> directly into your <span
+                    class="code-inline">MQL5/Services/</span> folder. Then compile it.
+                <div style="margin-top:12px;">
+                    <button id="btn-install-service">Install CompileListenerService.mq5</button>
+                </div>
+            </li>
+            <li>
+                <strong>Save a template for your EA</strong><br>
+                In MT5, open the chart running your EA → right-click → <strong>Templates → Save As</strong> → name it
+                exactly after your EA (e.g. <span class="code-inline">MyEA.tpl</span>). No extension in the service
+                input — just <span class="code-inline">MyEA</span>.
+            </li>
+            <li>
+                <strong>Create the flag folder</strong><br>
+                Run once in a terminal:
+                <pre
+                    style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">mkdir "%APPDATA%\MetaQuotes\Terminal\&lt;ID&gt;\MQL5\Files\COMPILEFLAGS"</pre>
+                Replace <span class="code-inline">&lt;ID&gt;</span> with your terminal's data folder ID (find it via
+                <strong>File → Open Data Folder</strong> in MT5).
+            </li>
+            <li>
+                <strong>Add the VS Code task</strong><br>
+                In <span class="code-inline">.vscode/tasks.json</span>:
+                <pre
+                    style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "write-compile-flag",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "echo.&gt;\"%APPDATA%\\MetaQuotes\\Terminal\\&lt;ID&gt;\\MQL5\\Files\\COMPILEFLAGS\\${fileBasenameNoExtension}.flag\""
+      ],
+      "presentation": { "reveal": "never" }
+    }
+  ]
+}</pre>
+            </li>
+            <li>
+                <strong>Wire the task to compile</strong><br>
+                Add to your VS Code settings:
+                <pre
+                    style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">"mql_tools.Compile.RunTaskOnSuccess": "write-compile-flag"</pre>
+            </li>
+            <li>
+                <strong>Start the service in MT5</strong><br>
+                Navigator → Services → <span class="code-inline">CompileListenerService</span> → double-click → set
+                <span class="code-inline">expertNames</span> to your EA name(s) → OK → right-click →
+                <strong>Start</strong>.
+            </li>
+        </ul>
+
+        <h3>Service Inputs</h3>
+        <table>
+            <tr>
+                <th>Input</th>
+                <th>Default</th>
+                <th>Purpose</th>
+            </tr>
+            <tr>
+                <td><span class="code-inline">expertNames</span></td>
+                <td><span class="code-inline">"EA_Name_1,EA_Name_2"</span></td>
+                <td>Comma-separated EA names to watch (no extension). Whitespace is trimmed.</td>
+            </tr>
+            <tr>
+                <td><span class="code-inline">showDebugOutput</span></td>
+                <td><span class="code-inline">true</span></td>
+                <td>Print per-chart scan info and template-apply lines to the Experts log.</td>
+            </tr>
+        </table>
+
+        <h3>Verifying it works</h3>
+        <p>Compile your EA from VS Code. In the MT5 Experts log you should see:</p>
+        <pre
+            style="background:var(--vscode-textCodeBlock-background);padding:12px;border-radius:4px;overflow-x:auto;font-family:var(--vscode-editor-font-family),monospace;font-size:0.9em;">FOUND EA MyEA on chart 123456789, applying template MyEA.tpl</pre>
+
+        <div class="warn-box">
+            <strong>Note:</strong> The flag file path is relative to <span class="code-inline">MQL5/Files/</span> — the
+            VS Code task must write to <span class="code-inline">MQL5/Files/COMPILEFLAGS/&lt;name&gt;.flag</span>. The
+            service uses MT5's <span class="code-inline">FileIsExist</span> / <span
+                class="code-inline">FileDelete</span> APIs which are sandboxed to that folder.
+        </div>
+
+        <h3>Notes</h3>
+        <ul>
+            <li>The service is a true <span class="code-inline">#property service</span> — it runs independently of any
+                chart and survives terminal reload.</li>
+            <li>Watch multiple EAs by separating names with commas: <span class="code-inline">"MyEA, OtherEA"</span>.
+            </li>
+            <li>For each EA, a template named <span class="code-inline">&lt;EA&gt;.tpl</span> must exist in <span
+                    class="code-inline">MQL5/Profiles/Templates/</span>.</li>
+            <li>Failures from <span class="code-inline">FileDelete</span> and <span
+                    class="code-inline">ChartApplyTemplate</span> are always logged with <span
+                    class="code-inline">GetLastError()</span>.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>Feedback</h2>
+        <p>Encountered a bug, have a feature request, or just want to tell us it's working well?</p>
+        <p>Please let us know on our GitHub issues page:</p>
+        <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BCompile%20Listener%5D%20"
+                style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open
+                an Issue on GitHub</a></p>
+    </div>
+
+    <div class="actions">
+        <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+        <button class="dismiss-btn">Got it! Dismiss for version {{version}}</button>
+    </div>
+
+    <div class="footer">
+        Thank you for using MQL Clangd. We can't wait to hear your feedback!
+    </div>
+</div>

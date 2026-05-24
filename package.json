@@ -486,6 +486,11 @@
                 "category": "MQL"
             },
             {
+                "command": "mql_tools.installCompileListenerService",
+                "title": "Install Compile Listener Service",
+                "category": "MQL"
+            },
+            {
                 "command": "mql_tools.switchLogMode",
                 "title": "Switch Log Tail Mode (Live/Standard)",
                 "category": "MQL"

@@ -181,7 +181,9 @@ When `mql_tools.Wine.Enabled` is `true` on macOS/Linux:
 
 On Wine/macOS (and any setup where MetaTrader doesn't auto-reload the running EA after compile) you can close the loop with a tiny MT5 Service that watches for flag files written by the post-compile task hook.
 
-A ready-to-use service ships under [`files/CompileListenerService.mq5`](files/CompileListenerService.mq5). Drop it into `MQL5/Services/`, compile, then start it from **Navigator → Services**.
+A ready-to-use service ships under [`files/CompileListenerService.mq5`](files/CompileListenerService.mq5). Install it with one command, compile in MetaEditor, then start it from **Navigator → Services**.
+
+**Command Palette:** `MQL: Install Compile Listener Service` — copies `CompileListenerService.mq5` directly into your `MQL5/Services/` folder (auto-detected from `mql_tools.Metaeditor.Include5Dir` or inferred from the workspace).
 
 **How it works**
 

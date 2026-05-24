@@ -268,14 +268,14 @@
                 aria-controls="tab-livelog" tabindex="-1">Live Log</button>
             <button class="tab-btn" id="btn-backtest" data-tab="backtest" role="tab" aria-selected="false"
                 aria-controls="tab-backtest" tabindex="-1">Run Backtest</button>
-            <button class="tab-btn" id="btn-tradereport" data-tab="tradereport" role="tab" aria-selected="false"
-                aria-controls="tab-tradereport" tabindex="-1">Trade Report</button>
+            <button class="tab-btn" id="btn-compilelistener" data-tab="compilelistener" role="tab" aria-selected="false"
+                aria-controls="tab-compilelistener" tabindex="-1">Compile Listener</button>
         </nav>
 
         {{tab-debugger}}
         {{tab-livelog}}
         {{tab-backtest}}
-        {{tab-tradereport}}
+        {{tab-compilelistener}}
 
     </div>
 
@@ -310,6 +310,10 @@
             btn.addEventListener('click', () => {
                 vscode.postMessage({ command: 'dismiss' });
             });
+        });
+
+        document.getElementById('btn-install-service')?.addEventListener('click', () => {
+            vscode.postMessage({ command: 'installCompileListenerService' });
         });
 
         // Arrow-key navigation for tabs (ARIA tabs pattern)
