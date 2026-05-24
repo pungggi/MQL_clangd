@@ -1130,5 +1130,6 @@ module.exports = {
     MQLDocumentSymbolProvider,
     getObjItems,
     extractDocumentSymbols,
-    clearSymbolCache
+    clearSymbolCache,
+    getIncludeDir
 };

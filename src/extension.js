@@ -35,8 +35,9 @@ const { tf } = require('./timeUtils');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
-const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache } = require('./provider');
+const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache, getIncludeDir } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
+const unresolvedSymbolWatcher = require('./unresolvedSymbolWatcher');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged, CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
 const { decodeTextBuffer } = require('./textDecoding');
 const { resolveCompileTargets, setCompileTargets, resetCompileTargets, markIndexDirty, getCompileTargets } = require('./compileTargetResolver');
@@ -2857,6 +2858,9 @@ function activate(context) {
 
     // Register lightweight diagnostics (instant feedback without MetaEditor)
     registerLightweightDiagnostics(context);
+
+    // Register on-save unresolved-symbol watcher (decoration + Hint diagnostics + quick fix)
+    unresolvedSymbolWatcher.activate(context, getIncludeDir);
 
     // Register Code Action provider for MQL quick fixes
     context.subscriptions.push(vscode.languages.registerCodeActionsProvider(

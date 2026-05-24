@@ -1531,3 +1531,291 @@ suite('buildAllHeaderEntries — auto-forwards integration', () => {
         } finally { cleanup(); }
     });
 });
+
+// =============================================================================
+// unresolvedSymbolWatcher — call-site scan, local-name extraction, allowlist
+// =============================================================================
+
+const {
+    findCallSiteOffsets,
+    collectLocalNamesFromText,
+    buildIncludeAllowlist,
+    KEYWORDS
+} = require('../../src/unresolvedSymbolWatcher');
+
+suite('unresolvedSymbolWatcher — findCallSiteOffsets', () => {
+    test('returns identifier + offset for each top-level call site', () => {
+        const text = 'void OnInit() { Print("hi"); foo(1, 2); }';
+        const sites = findCallSiteOffsets(text);
+        const names = sites.map(s => s.name);
+        assert.ok(names.includes('OnInit'));
+        assert.ok(names.includes('Print'));
+        assert.ok(names.includes('foo'));
+    });
+
+    test('skips control-flow keywords', () => {
+        const text = 'void f() { if (x>0) { while(y) { for(int i=0;i<3;i++) {} } } }';
+        const sites = findCallSiteOffsets(text);
+        const names = sites.map(s => s.name);
+        for (const kw of ['if', 'while', 'for', 'switch', 'return']) {
+            assert.ok(!names.includes(kw), `${kw} should be filtered`);
+        }
+    });
+
+    test('ignores tokens inside comments and strings', () => {
+        const text = `
+            // CallInComment(arg);
+            /* AnotherCall(arg); */
+            string s = "CallInString(arg)";
+            void f() { realCall(); }
+        `;
+        const names = findCallSiteOffsets(text).map(s => s.name);
+        assert.ok(!names.includes('CallInComment'));
+        assert.ok(!names.includes('AnotherCall'));
+        assert.ok(!names.includes('CallInString'));
+        assert.ok(names.includes('realCall'));
+    });
+
+    test('captures offsets that span the identifier (not paren)', () => {
+        const text = 'void f() { abc(); }';
+        const site = findCallSiteOffsets(text).find(s => s.name === 'abc');
+        assert.strictEqual(text.slice(site.start, site.end), 'abc');
+    });
+});
+
+suite('unresolvedSymbolWatcher — collectLocalNamesFromText', () => {
+    test('collects function definitions', () => {
+        const text = `
+            void helper(int x) { return; }
+            int compute(double a, double b) { return 0; }
+        `;
+        const names = collectLocalNamesFromText(text);
+        assert.ok(names.has('helper'));
+        assert.ok(names.has('compute'));
+    });
+
+    test('collects class / struct / enum names', () => {
+        const text = `
+            class MyClass {};
+            struct MyStruct { int a; };
+            enum MyEnum { A, B };
+        `;
+        const names = collectLocalNamesFromText(text);
+        assert.ok(names.has('MyClass'));
+        assert.ok(names.has('MyStruct'));
+        assert.ok(names.has('MyEnum'));
+    });
+
+    test('collects #define macros', () => {
+        const text = '#define MAX_LEN 100\n#define PI 3.14';
+        const names = collectLocalNamesFromText(text);
+        assert.ok(names.has('MAX_LEN'));
+        assert.ok(names.has('PI'));
+    });
+
+    test('collects typed variable declarations', () => {
+        const text = `
+            int counter = 0;
+            double price;
+            string label[10];
+        `;
+        const names = collectLocalNamesFromText(text);
+        assert.ok(names.has('counter'));
+        assert.ok(names.has('price'));
+        assert.ok(names.has('label'));
+    });
+});
+
+suite('unresolvedSymbolWatcher — buildIncludeAllowlist', () => {
+    function makeTmpIncludeDir() {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mql-include-'));
+        return { dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+    }
+
+    test('extracts function names from .mqh files', () => {
+        const { dir, cleanup } = makeTmpIncludeDir();
+        try {
+            fs.writeFileSync(path.join(dir, 'a.mqh'), `
+                void helperA(int x) { return; }
+                int compute(double a) { return 0; }
+            `);
+            const { names } = buildIncludeAllowlist(dir);
+            assert.ok(names.has('helperA'));
+            assert.ok(names.has('compute'));
+        } finally { cleanup(); }
+    });
+
+    test('extracts pure declarations (no body)', () => {
+        const { dir, cleanup } = makeTmpIncludeDir();
+        try {
+            fs.writeFileSync(path.join(dir, 'decl.mqh'), `
+                void declOnly(int x);
+                int anotherDecl(double a, double b);
+            `);
+            const { names } = buildIncludeAllowlist(dir);
+            assert.ok(names.has('declOnly'));
+            assert.ok(names.has('anotherDecl'));
+        } finally { cleanup(); }
+    });
+
+    test('recurses subdirectories', () => {
+        const { dir, cleanup } = makeTmpIncludeDir();
+        try {
+            const sub = path.join(dir, 'Trade');
+            fs.mkdirSync(sub);
+            fs.writeFileSync(path.join(sub, 'Trade.mqh'), 'void OrderSendDeep() {}');
+            const { names } = buildIncludeAllowlist(dir);
+            assert.ok(names.has('OrderSendDeep'));
+        } finally { cleanup(); }
+    });
+
+    test('returns empty allowlist for missing directory', () => {
+        const { names } = buildIncludeAllowlist('/nonexistent/path/qweqwe');
+        assert.strictEqual(names.size, 0);
+    });
+
+    test('produces an mtime-based signature', () => {
+        const { dir, cleanup } = makeTmpIncludeDir();
+        try {
+            fs.writeFileSync(path.join(dir, 'sig.mqh'), 'void s() {}');
+            const r = buildIncludeAllowlist(dir);
+            assert.ok(r.signature.length > 0);
+            assert.ok(r.signature.includes('sig.mqh'));
+        } finally { cleanup(); }
+    });
+});
+
+suite('unresolvedSymbolWatcher — KEYWORDS set', () => {
+    test('contains common control-flow keywords', () => {
+        for (const kw of ['if', 'else', 'for', 'while', 'switch', 'return', 'sizeof']) {
+            assert.ok(KEYWORDS.has(kw), `KEYWORDS missing '${kw}'`);
+        }
+    });
+    test('contains MQL type keywords', () => {
+        for (const kw of ['int', 'double', 'string', 'bool', 'datetime', 'void']) {
+            assert.ok(KEYWORDS.has(kw), `KEYWORDS missing '${kw}'`);
+        }
+    });
+});
+
+const {
+    mapWithConcurrency,
+    rangeContainsPosition,
+    UnresolvedCodeActionProvider,
+    DIAG_SOURCE,
+    getBuiltins
+} = require('../../src/unresolvedSymbolWatcher');
+
+suite('unresolvedSymbolWatcher — mapWithConcurrency', () => {
+    test('preserves input order in output', async () => {
+        const items = [10, 20, 30, 40, 50];
+        const out = await mapWithConcurrency(items, 2, async (n) => n * 2);
+        assert.deepStrictEqual(out, [20, 40, 60, 80, 100]);
+    });
+
+    test('runs at most `limit` tasks in parallel', async () => {
+        let inFlight = 0;
+        let peak = 0;
+        const items = [1, 2, 3, 4, 5, 6, 7, 8];
+        await mapWithConcurrency(items, 3, async () => {
+            inFlight++;
+            if (inFlight > peak) peak = inFlight;
+            await new Promise(r => setTimeout(r, 5));
+            inFlight--;
+        });
+        assert.ok(peak <= 3, `peak concurrency ${peak} exceeded limit 3`);
+        assert.ok(peak >= 2, `peak concurrency ${peak} should reach the limit`);
+    });
+
+    test('handles empty input', async () => {
+        const out = await mapWithConcurrency([], 4, async () => 1);
+        assert.deepStrictEqual(out, []);
+    });
+});
+
+suite('unresolvedSymbolWatcher — rangeContainsPosition', () => {
+    test('returns true for position inside the range', () => {
+        const range = { start: { line: 5, character: 2 }, end: { line: 5, character: 10 } };
+        assert.strictEqual(rangeContainsPosition(range, { line: 5, character: 5 }), true);
+    });
+    test('returns false for position before the range start', () => {
+        const range = { start: { line: 5, character: 2 }, end: { line: 5, character: 10 } };
+        assert.strictEqual(rangeContainsPosition(range, { line: 5, character: 1 }), false);
+    });
+    test('returns false for position past the range end', () => {
+        const range = { start: { line: 5, character: 2 }, end: { line: 5, character: 10 } };
+        assert.strictEqual(rangeContainsPosition(range, { line: 5, character: 11 }), false);
+    });
+    test('returns false on missing range', () => {
+        assert.strictEqual(rangeContainsPosition(null, { line: 0, character: 0 }), false);
+    });
+    test('handles multi-line ranges', () => {
+        const range = { start: { line: 2, character: 5 }, end: { line: 4, character: 3 } };
+        assert.strictEqual(rangeContainsPosition(range, { line: 3, character: 100 }), true);
+        assert.strictEqual(rangeContainsPosition(range, { line: 2, character: 4 }), false);
+        assert.strictEqual(rangeContainsPosition(range, { line: 4, character: 4 }), false);
+    });
+});
+
+suite('unresolvedSymbolWatcher — getBuiltins', () => {
+    test('returns same Set instance on repeated calls', () => {
+        const a = getBuiltins();
+        const b = getBuiltins();
+        assert.strictEqual(a, b, 'builtins should be cached');
+    });
+    test('contains well-known MQL functions', () => {
+        const b = getBuiltins();
+        assert.ok(b.has('Print'), 'missing Print');
+        assert.ok(b.has('OrderSend'), 'missing OrderSend');
+        assert.ok(b.has('ArraySize'), 'missing ArraySize');
+    });
+});
+
+suite('unresolvedSymbolWatcher — UnresolvedCodeActionProvider', () => {
+    function makeDiag(source) {
+        return { source, range: null, message: '', severity: 3, code: 'unresolved-symbol' };
+    }
+
+    test('returns no actions when no matching diagnostics', () => {
+        const provider = new UnresolvedCodeActionProvider();
+        const actions = provider.provideCodeActions({}, {}, { diagnostics: [makeDiag('other-source')] });
+        assert.deepStrictEqual(actions, []);
+    });
+
+    test('returns regenerate + restart actions for our diagnostics', () => {
+        const provider = new UnresolvedCodeActionProvider();
+        const diag = makeDiag(DIAG_SOURCE);
+        const actions = provider.provideCodeActions({}, {}, { diagnostics: [diag] });
+        assert.strictEqual(actions.length, 2);
+        const commands = actions.map(a => a.command.command);
+        assert.ok(commands.includes('mql_tools.configurations'));
+        assert.ok(commands.includes('clangd.restart'));
+    });
+
+    test('marks regenerate as preferred', () => {
+        const provider = new UnresolvedCodeActionProvider();
+        const diag = makeDiag(DIAG_SOURCE);
+        const actions = provider.provideCodeActions({}, {}, { diagnostics: [diag] });
+        const regen = actions.find(a => a.command.command === 'mql_tools.configurations');
+        assert.strictEqual(regen.isPreferred, true);
+    });
+
+    test('attaches the matching diagnostics to each action', () => {
+        const provider = new UnresolvedCodeActionProvider();
+        const d1 = makeDiag(DIAG_SOURCE);
+        const d2 = makeDiag(DIAG_SOURCE);
+        const noise = makeDiag('other');
+        const actions = provider.provideCodeActions({}, {}, { diagnostics: [d1, noise, d2] });
+        for (const a of actions) {
+            assert.deepStrictEqual(a.diagnostics, [d1, d2]);
+        }
+    });
+
+    test('ignores non-matching diagnostic sources', () => {
+        const provider = new UnresolvedCodeActionProvider();
+        const actions = provider.provideCodeActions({}, {}, {
+            diagnostics: [makeDiag('cpptools'), makeDiag('clangd')]
+        });
+        assert.deepStrictEqual(actions, []);
+    });
+});

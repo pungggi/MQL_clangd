@@ -43,6 +43,27 @@ const ConfigurationTarget = {
     WorkspaceFolder: 3
 };
 
+const CodeActionKind = {
+    Empty: { value: '' },
+    QuickFix: { value: 'quickfix' },
+    Refactor: { value: 'refactor' },
+    RefactorExtract: { value: 'refactor.extract' },
+    RefactorInline: { value: 'refactor.inline' },
+    RefactorRewrite: { value: 'refactor.rewrite' },
+    Source: { value: 'source' },
+    SourceOrganizeImports: { value: 'source.organizeImports' }
+};
+
+class CodeAction {
+    constructor(title, kind) {
+        this.title = title;
+        this.kind = kind;
+        this.diagnostics = [];
+        this.command = undefined;
+        this.isPreferred = false;
+    }
+}
+
 module.exports = {
     Range,
     Position,
@@ -50,6 +71,8 @@ module.exports = {
     DiagnosticSeverity,
     Diagnostic,
     ConfigurationTarget,
+    CodeActionKind,
+    CodeAction,
     env: {
         language: 'en'
     },
