@@ -7,3 +7,4 @@ dist/
 nul
 *.stackdump
 .claude/settings.local.json
+.mql-auto-forwards/
