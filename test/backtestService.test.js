@@ -42,6 +42,43 @@ suite('backtestService', function () {
         assert.strictEqual(eas[0].dir, eaDir);
     });
 
+    test('discovers EAs that only have MT5-generated *.ini files (no tester.ini)', function () {
+        const eaDir = path.join(tempDir, 'MQL5', 'Experts', 'GenIniEA');
+        fs.mkdirSync(eaDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(eaDir, 'GenIniEA_v1.0.USDJPY.pro.M15.20260201_20260430.100.ini'),
+            testerIni(),
+        );
+
+        const eas = discoverBacktestEAs(path.join(tempDir, 'MQL5'));
+
+        assert.strictEqual(eas.length, 1);
+        assert.strictEqual(eas[0].name, 'GenIniEA');
+        assert.strictEqual(eas[0].hasTesterConfig(), true);
+        assert.strictEqual(
+            path.basename(eas[0].testerIniPath),
+            'GenIniEA_v1.0.USDJPY.pro.M15.20260201_20260430.100.ini',
+        );
+    });
+
+    test('getTesterIniCandidates returns tester.ini first when both default and named INIs exist', function () {
+        const eaDir = path.join(tempDir, 'MQL5', 'Experts', 'MultiIniEA');
+        fs.mkdirSync(eaDir, { recursive: true });
+        fs.writeFileSync(path.join(eaDir, 'MultiIniEA.EURUSD.M5.ini'), testerIni());
+        fs.writeFileSync(path.join(eaDir, 'tester.ini'), testerIni());
+        fs.writeFileSync(path.join(eaDir, 'AnotherRun.GBPUSD.H1.ini'), testerIni());
+
+        const eas = discoverBacktestEAs(path.join(tempDir, 'MQL5'));
+        const candidates = eas[0].getTesterIniCandidates().map(p => path.basename(p));
+
+        assert.deepStrictEqual(candidates, [
+            'tester.ini',
+            'AnotherRun.GBPUSD.H1.ini',
+            'MultiIniEA.EURUSD.M5.ini',
+        ]);
+        assert.strictEqual(path.basename(eas[0].testerIniPath), 'tester.ini');
+    });
+
     test('parses tester.ini tester and input defaults', function () {
         const iniPath = path.join(createEa('Experts/MyEA', testerIni()), 'tester.ini');
 

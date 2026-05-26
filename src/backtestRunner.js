@@ -147,6 +147,34 @@ async function resolveCandidateEAName(context, editor, resolveCompileTargets) {
 }
 
 // ---------------------------------------------------------------------------
+// Tester INI selection
+// ---------------------------------------------------------------------------
+
+async function selectTesterIniFile(ea) {
+    const candidates = ea.getTesterIniCandidates();
+    if (candidates.length <= 1) return ea.testerIniPath;
+
+    const defaultName = 'tester.ini';
+    const items = candidates.map(p => {
+        const name = path.basename(p);
+        return {
+            label: name,
+            description: name.toLowerCase() === defaultName ? '(default)' : undefined,
+            path: p,
+        };
+    });
+
+    const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: `Multiple tester INI files in ${ea.name} — choose one for this run`,
+        title: `MQL Backtest: Select tester INI for ${ea.name}`,
+    });
+    if (!pick) return undefined;
+
+    ea.testerIniPath = pick.path;
+    return pick.path;
+}
+
+// ---------------------------------------------------------------------------
 // Parameter collection
 // ---------------------------------------------------------------------------
 
@@ -344,6 +372,14 @@ async function runBacktest(context, opts) {
 
     const eaName = await resolveEAName(context, mql5Root, opts.resolveCompileTargets);
     if (!eaName) return;
+
+    const ea = findBacktestEA(mql5Root, eaName);
+    if (!ea) {
+        vscode.window.showErrorMessage(`EA ${eaName} not found.`);
+        return;
+    }
+    const iniSelected = await selectTesterIniFile(ea);
+    if (iniSelected === undefined) return;
 
     const params = promptParams ? await getTestParameters(mql5Root, eaName) : getSilentParameters(mql5Root, eaName);
     if (!params) return;
