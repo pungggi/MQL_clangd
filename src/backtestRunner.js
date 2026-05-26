@@ -94,7 +94,7 @@ function isUsableMql5Root(mql5Root) {
 async function resolveEAName(context, mql5Root, resolveCompileTargets) {
     const eaList = discoverBacktestEAs(mql5Root);
     if (eaList.length === 0) {
-        vscode.window.showErrorMessage('No EAs with tester.ini or runs/ folders were found under MQL5/Experts.');
+        vscode.window.showErrorMessage('No EAs with tester configuration files (*.ini) or runs/ folders were found under MQL5/Experts.');
         return null;
     }
 
@@ -113,7 +113,7 @@ async function resolveEAName(context, mql5Root, resolveCompileTargets) {
         return {
             label: ea.name,
             description: `${runCount} run${runCount !== 1 ? 's' : ''}`,
-            detail: latestLog ? `Latest: ${latestLog.name}` : ea.hasTesterConfig() ? 'tester.ini available' : undefined,
+            detail: latestLog ? `Latest: ${latestLog.name}` : ea.hasTesterConfig() ? 'Configuration available' : undefined,
         };
     });
 
@@ -215,11 +215,11 @@ function getSilentParameters(mql5Root, eaName) {
     const defaults = getDefaults(mql5Root, eaName);
     const missing = ['symbol', 'fromDate', 'toDate'].filter(key => !defaults[key]);
     if (missing.length > 0) {
-        vscode.window.showErrorMessage(`tester.ini for ${eaName} is missing required fields: ${missing.join(', ')}. Enable parameter prompts.`);
+        vscode.window.showErrorMessage(`Tester configuration for ${eaName} is missing required fields: ${missing.join(', ')}. Enable parameter prompts.`);
         return null;
     }
     if (!isValidDate(defaults.fromDate) || !isValidDate(defaults.toDate)) {
-        vscode.window.showErrorMessage(`tester.ini for ${eaName} contains invalid dates (expected YYYY.MM.DD).`);
+        vscode.window.showErrorMessage(`Tester configuration for ${eaName} contains invalid dates (expected YYYY.MM.DD).`);
         return null;
     }
     return defaults;
