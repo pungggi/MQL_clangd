@@ -188,16 +188,23 @@ function getDefaults(mql5Root, eaName) {
 
 async function promptForSymbol(defaultSymbol, symbols) {
     const uniqueSymbols = symbols.includes(defaultSymbol) || !defaultSymbol ? symbols : [defaultSymbol, ...symbols];
-    if (uniqueSymbols.length > 0) {
-        const pick = await vscode.window.showQuickPick(
-            uniqueSymbols.map(symbol => ({ label: symbol, picked: symbol === defaultSymbol })),
-            { placeHolder: `Symbol (default: ${defaultSymbol || 'none'})`, title: 'MQL Backtest: Select Symbol' },
-        );
-        return pick ? pick.label : null;
-    }
+    if (uniqueSymbols.length === 0) return promptForSymbolInput(defaultSymbol);
 
+    const items = uniqueSymbols.map(symbol => ({ label: symbol, picked: symbol === defaultSymbol }));
+    items.push({ label: '$(edit) Enter symbol manually…', alwaysShow: true, _manual: true });
+
+    const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: `Symbol (default: ${defaultSymbol || 'none'})`,
+        title: 'MQL Backtest: Select Symbol',
+    });
+    if (!pick) return null;
+    if (pick._manual) return promptForSymbolInput(defaultSymbol);
+    return pick.label;
+}
+
+async function promptForSymbolInput(defaultSymbol) {
     const input = await vscode.window.showInputBox({
-        prompt: 'Symbol',
+        prompt: 'Symbol (e.g. EURUSD, USDJPY.pro, EURUSDm)',
         value: defaultSymbol,
         title: 'MQL Backtest: Enter Symbol',
     });
@@ -374,5 +381,6 @@ module.exports = {
     resolveBacktestPathSetting,
     parseMqlDate,
     isValidDate,
+    promptForSymbol,
     TESTER_LOG_DIR_SETTING_ID,
 };
