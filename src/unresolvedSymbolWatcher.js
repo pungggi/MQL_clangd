@@ -508,6 +508,18 @@ function collectLocalNamesFromText(rawText) {
     // those come from extractTopLevelFunctionDefs above.
     const varRegex = /\b(?:int|uint|long|ulong|short|ushort|char|uchar|double|float|string|bool|datetime|color|void)\s+([A-Za-z_]\w*)\s*(?:=|;|,|\[)/g;
     while ((m = varRegex.exec(text)) !== null) names.add(m[1]);
+    // DLL/library import blocks: #import "foo.dll" ... #import
+    // clangd cannot resolve these — treat declared function names as known.
+    const dllImportRe = /#import\s+"[^"]*"([\s\S]*?)\n[ \t]*#import(?!\s*")/g;
+    while ((m = dllImportRe.exec(rawText)) !== null) {
+        const block = m[1];
+        const fnRe = /\b([A-Za-z_]\w*)\s*\(/g;
+        let fnM;
+        while ((fnM = fnRe.exec(block)) !== null) {
+            const nm = fnM[1];
+            if (!KEYWORDS.has(nm)) names.add(nm);
+        }
+    }
     return names;
 }
 
