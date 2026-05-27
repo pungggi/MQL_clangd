@@ -165,6 +165,18 @@
                     "maximum": 300000,
                     "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
+                "mql_tools.Compile.CpuArchitecture": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "x64",
+                        "avx",
+                        "avx2",
+                        "avx512"
+                    ],
+                    "default": "default",
+                    "markdownDescription": "CPU instruction set for compiled EX5 files. Controls which SIMD instructions the MQL5 compiler uses. Only applies to MQL5 compilation (MetaEditor). **MQL4 is not affected.**\n\n| Value | Instructions | Notes |\n|-------|-------------|-------|\n| `default` | No change | Uses whatever is currently set in MetaEditor |\n| `x64` | X64 Regular | Maximum compatibility (Market-ready) |\n| `avx` | AVX | Advanced Vector Extensions |\n| `avx2` | AVX2 + FMA3 | Fused Multiply-Add + wider vectors |\n| `avx512` | AVX512 + FMA3 | Highest performance on modern CPUs |\n\n⚠️ Programs compiled with AVX/AVX2/AVX512 will **not** run on CPUs that don't support the selected instruction set."
+                },
                 "mql_tools.Compile.RunTaskOnSuccess": {
                     "type": "string",
                     "default": "",

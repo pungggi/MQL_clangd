@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- **CPU Architecture Selection for MQL5**: New setting `mql_tools.Compile.CpuArchitecture` (`default` | `x64` | `avx` | `avx2` | `avx512`) lets you compile EX5 files using AVX/AVX2/AVX512+FMA3 instruction sets directly from VS Code. When a non-default architecture is selected, the extension creates a temporary `.mqproj` project file with the `cpu_architecture` key and compiles via that project — no global MetaEditor settings are modified. The architecture is shown in the compile log (e.g. `[AVX2]`). Only affects MQL5; MQL4 is unchanged. Non-default choices produce binaries that will not load on CPUs lacking the required instructions (issue #55).
+
+### Hardening
+- Hardened `metaeditor.ini` mutation for the new CPU Architecture setting: atomic writes, guaranteed restore on every exit path, correct removal when the key was originally absent, and serialization across concurrent compiles.
+
 ## 1.1.51
 
 ### Features

@@ -352,6 +352,82 @@ function inferMqlDataDirFromPath(filePath, isMql5) {
     return null;
 }
 
+// ---------------------------------------------------------------------------
+// CPU Architecture setting for MetaEditor compilation
+// ---------------------------------------------------------------------------
+
+/** Mapping of user-facing enum values to the numeric values used in .mqproj files.
+ *  0 = X64 Regular, 1 = AVX, 2 = AVX2 + FMA3, 3 = AVX512 + FMA3
+ */
+const CPU_ARCH_MAP = {
+    'x64':    0,
+    'avx':    1,
+    'avx2':   2,
+    'avx512': 3,
+};
+
+/**
+ * Create a temporary .mqproj file that wraps the source file with a cpu_architecture setting.
+ * The project is placed in the same directory as the source file so relative paths work.
+ *
+ * @param {string} sourcePath - Absolute path to the .mq4/.mq5 source file
+ * @param {number} archValue  - Numeric architecture value (0–3)
+ * @returns {string} Absolute path to the created temporary .mqproj file
+ */
+function createTempMqproj(sourcePath, archValue) {
+    const sourceDir = pathModule.dirname(sourcePath);
+    const sourceBasename = pathModule.basename(sourcePath);
+    const ext = pathModule.extname(sourcePath).toLowerCase();
+    const isMql4 = ext === '.mq4';
+
+    // Determine program_type from path heuristics
+    let programType = 'expert';
+    const lower = sourcePath.toLowerCase();
+    if (lower.includes('indicator')) programType = 'indicator';
+    else if (lower.includes('script')) programType = 'script';
+    else if (lower.includes('service')) programType = 'service';
+    else if (lower.includes('library')) programType = 'library';
+
+    const project = {
+        'platform': isMql4 ? 'mt4' : 'mt5',
+        'program_type': programType,
+        'optimize': '1',
+        'fpzerocheck': '1',
+        'cpu_architecture': String(archValue),
+        'files': [
+            {
+                'path': `.\\${sourceBasename}`,
+                'compile': 'true',
+                'relative_to_project': 'true'
+            }
+        ]
+    };
+
+    const projName = `._mql_clangd_cpu_arch_${Date.now()}.mqproj`;
+    const projPath = pathModule.join(sourceDir, projName);
+
+    // MetaEditor expects UTF-16 LE with BOM
+    const json = JSON.stringify(project, null, 2);
+    const bom = Buffer.from([0xFF, 0xFE]);
+    const encoded = Buffer.from(json, 'utf16le');
+    fs.writeFileSync(projPath, Buffer.concat([bom, encoded]));
+
+    return projPath;
+}
+
+/**
+ * Clean up the temporary .mqproj file created by createTempMqproj.
+ *
+ * @param {string} projPath - Path to the temp .mqproj file
+ */
+function cleanupTempMqproj(projPath) {
+    try {
+        if (projPath && fs.existsSync(projPath)) {
+            fs.unlinkSync(projPath);
+        }
+    } catch { /* best effort */ }
+}
+
 /**
  * Compile a single file path.
  *
@@ -450,6 +526,12 @@ async function compilePath(rt, pathToCompile, _context) {
     }
 
     const portableSwitch = generatePortableSwitch(portableMode);
+
+    // CPU architecture is resolved here, but the metaeditor.ini mutation is deferred to
+    // immediately before spawn (and wrapped in a try/finally + mutex) so that any early
+    // return between here and the spawn cannot leak a mutated INI.
+    const cpuArchSetting = isMql5 ? config.Compile?.CpuArchitecture : 'default';
+    const cpuArchActive = cpuArchSetting && cpuArchSetting !== 'default' && CPU_ARCH_MAP[cpuArchSetting] !== undefined;
 
     // Strategy: Place the log file directly next to the source file.
     // MetaEditor creates log files without the source extension (e.g., SMC.log, not SMC.mq5.log)
@@ -567,7 +649,7 @@ async function compilePath(rt, pathToCompile, _context) {
         command = MetaDir;
     }
 
-    return new Promise((resolve) => {
+    const runCompile = () => new Promise((resolve) => {
 
         // Common handler for processing compilation results
         const handleCompilationResult = async (launchError, stderror) => {
@@ -579,6 +661,7 @@ async function compilePath(rt, pathToCompile, _context) {
             if (useWine && batFile) {
                 cleanupBatchFile(batFile.unixPath);
             }
+            // CPU architecture restoration is handled in the spawn try/finally, not here.
 
             let data;
             try {
@@ -644,7 +727,8 @@ async function compilePath(rt, pathToCompile, _context) {
             const timeCompile = (endT - startT) / 1000;
             const targetLabel = formatCompileTargetLabel(fileName, propertyVersion);
 
-            outputChannel.appendLine(`[${time}] ${teq} ${targetLabel} [${timeCompile}s]`);
+            const cpuArchTag = cpuArchActive ? ` [${cpuArchSetting.toUpperCase()}]` : '';
+            outputChannel.appendLine(`[${time}] ${teq} ${targetLabel}${cpuArchTag} [${timeCompile}s]`);
 
             if (rt === COMPILE_MODE_SCRIPT && !log.error) {
                 if (useWine) {
@@ -737,6 +821,46 @@ async function compilePath(rt, pathToCompile, _context) {
             handleCompilationResult(code !== 0 ? `Process exited with code ${code}` : null, stderrData);
         });
     });
+
+    if (!cpuArchActive) {
+        return runCompile();
+    }
+
+    // CPU architecture override: create a temporary .mqproj with cpu_architecture set,
+    // compile via /compile:<project.mqproj>, then clean up.
+    const archValue = CPU_ARCH_MAP[cpuArchSetting];
+    let tempProjPath = null;
+    try {
+        tempProjPath = createTempMqproj(pathToCompile, archValue);
+        outputChannel.appendLine(`[CPU] Created temp project with cpu_architecture=${archValue} (${cpuArchSetting}): ${tempProjPath}`);
+
+        // Override compileArg to point at the temp project instead of the source file.
+        // We must rebuild the command arguments with the project path.
+        if (useWine) {
+            const projResult = await toWineWindowsPath(tempProjPath, wineBinary, winePrefix);
+            const projWinPath = projResult.success ? projResult.path : tempProjPath;
+            const metaArgs = [`/compile:"${projWinPath}"`, `/log:"${logArg}"`];
+            if (includefile) metaArgs.push(includefile);
+            if (portableSwitch) metaArgs.push(portableSwitch);
+            const batContent = buildBatchContent(metaEditorWinPath, metaArgs);
+            batFile = await createWineBatchFile(batContent, wineBinary, winePrefix);
+            const wineCmd = buildWineCmd(wineBinary, batFile.winPath);
+            command = wineCmd.executable;
+            execArgs = wineCmd.args;
+        } else {
+            execArgs = [`/compile:${tempProjPath}`, `/log:${logFile}`];
+            if (incDir) execArgs.push(`/inc:${incDir}`);
+            if (portableSwitch) execArgs.push(portableSwitch);
+            command = MetaDir;
+        }
+
+        return await runCompile();
+    } finally {
+        cleanupTempMqproj(tempProjPath);
+        if (tempProjPath) {
+            outputChannel.appendLine('[CPU] Cleaned up temp project');
+        }
+    }
 }
 
 
@@ -2472,8 +2596,17 @@ function activate(context) {
     }));
 
     const extensionId = 'ngsoftware.mql-tools';
-    const currentVersion = vscode.extensions.getExtension(extensionId)?.packageJSON.version;
+    const extPkg = vscode.extensions.getExtension(extensionId)?.packageJSON;
+    const currentVersion = extPkg?.version;
     const previousVersion = context.globalState.get('mql-tools.version');
+
+    // Guard: CPU_ARCH_MAP must cover every non-'default' enum value declared in package.json.
+    const cpuArchEnum = extPkg?.contributes?.configuration?.properties?.['mql_tools.Compile.CpuArchitecture']?.enum || [];
+    for (const v of cpuArchEnum) {
+        if (v !== 'default' && CPU_ARCH_MAP[v] === undefined) {
+            outputChannel.appendLine(`[Warning] CpuArchitecture enum value '${v}' has no CPU_ARCH_MAP entry; selecting it will be a no-op.`);
+        }
+    }
 
     // Initialize Wine helper with output channel for logging
     setWineOutputChannel(outputChannel);

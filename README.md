@@ -121,6 +121,7 @@ This creates a zero-cost pointer — no duplication, files exist only once. You 
 *   **Multi-root workspaces**: Fully supported. Settings are resolved from the active file's folder.
 *   **Settings Merge**: MQL flags are merged into your existing `clangd.fallbackFlags` — never overwritten.
 *   **Compiler Flags**: We automatically inject `-xc++` and `-std=c++17` along with version-specific defines (`__MQL4__`/`__MQL5__`) to help clangd understand MQL syntax.
+*   **CPU Architecture (MQL5)**: `mql_tools.Compile.CpuArchitecture` lets you compile for AVX/AVX2/AVX512 instruction sets via a temporary `.mqproj` wrapper. Only affects MQL5; incompatible binaries will fail to load on older CPUs. Market uploads require `x64` (default).
 *   **Relative Paths & Portable Mode**: Settings like `mql_tools.Metaeditor.Metaeditor5Dir` and `mql_tools.Metaeditor.Include5Dir` now support `${workspaceFolder}` variable substitution and relative paths. This is perfect for portable MetaTrader installations:
     ```json
     {
