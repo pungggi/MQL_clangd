@@ -83,6 +83,18 @@ suite('backtestService', function () {
         assert.ok(updated.includes('ToDate=2026.04.30'));
     });
 
+    test('does not crash on non-string date values in params', function () {
+        assert.doesNotThrow(() => {
+            const updated = updateTesterIniContent(testerIni(), {
+                fromDate: 20260201,
+                toDate: 20260430,
+            });
+            // Numeric input is passed through unchanged rather than slice()-ing.
+            assert.ok(updated.includes('FromDate=20260201'));
+            assert.ok(updated.includes('ToDate=20260430'));
+        });
+    });
+
     test('finds tester agent log directory from MQL5 root terminal id', function () {
         const mql5Root = path.join(tempDir, 'MetaQuotes', 'Terminal', 'ABCDEF', 'MQL5');
         const logDir = path.join(tempDir, 'MetaQuotes', 'Tester', 'ABCDEF', 'Agent-127.0.0.1-3000', 'logs');

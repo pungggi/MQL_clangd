@@ -191,12 +191,31 @@ function updateTesterIniContent(content, params, lineEnding) {
     return result.join(detectedEnding);
 }
 
-// MT5 only accepts the dotted `YYYY.MM.DD` form in tester.ini. Inputs may arrive
-// in the compact `YYYYMMDD` form (copied from tester INI filenames), so normalize.
+/**
+ * Normalize a date value to the dotted `YYYY.MM.DD` form MT5 requires in tester.ini.
+ *
+ * Inputs may arrive in the compact `YYYYMMDD` form (copied from tester INI
+ * filenames). Non-string values (and any other format) are returned unchanged,
+ * so a numeric date in `params` can't trigger a TypeError on `.slice()`.
+ *
+ * @param {*} v - The raw date value.
+ * @returns {*} The dotted-form string for compact input; otherwise `v` unchanged.
+ */
 function normalizeMqlDate(v) {
-    return /^\d{8}$/.test(v) ? `${v.slice(0, 4)}.${v.slice(4, 6)}.${v.slice(6, 8)}` : v;
+    if (typeof v !== 'string' || !/^\d{8}$/.test(v)) return v;
+    return `${v.slice(0, 4)}.${v.slice(4, 6)}.${v.slice(6, 8)}`;
 }
 
+/**
+ * Build the replacement line for a single tester.ini `key=value` entry, or null
+ * when the entry should be left untouched.
+ *
+ * @param {string} section - The current INI section name (e.g. `tester`, `inputs`).
+ * @param {string} key - The setting key on the current line.
+ * @param {string} oldValue - The existing value (right of `=`), used to preserve format.
+ * @param {object} params - Backtest parameters (symbol, fromDate, toDate, riskPercentage).
+ * @returns {string|null} The replacement line, or null to keep the original.
+ */
 function getTesterIniReplacement(section, key, oldValue, params) {
     if (section === 'tester') {
         if (key === 'Symbol' && params.symbol) return `Symbol=${params.symbol}`;

@@ -40,8 +40,15 @@ const DEFAULT_TERMINAL_PATHS = [
 // Date helpers
 // ---------------------------------------------------------------------------
 
-// Accepts the canonical dotted form `YYYY.MM.DD` and the compact `YYYYMMDD`
-// form used in MT5 tester INI filenames (users often copy-paste from there).
+/**
+ * Parse an MQL date string into a local `Date`, validating it calendrically.
+ *
+ * Accepts the canonical dotted form `YYYY.MM.DD` and the compact `YYYYMMDD`
+ * form used in MT5 tester INI filenames (users often copy-paste from there).
+ *
+ * @param {*} v - The raw date string.
+ * @returns {Date|null} The parsed Date, or null if the input is malformed or not a real calendar date.
+ */
 function parseMqlDate(v) {
     if (typeof v !== 'string') return null;
 
@@ -59,6 +66,12 @@ function parseMqlDate(v) {
     return d;
 }
 
+/**
+ * Report whether a string is a valid MQL date in either accepted format.
+ *
+ * @param {*} v - The raw date string.
+ * @returns {boolean} True if `v` parses to a real calendar date.
+ */
 function isValidDate(v) {
     return parseMqlDate(v) !== null;
 }
