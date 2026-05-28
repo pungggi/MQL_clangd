@@ -361,9 +361,9 @@ function inferMqlDataDirFromPath(filePath, isMql5) {
  *  0 = X64 Regular, 1 = AVX, 2 = AVX2 + FMA3, 3 = AVX512 + FMA3
  */
 const CPU_ARCH_MAP = {
-    'x64':    0,
-    'avx':    1,
-    'avx2':   2,
+    'x64': 0,
+    'avx': 1,
+    'avx2': 2,
     'avx512': 3,
 };
 
