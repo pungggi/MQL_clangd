@@ -123,7 +123,7 @@ function isUsableMql5Root(mql5Root) {
 async function resolveEAName(context, mql5Root, resolveCompileTargets) {
     const eaList = discoverBacktestEAs(mql5Root);
     if (eaList.length === 0) {
-        vscode.window.showErrorMessage('No EAs with tester.ini or runs/ folders were found under MQL5/Experts.');
+        vscode.window.showErrorMessage('No EAs with tester configuration files (*.ini) or runs/ folders were found under MQL5/Experts.');
         return null;
     }
 
@@ -142,7 +142,7 @@ async function resolveEAName(context, mql5Root, resolveCompileTargets) {
         return {
             label: ea.name,
             description: `${runCount} run${runCount !== 1 ? 's' : ''}`,
-            detail: latestLog ? `Latest: ${latestLog.name}` : ea.hasTesterConfig() ? 'tester.ini available' : undefined,
+            detail: latestLog ? `Latest: ${latestLog.name}` : ea.hasTesterConfig() ? 'Configuration available' : undefined,
         };
     });
 
@@ -217,16 +217,23 @@ function getDefaults(mql5Root, eaName) {
 
 async function promptForSymbol(defaultSymbol, symbols) {
     const uniqueSymbols = symbols.includes(defaultSymbol) || !defaultSymbol ? symbols : [defaultSymbol, ...symbols];
-    if (uniqueSymbols.length > 0) {
-        const pick = await vscode.window.showQuickPick(
-            uniqueSymbols.map(symbol => ({ label: symbol, picked: symbol === defaultSymbol })),
-            { placeHolder: `Symbol (default: ${defaultSymbol || 'none'})`, title: 'MQL Backtest: Select Symbol' },
-        );
-        return pick ? pick.label : null;
-    }
+    if (uniqueSymbols.length === 0) return promptForSymbolInput(defaultSymbol);
 
+    const items = uniqueSymbols.map(symbol => ({ label: symbol, picked: symbol === defaultSymbol }));
+    items.push({ label: '$(edit) Enter symbol manually…', alwaysShow: true, _manual: true });
+
+    const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: `Symbol (default: ${defaultSymbol || 'none'})`,
+        title: 'MQL Backtest: Select Symbol',
+    });
+    if (!pick) return null;
+    if (pick._manual) return promptForSymbolInput(defaultSymbol);
+    return pick.label;
+}
+
+async function promptForSymbolInput(defaultSymbol) {
     const input = await vscode.window.showInputBox({
-        prompt: 'Symbol',
+        prompt: 'Symbol (e.g. EURUSD, USDJPY.pro, EURUSDm)',
         value: defaultSymbol,
         title: 'MQL Backtest: Enter Symbol',
     });
@@ -237,11 +244,11 @@ function getSilentParameters(mql5Root, eaName) {
     const defaults = getDefaults(mql5Root, eaName);
     const missing = ['symbol', 'fromDate', 'toDate'].filter(key => !defaults[key]);
     if (missing.length > 0) {
-        vscode.window.showErrorMessage(`tester.ini for ${eaName} is missing required fields: ${missing.join(', ')}. Enable parameter prompts.`);
+        vscode.window.showErrorMessage(`Tester configuration for ${eaName} is missing required fields: ${missing.join(', ')}. Enable parameter prompts.`);
         return null;
     }
     if (!isValidDate(defaults.fromDate) || !isValidDate(defaults.toDate)) {
-        vscode.window.showErrorMessage(`tester.ini for ${eaName} contains invalid dates (expected YYYY.MM.DD or YYYYMMDD).`);
+        vscode.window.showErrorMessage(`Tester configuration for ${eaName} contains invalid dates (expected YYYY.MM.DD or YYYYMMDD).`);
         return null;
     }
     return defaults;
@@ -471,5 +478,6 @@ module.exports = {
     isValidDate,
     shouldTriggerWatchdog,
     resolveStartupGraceMs,
+    promptForSymbol,
     TESTER_LOG_DIR_SETTING_ID,
 };
