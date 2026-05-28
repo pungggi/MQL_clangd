@@ -21,6 +21,16 @@ function setOutputChannel(channel) {
 }
 
 /**
+ * Reveals the diagnostics output channel (if available).
+ * @param {boolean} [preserveFocus=true]
+ */
+function showOutputChannel(preserveFocus = true) {
+    if (outputChannel) {
+        outputChannel.show(preserveFocus);
+    }
+}
+
+/**
  * Logs a message to the output channel (if available) and console.
  * @param {string} message 
  */
@@ -496,6 +506,7 @@ async function execWineBatch(programWinPath, args, wineBinary, winePrefix, wineE
 
 module.exports = {
     setOutputChannel,
+    showOutputChannel,
     isWineInstalled,
     validateWinePath,
     toWineWindowsPath,

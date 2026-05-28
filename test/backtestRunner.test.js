@@ -8,6 +8,7 @@ const {
     resolveBacktestPathSetting,
     parseMqlDate,
     isValidDate,
+    shouldTriggerWatchdog,
 } = require('../src/backtestRunner');
 
 suite('backtestRunner — internal runner helpers', function () {
@@ -43,5 +44,28 @@ suite('backtestRunner — internal runner helpers', function () {
         assert.strictEqual(parseMqlDate('invalid-date'), null);
         assert.strictEqual(parseMqlDate('2025.13.01'), null);
         assert.strictEqual(parseMqlDate('2025.02.30'), null);
+    });
+});
+
+suite('backtestRunner — startup watchdog', function () {
+    const GRACE_MS = 45 * 1000;
+
+    test('does not trigger before the grace period elapses', function () {
+        assert.strictEqual(shouldTriggerWatchdog(10000, GRACE_MS, 0, 0, false), false);
+    });
+
+    test('triggers after the grace period when no log activity is seen', function () {
+        // currentMtime unchanged from the baseline -> MT5 never wrote.
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS, GRACE_MS, 1000, 1000, false), true);
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS + 5000, GRACE_MS, 0, 0, false), true);
+    });
+
+    test('does not trigger when the tester log shows fresh activity', function () {
+        // currentMtime advanced past the baseline -> MT5 is writing logs.
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS + 5000, GRACE_MS, 1000, 2000, false), false);
+    });
+
+    test('only fires once (suppressed after it has been shown)', function () {
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS + 10000, GRACE_MS, 1000, 1000, true), false);
     });
 });

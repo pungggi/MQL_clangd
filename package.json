@@ -36,7 +36,7 @@
         "type": "git",
         "url": "https://github.com/pungggi/MQL_clangd"
     },
-    "main": "./src/extension.js",
+    "main": "./dist/extension.js",
     "activationEvents": [],
     "contributes": {
         "debuggers": [
@@ -280,6 +280,12 @@
                     "type": "string",
                     "default": "",
                     "markdownDescription": "Optional Strategy Tester agent log directory override. Leave empty to auto-detect from the MQL5 data folder. Supports `${workspaceFolder}`, `~`, and relative paths."
+                },
+                "mql_tools.Backtest.StartupGraceSeconds": {
+                    "type": "number",
+                    "default": 45,
+                    "minimum": 5,
+                    "markdownDescription": "Seconds to wait after launching MT5 before warning that no Strategy Tester log activity has been detected. A diagnostic notification (with the resolved terminal, `tester.ini`, and watched log-directory paths) is shown once if MT5 never starts writing logs, so a misconfigured run no longer spins silently. Polling continues until the run completes or times out."
                 },
                 "mql_tools.Backtest.NodePath": {
                     "type": "string",

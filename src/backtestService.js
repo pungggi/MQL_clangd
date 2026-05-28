@@ -448,7 +448,15 @@ async function startBacktest(options) {
 
     child.unref();
     wineLog(`[Backtest] Launch mode: windows | PID: ${child.pid}`);
-    return { started: true, pid: child.pid, config: effectiveConfig };
+    wineLog(`[Backtest] Terminal: ${terminalPath}`);
+    wineLog(`[Backtest] Config (tester.ini): ${mql5TesterIni}`);
+    wineLog(`[Backtest] Tester log dir: ${logDir}`);
+    return {
+        started: true,
+        pid: child.pid,
+        config: effectiveConfig,
+        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir },
+    };
 }
 
 /**
@@ -485,6 +493,7 @@ async function startBacktestWine(ctx) {
     wineLog('[Backtest] Launch mode: wine');
     wineLog(`[Backtest] Terminal (host): ${terminalPath}`);
     wineLog(`[Backtest] Terminal (wine): ${termResult.path}`);
+    wineLog(`[Backtest] Config (tester.ini host): ${mql5TesterIni}`);
     wineLog(`[Backtest] Config  (wine): /config:${iniResult.path}`);
     wineLog(`[Backtest] Tester log dir: ${logDir}`);
 
@@ -510,7 +519,12 @@ async function startBacktestWine(ctx) {
     });
 
     wineLog(`[Backtest] Launcher PID: ${result.pid} (Wine — best-effort cancellation)`);
-    return { started: true, pid: result.pid, config: effectiveConfig };
+    return {
+        started: true,
+        pid: result.pid,
+        config: effectiveConfig,
+        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir },
+    };
 }
 
 function getBacktestStatus(mql5Root, eaName) {
