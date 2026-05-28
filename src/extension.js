@@ -1018,12 +1018,17 @@ async function Compile(rt, context, options = {}) {
     diagnosticCollection.clear();
 
     // Auto-version bump: bump #property version and/or const string version constants
-    // before compilation, if configured. Guarded by internalSaveDepth so the document
-    // save inside bumpVersionsInFile does not re-trigger CheckOnSave.
+    // before compilation, if configured.
+    // Only runs for user-initiated compiles (not background checks/auto-checks).
+    // Guarded by internalSaveDepth so the document save does not re-trigger CheckOnSave.
+    // AutoCheck timer is cleared after bumping because WorkspaceEdit triggers
+    // onDidChangeTextDocument which would otherwise queue a spurious second compile.
     const config = vscode.workspace.getConfiguration('mql_tools');
     const autoBump = config.get('Compile.AutoVersionBump');
     const versionConstantNames = config.get('Compile.VersionConstantNames');
-    if (autoBump || (Array.isArray(versionConstantNames) && versionConstantNames.length > 0)) {
+    const shouldBump = !options.background &&
+        (autoBump || (Array.isArray(versionConstantNames) && versionConstantNames.length > 0));
+    if (shouldBump) {
         internalSaveDepth++;
         try {
             for (const p of pathsToCompile) {
@@ -1041,6 +1046,11 @@ async function Compile(rt, context, options = {}) {
             }
         } finally {
             internalSaveDepth = Math.max(0, internalSaveDepth - 1);
+        }
+        // Clear any AutoCheck timer that the WorkspaceEdit may have armed.
+        if (autoCheckTimer) {
+            clearTimeout(autoCheckTimer);
+            autoCheckTimer = null;
         }
     }
 
