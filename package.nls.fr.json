@@ -17,6 +17,8 @@
     "mql_tools.configuration.HelpON.description": "Ouvrir la documentation web MQL4/MQL5 avec Shift+F1",
     "mql_tools.configuration.ForcedIncludes.description": "Fichiers d'en-tête supplémentaires à inclure de force dans l'analyse clangd (ex: [\"Include/JAson.mqh\"] pour les bibliothèques tierces)",
     "mql_tools.configuration.context": "Ne pas désactiver !",
+    "mql_tools.configuration.AutoVersionBump.description": "Automatically bump the minor version in #property version before each compile.",
+    "mql_tools.configuration.VersionConstantNames.description": "Names of const string variables to auto-bump on compile (e.g. EA_VERSION).",
     "mql_tools.commands.compileFile.title": "Compiler le fichier MQL",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "Compiler le fichier MQL et ouvrir le terminal MetaTrader",
     "mql_tools.commands.checkFile.title": "Vérifier la syntaxe MQL",

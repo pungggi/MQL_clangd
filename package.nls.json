@@ -15,6 +15,8 @@
     "mql_tools.configuration.Wine.Enabled.description": "Enable Wine wrapper for running MetaEditor on macOS/Linux. When enabled, MetaEditor is executed via Wine and paths are converted using winepath.",
     "mql_tools.configuration.Wine.Binary.description": "Path to the Wine binary (e.g., 'wine64', 'wine', or full path like '/usr/local/bin/wine64').",
     "mql_tools.configuration.context": "obsolete",
+    "mql_tools.configuration.AutoVersionBump.description": "Automatically bump the minor version in `#property version` before each compile. The last segment of the version number (e.g., 01 in 6.01) is incremented by 1.",
+    "mql_tools.configuration.VersionConstantNames.description": "Names of `const string` variables whose value should be auto-bumped on compile (e.g., `EA_VERSION`). Each must be declared as `const string <NAME> = \"X.YZ\";` in the source file. Only applies when Auto Version Bump is enabled.",
     "mql_tools.commands.compileFile.title": "Compile MQL file",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "Compile MQL file and open MetaTrader terminal",
     "mql_tools.commands.checkFile.title": "Check MQL syntax",

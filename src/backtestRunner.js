@@ -16,6 +16,7 @@ const {
     getBacktestStatus,
     cancelBacktest,
     cancelAllBacktests,
+    findLatestTesterLog,
 } = require('./backtestService');
 const {
     isWineEnabled,
@@ -24,10 +25,14 @@ const {
     getWineEnv,
     validateWinePath,
     validateWineSetup,
+    showOutputChannel,
 } = require('./wineHelper');
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000;
+const DEFAULT_STARTUP_GRACE_SECONDS = 45;
+const STARTUP_GRACE_SETTING = 'Backtest.StartupGraceSeconds';
+const MIN_STARTUP_GRACE_SECONDS = 5;
 const TERMINAL_SETTING_ID = 'mql_tools.Terminal.Terminal5Dir';
 const TESTER_LOG_DIR_SETTING = 'Backtest.TesterLogDir';
 const TESTER_LOG_DIR_SETTING_ID = `mql_tools.${TESTER_LOG_DIR_SETTING}`;
@@ -40,14 +45,38 @@ const DEFAULT_TERMINAL_PATHS = [
 // Date helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse an MQL date string into a local `Date`, validating it calendrically.
+ *
+ * Accepts the canonical dotted form `YYYY.MM.DD` and the compact `YYYYMMDD`
+ * form used in MT5 tester INI filenames (users often copy-paste from there).
+ *
+ * @param {*} v - The raw date string.
+ * @returns {Date|null} The parsed Date, or null if the input is malformed or not a real calendar date.
+ */
 function parseMqlDate(v) {
-    if (!/^\d{4}\.\d{2}\.\d{2}$/.test(v)) return null;
-    const [year, month, day] = v.split('.').map(Number);
+    if (typeof v !== 'string') return null;
+
+    let year, month, day;
+    if (/^\d{4}\.\d{2}\.\d{2}$/.test(v)) {
+        [year, month, day] = v.split('.').map(Number);
+    } else if (/^\d{8}$/.test(v)) {
+        [year, month, day] = [v.slice(0, 4), v.slice(4, 6), v.slice(6, 8)].map(Number);
+    } else {
+        return null;
+    }
+
     const d = new Date(year, month - 1, day);
     if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
     return d;
 }
 
+/**
+ * Report whether a string is a valid MQL date in either accepted format.
+ *
+ * @param {*} v - The raw date string.
+ * @returns {boolean} True if `v` parses to a real calendar date.
+ */
 function isValidDate(v) {
     return parseMqlDate(v) !== null;
 }
@@ -187,18 +216,18 @@ async function getTestParameters(mql5Root, eaName) {
     if (symbol === null) return null;
 
     const fromDate = await vscode.window.showInputBox({
-        prompt: 'From date (YYYY.MM.DD)',
+        prompt: 'From date (YYYY.MM.DD or YYYYMMDD)',
         value: defaults.fromDate,
         title: 'MQL Backtest: Start Date',
-        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
+        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD or YYYYMMDD)',
     });
     if (fromDate === undefined) return null;
 
     const toDate = await vscode.window.showInputBox({
-        prompt: 'To date (YYYY.MM.DD)',
+        prompt: 'To date (YYYY.MM.DD or YYYYMMDD)',
         value: defaults.toDate,
         title: 'MQL Backtest: End Date',
-        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
+        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD or YYYYMMDD)',
     });
     if (toDate === undefined) return null;
 
@@ -217,16 +246,23 @@ function getDefaults(mql5Root, eaName) {
 
 async function promptForSymbol(defaultSymbol, symbols) {
     const uniqueSymbols = symbols.includes(defaultSymbol) || !defaultSymbol ? symbols : [defaultSymbol, ...symbols];
-    if (uniqueSymbols.length > 0) {
-        const pick = await vscode.window.showQuickPick(
-            uniqueSymbols.map(symbol => ({ label: symbol, picked: symbol === defaultSymbol })),
-            { placeHolder: `Symbol (default: ${defaultSymbol || 'none'})`, title: 'MQL Backtest: Select Symbol' },
-        );
-        return pick ? pick.label : null;
-    }
+    if (uniqueSymbols.length === 0) return promptForSymbolInput(defaultSymbol);
 
+    const items = uniqueSymbols.map(symbol => ({ label: symbol, picked: symbol === defaultSymbol }));
+    items.push({ label: '$(edit) Enter symbol manually…', alwaysShow: true, _manual: true });
+
+    const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: `Symbol (default: ${defaultSymbol || 'none'})`,
+        title: 'MQL Backtest: Select Symbol',
+    });
+    if (!pick) return null;
+    if (pick._manual) return promptForSymbolInput(defaultSymbol);
+    return pick.label;
+}
+
+async function promptForSymbolInput(defaultSymbol) {
     const input = await vscode.window.showInputBox({
-        prompt: 'Symbol',
+        prompt: 'Symbol (e.g. EURUSD, USDJPY.pro, EURUSDm)',
         value: defaultSymbol,
         title: 'MQL Backtest: Enter Symbol',
     });
@@ -243,7 +279,7 @@ function getSilentParameters(mql5Root, eaName) {
         return null;
     }
     if (!isValidDate(defaults.fromDate) || !isValidDate(defaults.toDate)) {
-        vscode.window.showErrorMessage(`${iniName} for ${eaName} contains invalid dates (expected YYYY.MM.DD).`);
+        vscode.window.showErrorMessage(`${iniName} for ${eaName} contains invalid dates (expected YYYY.MM.DD or YYYYMMDD).`);
         return null;
     }
     return defaults;
@@ -253,6 +289,18 @@ function getSilentParameters(mql5Root, eaName) {
 // Execute & monitor
 // ---------------------------------------------------------------------------
 
+/**
+ * Coerces the configured startup grace period into a sane millisecond value.
+ * Falls back to the default when the setting is missing, non-numeric, or
+ * non-finite (e.g. mistyped in settings) and clamps to a minimum floor so a
+ * tiny or negative value can't make the watchdog fire immediately.
+ */
+function resolveStartupGraceMs(rawSeconds) {
+    const seconds = rawSeconds === undefined || rawSeconds === null ? DEFAULT_STARTUP_GRACE_SECONDS : Number(rawSeconds);
+    if (!Number.isFinite(seconds)) return DEFAULT_STARTUP_GRACE_SECONDS * 1000;
+    return Math.max(MIN_STARTUP_GRACE_SECONDS, seconds) * 1000;
+}
+
 async function executeBacktest(eaName, params, options) {
     const startResult = await startBacktest({ eaName, params, ...options });
     if (!startResult.started) {
@@ -261,14 +309,51 @@ async function executeBacktest(eaName, params, options) {
     }
 
     const isWine = !!options.useWine;
+    const diagnostics = startResult.diagnostics || null;
+    const startupGraceMs = resolveStartupGraceMs(options.startupGraceSeconds);
     return vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
             title: `Backtest: ${eaName} on ${params.symbol}`,
             cancellable: true,
         },
-        async (progress, token) => monitorBacktest(options.mql5Root, eaName, progress, token, isWine),
+        async (progress, token) => monitorBacktest(options.mql5Root, eaName, progress, token, {
+            isWine,
+            diagnostics,
+            startupGraceMs,
+        }),
     );
+}
+
+/**
+ * Decides whether the startup watchdog should fire. It triggers once, after the
+ * grace period elapses, when the watched tester-log directory shows no new
+ * activity since launch — the signature of a misconfigured run that would
+ * otherwise spin silently until MAX_POLL_TIME_MS.
+ */
+function shouldTriggerWatchdog(elapsedMs, graceMs, baselineMtimeMs, currentMtimeMs, alreadyShown) {
+    if (alreadyShown) return false;
+    if (elapsedMs < graceMs) return false;
+    return currentMtimeMs <= baselineMtimeMs;
+}
+
+function showWatchdogNotification(mql5Root, eaName, elapsedSecs, diagnostics) {
+    const lines = [`Backtest "${eaName}": MT5 launched ${elapsedSecs}s ago but no Strategy Tester log activity was detected.`];
+    if (diagnostics) {
+        if (diagnostics.terminalPath) lines.push(`Terminal: ${diagnostics.terminalPath}`);
+        if (diagnostics.testerIniPath) lines.push(`tester.ini: ${diagnostics.testerIniPath}`);
+        if (diagnostics.logDir) lines.push(`Watching: ${diagnostics.logDir}`);
+    }
+    lines.push('MT5 may be writing logs elsewhere (wrong terminal, portable mismatch, different terminal-id).');
+
+    // Fire-and-forget so polling continues while the notification is shown.
+    vscode.window.showWarningMessage(lines.join(' '), 'Show Output', 'Cancel Backtest').then(selection => {
+        if (selection === 'Show Output') {
+            showOutputChannel();
+        } else if (selection === 'Cancel Backtest') {
+            cancelBacktest(mql5Root, eaName);
+        }
+    });
 }
 
 function showStartFailure(eaName, result) {
@@ -279,9 +364,14 @@ function showStartFailure(eaName, result) {
     vscode.window.showErrorMessage(`Failed to start backtest: ${result.message}`);
 }
 
-async function monitorBacktest(mql5Root, eaName, progress, token, isWine = false) {
+async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions = {}) {
+    const { isWine = false, diagnostics = null, startupGraceMs = DEFAULT_STARTUP_GRACE_SECONDS * 1000 } = monitorOptions;
     const startTime = Date.now();
     progress.report({ message: 'Starting...' });
+
+    const logDir = diagnostics?.logDir || null;
+    const baselineMtimeMs = logDir ? (findLatestTesterLog(logDir)?.mtimeMs ?? 0) : 0;
+    let watchdogShown = false;
 
     while (!token.isCancellationRequested) {
         const elapsed = Date.now() - startTime;
@@ -302,7 +392,17 @@ async function monitorBacktest(mql5Root, eaName, progress, token, isWine = false
             return false;
         }
 
-        const secs = Math.round((Date.now() - startTime) / 1000);
+        const elapsedNow = Date.now() - startTime;
+        const secs = Math.round(elapsedNow / 1000);
+
+        if (logDir && !watchdogShown) {
+            const currentMtimeMs = findLatestTesterLog(logDir)?.mtimeMs ?? 0;
+            if (shouldTriggerWatchdog(elapsedNow, startupGraceMs, baselineMtimeMs, currentMtimeMs, watchdogShown)) {
+                watchdogShown = true;
+                showWatchdogNotification(mql5Root, eaName, secs, diagnostics);
+            }
+        }
+
         progress.report({ message: `Running... (${secs}s)` });
     }
 
@@ -388,6 +488,7 @@ async function runBacktest(context, opts) {
     if (!params) return;
 
     const portableMode = config.get('Metaeditor.Portable5', false);
+    const startupGraceSeconds = config.get(STARTUP_GRACE_SETTING, DEFAULT_STARTUP_GRACE_SECONDS);
 
     const completed = await executeBacktest(eaName, params, {
         mql5Root,
@@ -398,6 +499,7 @@ async function runBacktest(context, opts) {
         winePrefix,
         wineEnv,
         portableMode,
+        startupGraceSeconds,
     });
 
     if (completed && autoOpen) vscode.commands.executeCommand('mql_tools.openTradeReport');
@@ -413,5 +515,8 @@ module.exports = {
     resolveBacktestPathSetting,
     parseMqlDate,
     isValidDate,
+    shouldTriggerWatchdog,
+    resolveStartupGraceMs,
+    promptForSymbol,
     TESTER_LOG_DIR_SETTING_ID,
 };

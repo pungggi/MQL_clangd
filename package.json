@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.1.51",
+    "version": "1.1.53",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
@@ -36,7 +36,7 @@
         "type": "git",
         "url": "https://github.com/pungggi/MQL_clangd"
     },
-    "main": "./src/extension.js",
+    "main": "./dist/extension.js",
     "activationEvents": [],
     "contributes": {
         "debuggers": [
@@ -165,10 +165,35 @@
                     "maximum": 300000,
                     "markdownDescription": "Timeout in milliseconds for Wine compilation processes. If a compilation takes longer than this, it will be terminated. Default: 60000 (60 seconds). Increase if you have complex projects that take longer to compile."
                 },
+                "mql_tools.Compile.CpuArchitecture": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "x64",
+                        "avx",
+                        "avx2",
+                        "avx512"
+                    ],
+                    "default": "default",
+                    "markdownDescription": "CPU instruction set for compiled EX5 files. Controls which SIMD instructions the MQL5 compiler uses. Only applies to MQL5 compilation (MetaEditor). **MQL4 is not affected.**\n\n| Value | Instructions | Notes |\n|-------|-------------|-------|\n| `default` | No change | Uses whatever is currently set in MetaEditor |\n| `x64` | X64 Regular | Maximum compatibility (Market-ready) |\n| `avx` | AVX | Advanced Vector Extensions |\n| `avx2` | AVX2 + FMA3 | Fused Multiply-Add + wider vectors |\n| `avx512` | AVX512 + FMA3 | Highest performance on modern CPUs |\n\n⚠️ Programs compiled with AVX/AVX2/AVX512 will **not** run on CPUs that don't support the selected instruction set."
+                },
                 "mql_tools.Compile.RunTaskOnSuccess": {
                     "type": "string",
                     "default": "",
                     "markdownDescription": "Label of a VS Code task (defined in `.vscode/tasks.json`) to run after every successful compile. Leave empty to disable. Useful for triggering EA-reload workflows on Wine — e.g. write a flag file that an MQL5 Service inside MT5 watches, so it can reload the freshly compiled EA via `ChartApplyTemplate()`. Task variables like `${fileBasenameNoExtension}` are resolved by VS Code against the active editor at task run time."
+                },
+                "mql_tools.Compile.AutoVersionBump": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%mql_tools.configuration.AutoVersionBump.description%"
+                },
+                "mql_tools.Compile.VersionConstantNames": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "%mql_tools.configuration.VersionConstantNames.description%"
                 },
                 "mql_tools.CompileTarget.Storage": {
                     "type": "string",
@@ -255,6 +280,12 @@
                     "type": "string",
                     "default": "",
                     "markdownDescription": "Optional Strategy Tester agent log directory override. Leave empty to auto-detect from the MQL5 data folder. Supports `${workspaceFolder}`, `~`, and relative paths."
+                },
+                "mql_tools.Backtest.StartupGraceSeconds": {
+                    "type": "number",
+                    "default": 45,
+                    "minimum": 5,
+                    "markdownDescription": "Seconds to wait after launching MT5 before warning that no Strategy Tester log activity has been detected. A diagnostic notification (with the resolved terminal, `tester.ini`, and watched log-directory paths) is shown once if MT5 never starts writing logs, so a misconfigured run no longer spins silently. Polling continues until the run completes or times out."
                 },
                 "mql_tools.Backtest.NodePath": {
                     "type": "string",

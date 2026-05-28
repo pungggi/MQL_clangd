@@ -17,6 +17,8 @@
     "mql_tools.configuration.HelpON.description": "Shift+F1로 MQL4/MQL5 웹 문서 열기",
     "mql_tools.configuration.ForcedIncludes.description": "clangd 분석에 강제로 포함할 추가 헤더 파일 (예: 타사 라이브러리용 [\"Include/JAson.mqh\"])",
     "mql_tools.configuration.context": "비활성화하지 마세요!",
+    "mql_tools.configuration.AutoVersionBump.description": "Automatically bump the minor version in #property version before each compile.",
+    "mql_tools.configuration.VersionConstantNames.description": "Names of const string variables to auto-bump on compile (e.g. EA_VERSION).",
     "mql_tools.commands.compileFile.title": "MQL 파일 컴파일",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "MQL 파일을 컴파일하고 MetaTrader 터미널 열기",
     "mql_tools.commands.checkFile.title": "MQL 구문 검사",

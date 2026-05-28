@@ -17,6 +17,8 @@
     "mql_tools.configuration.HelpON.description": "按 Shift+F1 開啟 MQL4/MQL5 網頁文件",
     "mql_tools.configuration.ForcedIncludes.description": "強制包含到 clangd 分析的額外標頭檔（例如 [\"Include/JAson.mqh\"] 用於第三方程式庫）",
     "mql_tools.configuration.context": "請勿停用！",
+    "mql_tools.configuration.AutoVersionBump.description": "Automatically bump the minor version in #property version before each compile.",
+    "mql_tools.configuration.VersionConstantNames.description": "Names of const string variables to auto-bump on compile (e.g. EA_VERSION).",
     "mql_tools.commands.compileFile.title": "編譯 MQL 檔案",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "編譯 MQL 檔案並開啟 MetaTrader 終端",
     "mql_tools.commands.checkFile.title": "檢查 MQL 語法",

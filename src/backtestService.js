@@ -215,11 +215,36 @@ function updateTesterIniContent(content, params, lineEnding) {
     return result.join(detectedEnding);
 }
 
+/**
+ * Normalize a date value to the dotted `YYYY.MM.DD` form MT5 requires in tester.ini.
+ *
+ * Inputs may arrive in the compact `YYYYMMDD` form (copied from tester INI
+ * filenames). Non-string values (and any other format) are returned unchanged,
+ * so a numeric date in `params` can't trigger a TypeError on `.slice()`.
+ *
+ * @param {*} v - The raw date value.
+ * @returns {*} The dotted-form string for compact input; otherwise `v` unchanged.
+ */
+function normalizeMqlDate(v) {
+    if (typeof v !== 'string' || !/^\d{8}$/.test(v)) return v;
+    return `${v.slice(0, 4)}.${v.slice(4, 6)}.${v.slice(6, 8)}`;
+}
+
+/**
+ * Build the replacement line for a single tester.ini `key=value` entry, or null
+ * when the entry should be left untouched.
+ *
+ * @param {string} section - The current INI section name (e.g. `tester`, `inputs`).
+ * @param {string} key - The setting key on the current line.
+ * @param {string} oldValue - The existing value (right of `=`), used to preserve format.
+ * @param {object} params - Backtest parameters (symbol, fromDate, toDate, riskPercentage).
+ * @returns {string|null} The replacement line, or null to keep the original.
+ */
 function getTesterIniReplacement(section, key, oldValue, params) {
     if (section === 'tester') {
         if (key === 'Symbol' && params.symbol) return `Symbol=${params.symbol}`;
-        if (key === 'FromDate' && params.fromDate) return `FromDate=${params.fromDate}`;
-        if (key === 'ToDate' && params.toDate) return `ToDate=${params.toDate}`;
+        if (key === 'FromDate' && params.fromDate) return `FromDate=${normalizeMqlDate(params.fromDate)}`;
+        if (key === 'ToDate' && params.toDate) return `ToDate=${normalizeMqlDate(params.toDate)}`;
     }
 
     if (section === 'inputs' && key === 'RiskPercentage' && params.riskPercentage !== undefined) {
@@ -472,7 +497,15 @@ async function startBacktest(options) {
 
     child.unref();
     wineLog(`[Backtest] Launch mode: windows | PID: ${child.pid}`);
-    return { started: true, pid: child.pid, config: effectiveConfig };
+    wineLog(`[Backtest] Terminal: ${terminalPath}`);
+    wineLog(`[Backtest] Config (tester.ini): ${mql5TesterIni}`);
+    wineLog(`[Backtest] Tester log dir: ${logDir}`);
+    return {
+        started: true,
+        pid: child.pid,
+        config: effectiveConfig,
+        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir },
+    };
 }
 
 /**
@@ -509,6 +542,7 @@ async function startBacktestWine(ctx) {
     wineLog('[Backtest] Launch mode: wine');
     wineLog(`[Backtest] Terminal (host): ${terminalPath}`);
     wineLog(`[Backtest] Terminal (wine): ${termResult.path}`);
+    wineLog(`[Backtest] Config (tester.ini host): ${mql5TesterIni}`);
     wineLog(`[Backtest] Config  (wine): /config:${iniResult.path}`);
     wineLog(`[Backtest] Tester log dir: ${logDir}`);
 
@@ -534,7 +568,12 @@ async function startBacktestWine(ctx) {
     });
 
     wineLog(`[Backtest] Launcher PID: ${result.pid} (Wine — best-effort cancellation)`);
-    return { started: true, pid: result.pid, config: effectiveConfig };
+    return {
+        started: true,
+        pid: result.pid,
+        config: effectiveConfig,
+        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir },
+    };
 }
 
 function getBacktestStatus(mql5Root, eaName) {
