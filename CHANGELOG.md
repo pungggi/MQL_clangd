@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.54
+
+### Features
+
+- **Backtest startup watchdog**: New setting `mql_tools.Backtest.StartupGraceSeconds` (default `45`, clamped to a 5s floor) detects when MT5 launches but never writes to the Strategy Tester agent log directory. After the grace period elapses with no tester-log activity, a warning notification surfaces with the resolved terminal path, the written `tester.ini` path, and the watched agent log directory, plus **Show Output** and **Cancel Backtest** actions. Polling continues after the warning so the run can still complete or be cancelled. The four diagnostic paths are now logged at launch on the native Windows path as well (previously Wine-only) and returned as diagnostics from `startBacktest` (refs #49, #58).
+- **Backtest multi-INI / MT5-generated configs**: The backtest runner now treats any `*.ini` directly in the EA folder as a tester config rather than requiring the literal `tester.ini`. A single `.ini` is used silently; multiple `.ini` files trigger a Quick Pick with `tester.ini` surfaced as the default. Lets MT5-tester-generated files like `MyEA_v1.0.EURUSD.M15.20260201_20260430.100.ini` be dropped into the EA folder without renaming (refs #47, #52).
+- **Backtest manual symbol entry**: `promptForSymbol` Quick Pick now includes a `$(edit) Enter symbol manually…` sentinel item that opens an input box, so broker-specific symbols (`USDJPY.pro`, `EURUSDm`, …) can be typed even when historic logs or `tester.ini` already contribute discovered symbols (refs #48, #59).
+- **Backtest compact date input**: `parseMqlDate` now accepts the compact `YYYYMMDD` form used in MT5 tester INI filenames in addition to dotted `YYYY.MM.DD`. Dates are normalized to the dotted form before being written to `tester.ini`. Input-box prompts and silent-mode error messages mention both forms. `normalizeMqlDate` passes non-string values through unchanged to avoid a `TypeError` on numeric date params (closes #51, refs #57).
+
 ### 1.1.53
 
 ### Features
