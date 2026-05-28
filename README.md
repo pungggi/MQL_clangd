@@ -383,6 +383,85 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 
 ---
 
+### Backtest Setup
+
+#### `tester.ini` File Location and Format
+
+Each EA requires a `tester.ini` configuration file in its folder:
+
+```
+MQL5/Experts/<YourEA>/tester.ini
+```
+
+Copy the template from [`docs/backtest/artifacts/tester.ini.example`](docs/backtest/artifacts/tester.ini.example) and adjust values for your EA.
+
+**Required fields in the `[Tester]` section:**
+
+| Field | Description | Example |
+|-------|-------------|----------|
+| `Expert` | EA name (without `.ex5` extension) | `MyEA` |
+| `Symbol` | Trading symbol | `EURUSD` |
+| `FromDate` | Start date (format: `YYYY.MM.DD`) | `2025.01.01` |
+| `ToDate` | End date (format: `YYYY.MM.DD`) | `2025.01.31` |
+| `Period` | Timeframe (optional, defaults to `M1`) | `M5` |
+
+**Date format:** All dates must use the `YYYY.MM.DD` format (e.g., `2025.01.31`).
+
+**Example `tester.ini`:**
+
+```ini
+[Tester]
+Expert=MyEA
+Symbol=EURUSD
+Period=M5
+Model=0
+ExecutionMode=0
+Optimization=0
+FromDate=2025.01.01
+ToDate=2025.01.31
+
+[Inputs]
+RiskPercentage=1.0||1||0.1||10||Y
+```
+
+#### VS Code Settings for Backtesting
+
+| Setting | Description |
+|---------|-------------|
+| `mql_tools.Backtest.PromptForParameters` | If `true`, prompts for symbol and date before running. If `false`, uses `tester.ini` defaults silently. |
+| `mql_tools.Backtest.TesterLogDir` | Optional path to MT5's tester agent log directory. Only set if auto-detection fails. |
+| `mql_tools.Terminal.Terminal5Dir` | Path to `terminal64.exe`. Required on all platforms. Auto-detects common locations on Windows. |
+| `mql_tools.Metaeditor.Include5Dir` | Path to MQL5 data folder (contains `Include`, `Experts`, `Logs`, etc.). |
+
+#### How MT5 Writes the Tester Log
+
+When a backtest runs, MT5's Strategy Tester agent writes logs to a specific directory. The runner finds these logs as follows:
+
+**Windows:**
+```
+%APPDATA%\MetaQuotes\Tester\<terminal-id>\Agent-127.0.0.1-3000\logs
+```
+
+**Linux/macOS (Wine):**
+```
+<Wine_prefix>/drive_c/users/<user>/AppData/Roaming/MetaQuotes/Tester/<terminal-id>/Agent-127.0.0.1-3000/logs
+```
+
+The extension:
+1. Auto-detects the log directory based on the terminal identity (derived from `Include5Dir`)
+2. Monitors the latest `*.log` file for the completion marker (`MetaTester 5 stopped`)
+3. Copies the completed log to the EA's `runs/` folder: `MQL5/Experts/<YourEA>/runs/<timestamp>.log`
+
+If auto-detection fails, set `mql_tools.Backtest.TesterLogDir` to the full path of the agent logs directory.
+
+#### Important Notes
+
+- Each **Run Backtest** command **overwrites** `<MQL5>/tester.ini` with your EA's `tester.ini` plus any parameters chosen for the run. Back up your hand-tuned `<MQL5>/tester.ini` first if you need to preserve it.
+- Backtest logs are stored in `MQL5/Experts/<YourEA>/runs/` — each run creates a timestamped `.log` file.
+- The Trade Report Dashboard opens automatically after test completion (controlled by `mql_tools.Backtest.AutoOpenReport`).
+
+---
+
 ### MQL Debugger (Real-Time Variable Inspection)
 
 Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The extension injects telemetry at your breakpoints, compiles an instrumented build, and streams variable states to a live debug dashboard — no MetaEditor debugger needed.

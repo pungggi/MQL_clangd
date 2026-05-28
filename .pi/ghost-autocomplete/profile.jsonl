@@ -1,0 +1,3 @@
+{"ts":1779983612968,"kind":"slash","value":"/new","weight":1}
+{"ts":1779983632880,"kind":"ngram","n":3,"tokens":["git","switch","master"],"weight":1}
+{"ts":1779983638393,"kind":"ngram","n":3,"tokens":["git","switch","main"],"weight":1}

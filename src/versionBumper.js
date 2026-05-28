@@ -17,10 +17,9 @@ const REG_PROPERTY_VERSION = /^(\s*#property\s+version\s+["'])([^\r\n"']+)(["']\
  * @returns {RegExp}
  */
 function buildConstStringRegex(name) {
-    // Matches: (const\s+string|string\s+const) NAME = "VALUE"
-    // Allows flexible whitespace
+    // Anchored to line start (^ with m flag) to avoid matching commented-out declarations.
     return new RegExp(
-        '(const\\s+string|string\\s+const)\\s+' +
+        '^\\s*(const\\s+string|string\\s+const)\\s+' +
         escapeRegex(name) +
         '\\s*=\\s*["\']([^\\r\\n"\']+)["\']',
         'im'
@@ -63,9 +62,9 @@ function bumpVersion(version) {
     const lastIdx = segments.length - 1;
     const lastSegment = segments[lastIdx];
 
-    // Parse the last segment as an integer
+    // Reject non-fully-numeric segments (e.g. "1abc" would pass parseInt but is invalid)
+    if (!/^\d+$/.test(lastSegment)) return null;
     const lastNum = parseInt(lastSegment, 10);
-    if (isNaN(lastNum)) return null;
 
     // Bump the last segment, preserving zero-padding width
     const bumped = lastNum + 1;
@@ -147,12 +146,34 @@ function bumpVersionConstants(text, constantNames) {
 }
 
 /**
+ * Detect the encoding of a buffer (mirrors decodeTextBuffer logic).
+ * @param {Buffer} buffer
+ * @returns {{ encoding: string, bom: boolean }}
+ */
+function detectEncoding(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) return { encoding: 'utf8', bom: false };
+    if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+        return { encoding: 'utf16le', bom: true };
+    }
+    const sampleLength = Math.min(buffer.length, 256);
+    let nullByteCount = 0;
+    for (let i = 0; i < sampleLength; i++) {
+        if (buffer[i] === 0x00) nullByteCount++;
+    }
+    if (nullByteCount > sampleLength / 4) {
+        return { encoding: 'utf16le', bom: false };
+    }
+    const hasBom = buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf;
+    return { encoding: 'utf8', bom: hasBom };
+}
+
+/**
  * Read file content, handling both open VS Code documents and disk files.
  * Returns the text with proper encoding detection.
  *
  * @param {string} filePath - Absolute path to the file
  * @param {object} [vscode] - The vscode module (optional, for open document lookup)
- * @returns {Promise<{text: string, encoding: string}|null>}
+ * @returns {Promise<{text: string, encoding: string, bom: boolean}|null>}
  */
 async function readFileContent(filePath, vscode) {
     // Try open document first
@@ -160,14 +181,15 @@ async function readFileContent(filePath, vscode) {
         const documents = vscode.workspace.textDocuments;
         const openDoc = documents && documents.find(doc => doc && doc.fileName === filePath);
         if (openDoc) {
-            return { text: openDoc.getText(), encoding: 'document' };
+            return { text: openDoc.getText(), encoding: 'document', bom: false };
         }
     }
 
     // Read from disk
     try {
         const buffer = await fs.promises.readFile(filePath);
-        return { text: decodeTextBuffer(buffer), encoding: 'disk' };
+        const { encoding, bom } = detectEncoding(buffer);
+        return { text: decodeTextBuffer(buffer), encoding, bom };
     } catch {
         return null;
     }
@@ -182,9 +204,11 @@ async function readFileContent(filePath, vscode) {
  * @param {string} originalText - The original text before bumping
  * @param {string} newText - The bumped text
  * @param {object} [vscode] - The vscode module (optional)
+ * @param {string} [fileEncoding] - Encoding detected from the original file ('utf8' or 'utf16le')
+ * @param {boolean} [fileBom] - Whether the original file had a BOM
  * @returns {Promise<boolean>} - true if write succeeded
  */
-async function writeBumpedContent(filePath, originalText, newText, vscode) {
+async function writeBumpedContent(filePath, originalText, newText, vscode, fileEncoding = 'utf8', fileBom = false) {
     if (originalText === newText) return false;
 
     if (vscode) {
@@ -203,16 +227,24 @@ async function writeBumpedContent(filePath, originalText, newText, vscode) {
             const success = await vscode.workspace.applyEdit(edit);
             if (success) {
                 // Save the document so the file on disk has the bumped version
-                await openDoc.save();
-                return true;
+                const saved = await openDoc.save();
+                return saved !== false;
             }
             // If applyEdit fails, fall through to disk write
         }
     }
 
-    // Write directly to disk
+    // Write directly to disk, preserving original encoding
     try {
-        await fs.promises.writeFile(filePath, newText, 'utf8');
+        let data;
+        if (fileEncoding === 'utf16le') {
+            const encoded = Buffer.from(newText, 'utf16le');
+            data = fileBom ? Buffer.concat([Buffer.from([0xff, 0xfe]), encoded]) : encoded;
+        } else {
+            const encoded = Buffer.from(newText, 'utf8');
+            data = fileBom ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), encoded]) : encoded;
+        }
+        await fs.promises.writeFile(filePath, data);
         return true;
     } catch {
         return false;
@@ -282,7 +314,11 @@ async function bumpVersionsInFile({ filePath, bumpPropertyVersion: doBumpProp = 
 
     // 3. Write back if changed
     if (anyChange && currentText !== originalText) {
-        const written = await writeBumpedContent(filePath, originalText, currentText, vscodeRef);
+        const written = await writeBumpedContent(
+            filePath, originalText, currentText, vscodeRef,
+            content.encoding === 'document' ? 'utf8' : (content.encoding || 'utf8'),
+            content.bom || false
+        );
         result.bumped = written;
         if (!written && outputChannel) {
             outputChannel.appendLine(`[Version] Warning: failed to write bumped version to ${pathModule.basename(filePath)}`);

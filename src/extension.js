@@ -1026,8 +1026,7 @@ async function Compile(rt, context, options = {}) {
     const config = vscode.workspace.getConfiguration('mql_tools');
     const autoBump = config.get('Compile.AutoVersionBump');
     const versionConstantNames = config.get('Compile.VersionConstantNames');
-    const shouldBump = !options.background &&
-        (autoBump || (Array.isArray(versionConstantNames) && versionConstantNames.length > 0));
+    const shouldBump = !options.background && autoBump;
     if (shouldBump) {
         internalSaveDepth++;
         try {
