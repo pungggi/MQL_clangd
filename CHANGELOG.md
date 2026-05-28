@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Auto Version Bump on Compile**: Two new settings let you automatically increment version numbers every time you compile:
+  - `mql_tools.Compile.AutoVersionBump` — when enabled, bumps the minor segment of `#property version "X.YZ"` before each compile (e.g. `"6.01"` → `"6.02"`). Leading zeros are preserved (`"1.09"` → `"1.10"`).
+  - `mql_tools.Compile.VersionConstantNames` — array of `const string` variable names whose value should also be bumped (e.g. `["EA_VERSION"]`). Matches patterns like `const string EA_VERSION = "6.01";` and `string const EA_VERSION = "6.01";`.
+
+  The bump runs after files are saved but before MetaEditor is invoked, so the compiled `.ex5`/`.ex4` always reflects the new version. Changes are applied via VS Code's `WorkspaceEdit` for open documents (preserving undo history), or written directly to disk for closed files. Each bump is logged to the output channel.
+
 ## 1.1.52
 
 ### Features
