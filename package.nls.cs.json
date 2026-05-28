@@ -15,6 +15,8 @@
     "mql_tools.configuration.HelpON.description": "Otevřít webovou dokumentaci MQL4/MQL5 pomocí Shift+F1",
     "mql_tools.configuration.ForcedIncludes.description": "Další hlavičkové soubory pro vynucené zahrnutí do analýzy clangd (např. [\"Include/JAson.mqh\"] pro knihovny třetích stran)",
     "mql_tools.configuration.context": "Nevypínejte!",
+    "mql_tools.configuration.AutoVersionBump.description": "Automatically bump the minor version in #property version before each compile.",
+    "mql_tools.configuration.VersionConstantNames.description": "Names of const string variables to auto-bump on compile (e.g. EA_VERSION).",
     "mql_tools.commands.compileFile.title": "Kompilovat soubor MQL",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "Kompilovat soubor MQL a otevřít terminál MetaTrader",
     "mql_tools.commands.checkFile.title": "Zkontrolovat syntaxi MQL",

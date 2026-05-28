@@ -16,6 +16,8 @@
     "mql_tools.configuration.Wine.Binary.description": "Wine 二进制文件的路径（例如 'wine64'、'wine' 或完整路径如 '/usr/local/bin/wine64'）。",
     "mql_tools.configuration.ForcedIncludes.description": "强制包含到 clangd 分析的额外头文件（例如 [\"Include/JAson.mqh\"] 用于第三方库）",
     "mql_tools.configuration.context": "请勿禁用！",
+    "mql_tools.configuration.AutoVersionBump.description": "Automatically bump the minor version in #property version before each compile.",
+    "mql_tools.configuration.VersionConstantNames.description": "Names of const string variables to auto-bump on compile (e.g. EA_VERSION).",
     "mql_tools.commands.compileFile.title": "编译 MQL 文件",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "编译 MQL 文件并打开 MetaTrader 终端",
     "mql_tools.commands.checkFile.title": "检查 MQL 语法",

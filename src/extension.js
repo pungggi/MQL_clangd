@@ -8,6 +8,7 @@ const pathModule = require('path');
 
 const sleep = require('util').promisify(setTimeout);
 const fsPromises = fs.promises;
+const { bumpVersionsInFile } = require('./versionBumper');
 
 const REG_COMPILING = /: information: (?:compiling|checking)/;
 const REG_INCLUDE = /: information: including/;
@@ -360,9 +361,9 @@ function inferMqlDataDirFromPath(filePath, isMql5) {
  *  0 = X64 Regular, 1 = AVX, 2 = AVX2 + FMA3, 3 = AVX512 + FMA3
  */
 const CPU_ARCH_MAP = {
-    'x64':    0,
-    'avx':    1,
-    'avx2':   2,
+    'x64': 0,
+    'avx': 1,
+    'avx2': 2,
     'avx512': 3,
 };
 
@@ -1015,6 +1016,42 @@ async function Compile(rt, context, options = {}) {
     // Always clear previous MetaEditor diagnostics so Problems reflects the last run.
     // (We keep lightweight diagnostics in a separate collection.)
     diagnosticCollection.clear();
+
+    // Auto-version bump: bump #property version and/or const string version constants
+    // before compilation, if configured.
+    // Only runs for user-initiated compiles (not background checks/auto-checks).
+    // Guarded by internalSaveDepth so the document save does not re-trigger CheckOnSave.
+    // AutoCheck timer is cleared after bumping because WorkspaceEdit triggers
+    // onDidChangeTextDocument which would otherwise queue a spurious second compile.
+    const config = vscode.workspace.getConfiguration('mql_tools');
+    const autoBump = config.get('Compile.AutoVersionBump');
+    const versionConstantNames = config.get('Compile.VersionConstantNames');
+    const shouldBump = !options.background && autoBump;
+    if (shouldBump) {
+        internalSaveDepth++;
+        try {
+            for (const p of pathsToCompile) {
+                try {
+                    await bumpVersionsInFile({
+                        filePath: p,
+                        bumpPropertyVersion: autoBump,
+                        versionConstantNames: versionConstantNames || [],
+                        vscode,
+                        outputChannel
+                    });
+                } catch (bumpErr) {
+                    outputChannel.appendLine(`[Version] Error bumping version in ${pathModule.basename(p)}: ${bumpErr.message}`);
+                }
+            }
+        } finally {
+            internalSaveDepth = Math.max(0, internalSaveDepth - 1);
+        }
+        // Clear any AutoCheck timer that the WorkspaceEdit may have armed.
+        if (autoCheckTimer) {
+            clearTimeout(autoCheckTimer);
+            autoCheckTimer = null;
+        }
+    }
 
     // const startT = new Date();
     // const time = `${tf(startT, 'h')}:${tf(startT, 'm')}:${tf(startT, 's')}`;
@@ -3275,5 +3312,6 @@ module.exports = {
     shouldRunConfiguredPostCompileTask,
     runConfiguredPostCompileTask,
     resolveHeaderCompilePlan,
-    inferMqlDataDirFromPath
+    inferMqlDataDirFromPath,
+    bumpVersionsInFile: require('./versionBumper').bumpVersionsInFile
 };

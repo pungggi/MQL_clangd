@@ -16,6 +16,8 @@
     "mql_tools.configuration.Wine.Binary.description": "Путь к бинарному файлу Wine (например, 'wine64', 'wine' или полный путь как '/usr/local/bin/wine64').",
     "mql_tools.configuration.ForcedIncludes.description": "Дополнительные заголовочные файлы для принудительного включения в анализ clangd (например, [\"Include/JAson.mqh\"] для сторонних библиотек)",
     "mql_tools.configuration.context": "Не отключать!",
+    "mql_tools.configuration.AutoVersionBump.description": "Automatically bump the minor version in #property version before each compile.",
+    "mql_tools.configuration.VersionConstantNames.description": "Names of const string variables to auto-bump on compile (e.g. EA_VERSION).",
     "mql_tools.commands.compileFile.title": "Компилировать MQL файл",
     "mql_tools.commands.compileFileAndOpenTerminal.title": "Компилировать MQL файл и открыть терминал MetaTrader",
     "mql_tools.commands.checkFile.title": "Проверить синтаксис MQL",
