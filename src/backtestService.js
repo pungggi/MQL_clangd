@@ -421,7 +421,7 @@ async function startBacktest(options) {
     const ea = findBacktestEA(mql5Root, eaName);
     if (!ea) return { started: false, code: 'EA_NOT_FOUND', message: 'EA not found' };
     if (runningTests.has(ea.dir)) return { started: false, code: 'ALREADY_RUNNING', message: 'Test already running for this EA' };
-    if (!ea.hasTesterConfig()) return { started: false, code: 'NO_TESTER_INI', message: 'No tester configuration file (*.ini) found in EA folder' };
+    if (!ea.hasTesterConfig()) return { started: false, code: 'NO_TESTER_INI', message: 'No tester.ini found in EA folder' };
     if (!terminalPath) return { started: false, code: 'NO_TERMINAL', message: 'MT5 terminal not found' };
 
     const wineOpts = useWine ? { winePrefix } : null;

@@ -123,7 +123,7 @@ function isUsableMql5Root(mql5Root) {
 async function resolveEAName(context, mql5Root, resolveCompileTargets) {
     const eaList = discoverBacktestEAs(mql5Root);
     if (eaList.length === 0) {
-        vscode.window.showErrorMessage('No EAs with tester configuration files (*.ini) or runs/ folders were found under MQL5/Experts.');
+        vscode.window.showErrorMessage('No EAs with tester.ini or runs/ folders were found under MQL5/Experts.');
         return null;
     }
 
