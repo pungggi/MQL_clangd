@@ -9,6 +9,7 @@ const {
     parseMqlDate,
     isValidDate,
     shouldTriggerWatchdog,
+    resolveStartupGraceMs,
 } = require('../src/backtestRunner');
 
 suite('backtestRunner — internal runner helpers', function () {
@@ -67,5 +68,35 @@ suite('backtestRunner — startup watchdog', function () {
 
     test('only fires once (suppressed after it has been shown)', function () {
         assert.strictEqual(shouldTriggerWatchdog(GRACE_MS + 10000, GRACE_MS, 1000, 1000, true), false);
+    });
+});
+
+suite('backtestRunner — startup grace resolution', function () {
+    const DEFAULT_MS = 45 * 1000;
+    const MIN_MS = 5 * 1000;
+
+    test('uses the default when the setting is missing', function () {
+        assert.strictEqual(resolveStartupGraceMs(undefined), DEFAULT_MS);
+        assert.strictEqual(resolveStartupGraceMs(null), DEFAULT_MS);
+    });
+
+    test('converts a valid numeric setting to milliseconds', function () {
+        assert.strictEqual(resolveStartupGraceMs(90), 90 * 1000);
+    });
+
+    test('falls back to the default for non-finite values', function () {
+        assert.strictEqual(resolveStartupGraceMs(NaN), DEFAULT_MS);
+        assert.strictEqual(resolveStartupGraceMs('not-a-number'), DEFAULT_MS);
+        assert.strictEqual(resolveStartupGraceMs(Infinity), DEFAULT_MS);
+    });
+
+    test('clamps tiny or negative values to the minimum floor', function () {
+        assert.strictEqual(resolveStartupGraceMs(-10), MIN_MS);
+        assert.strictEqual(resolveStartupGraceMs(0), MIN_MS);
+        assert.strictEqual(resolveStartupGraceMs(1), MIN_MS);
+    });
+
+    test('accepts numeric strings from settings', function () {
+        assert.strictEqual(resolveStartupGraceMs('60'), 60 * 1000);
     });
 });

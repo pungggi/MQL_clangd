@@ -32,6 +32,7 @@ const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000;
 const DEFAULT_STARTUP_GRACE_SECONDS = 45;
 const STARTUP_GRACE_SETTING = 'Backtest.StartupGraceSeconds';
+const MIN_STARTUP_GRACE_SECONDS = 5;
 const TERMINAL_SETTING_ID = 'mql_tools.Terminal.Terminal5Dir';
 const TESTER_LOG_DIR_SETTING = 'Backtest.TesterLogDir';
 const TESTER_LOG_DIR_SETTING_ID = `mql_tools.${TESTER_LOG_DIR_SETTING}`;
@@ -226,6 +227,18 @@ function getSilentParameters(mql5Root, eaName) {
 // Execute & monitor
 // ---------------------------------------------------------------------------
 
+/**
+ * Coerces the configured startup grace period into a sane millisecond value.
+ * Falls back to the default when the setting is missing, non-numeric, or
+ * non-finite (e.g. mistyped in settings) and clamps to a minimum floor so a
+ * tiny or negative value can't make the watchdog fire immediately.
+ */
+function resolveStartupGraceMs(rawSeconds) {
+    const seconds = rawSeconds === undefined || rawSeconds === null ? DEFAULT_STARTUP_GRACE_SECONDS : Number(rawSeconds);
+    if (!Number.isFinite(seconds)) return DEFAULT_STARTUP_GRACE_SECONDS * 1000;
+    return Math.max(MIN_STARTUP_GRACE_SECONDS, seconds) * 1000;
+}
+
 async function executeBacktest(eaName, params, options) {
     const startResult = await startBacktest({ eaName, params, ...options });
     if (!startResult.started) {
@@ -235,7 +248,7 @@ async function executeBacktest(eaName, params, options) {
 
     const isWine = !!options.useWine;
     const diagnostics = startResult.diagnostics || null;
-    const startupGraceMs = (options.startupGraceSeconds ?? DEFAULT_STARTUP_GRACE_SECONDS) * 1000;
+    const startupGraceMs = resolveStartupGraceMs(options.startupGraceSeconds);
     return vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
@@ -433,5 +446,6 @@ module.exports = {
     parseMqlDate,
     isValidDate,
     shouldTriggerWatchdog,
+    resolveStartupGraceMs,
     TESTER_LOG_DIR_SETTING_ID,
 };
