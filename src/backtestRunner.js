@@ -16,6 +16,7 @@ const {
     getBacktestStatus,
     cancelBacktest,
     cancelAllBacktests,
+    findLatestTesterLog,
 } = require('./backtestService');
 const {
     isWineEnabled,
@@ -24,10 +25,14 @@ const {
     getWineEnv,
     validateWinePath,
     validateWineSetup,
+    showOutputChannel,
 } = require('./wineHelper');
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000;
+const DEFAULT_STARTUP_GRACE_SECONDS = 45;
+const STARTUP_GRACE_SETTING = 'Backtest.StartupGraceSeconds';
+const MIN_STARTUP_GRACE_SECONDS = 5;
 const TERMINAL_SETTING_ID = 'mql_tools.Terminal.Terminal5Dir';
 const TESTER_LOG_DIR_SETTING = 'Backtest.TesterLogDir';
 const TESTER_LOG_DIR_SETTING_ID = `mql_tools.${TESTER_LOG_DIR_SETTING}`;
@@ -222,6 +227,18 @@ function getSilentParameters(mql5Root, eaName) {
 // Execute & monitor
 // ---------------------------------------------------------------------------
 
+/**
+ * Coerces the configured startup grace period into a sane millisecond value.
+ * Falls back to the default when the setting is missing, non-numeric, or
+ * non-finite (e.g. mistyped in settings) and clamps to a minimum floor so a
+ * tiny or negative value can't make the watchdog fire immediately.
+ */
+function resolveStartupGraceMs(rawSeconds) {
+    const seconds = rawSeconds === undefined || rawSeconds === null ? DEFAULT_STARTUP_GRACE_SECONDS : Number(rawSeconds);
+    if (!Number.isFinite(seconds)) return DEFAULT_STARTUP_GRACE_SECONDS * 1000;
+    return Math.max(MIN_STARTUP_GRACE_SECONDS, seconds) * 1000;
+}
+
 async function executeBacktest(eaName, params, options) {
     const startResult = await startBacktest({ eaName, params, ...options });
     if (!startResult.started) {
@@ -230,14 +247,51 @@ async function executeBacktest(eaName, params, options) {
     }
 
     const isWine = !!options.useWine;
+    const diagnostics = startResult.diagnostics || null;
+    const startupGraceMs = resolveStartupGraceMs(options.startupGraceSeconds);
     return vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
             title: `Backtest: ${eaName} on ${params.symbol}`,
             cancellable: true,
         },
-        async (progress, token) => monitorBacktest(options.mql5Root, eaName, progress, token, isWine),
+        async (progress, token) => monitorBacktest(options.mql5Root, eaName, progress, token, {
+            isWine,
+            diagnostics,
+            startupGraceMs,
+        }),
     );
+}
+
+/**
+ * Decides whether the startup watchdog should fire. It triggers once, after the
+ * grace period elapses, when the watched tester-log directory shows no new
+ * activity since launch — the signature of a misconfigured run that would
+ * otherwise spin silently until MAX_POLL_TIME_MS.
+ */
+function shouldTriggerWatchdog(elapsedMs, graceMs, baselineMtimeMs, currentMtimeMs, alreadyShown) {
+    if (alreadyShown) return false;
+    if (elapsedMs < graceMs) return false;
+    return currentMtimeMs <= baselineMtimeMs;
+}
+
+function showWatchdogNotification(mql5Root, eaName, elapsedSecs, diagnostics) {
+    const lines = [`Backtest "${eaName}": MT5 launched ${elapsedSecs}s ago but no Strategy Tester log activity was detected.`];
+    if (diagnostics) {
+        if (diagnostics.terminalPath) lines.push(`Terminal: ${diagnostics.terminalPath}`);
+        if (diagnostics.testerIniPath) lines.push(`tester.ini: ${diagnostics.testerIniPath}`);
+        if (diagnostics.logDir) lines.push(`Watching: ${diagnostics.logDir}`);
+    }
+    lines.push('MT5 may be writing logs elsewhere (wrong terminal, portable mismatch, different terminal-id).');
+
+    // Fire-and-forget so polling continues while the notification is shown.
+    vscode.window.showWarningMessage(lines.join(' '), 'Show Output', 'Cancel Backtest').then(selection => {
+        if (selection === 'Show Output') {
+            showOutputChannel();
+        } else if (selection === 'Cancel Backtest') {
+            cancelBacktest(mql5Root, eaName);
+        }
+    });
 }
 
 function showStartFailure(eaName, result) {
@@ -248,9 +302,14 @@ function showStartFailure(eaName, result) {
     vscode.window.showErrorMessage(`Failed to start backtest: ${result.message}`);
 }
 
-async function monitorBacktest(mql5Root, eaName, progress, token, isWine = false) {
+async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions = {}) {
+    const { isWine = false, diagnostics = null, startupGraceMs = DEFAULT_STARTUP_GRACE_SECONDS * 1000 } = monitorOptions;
     const startTime = Date.now();
     progress.report({ message: 'Starting...' });
+
+    const logDir = diagnostics?.logDir || null;
+    const baselineMtimeMs = logDir ? (findLatestTesterLog(logDir)?.mtimeMs ?? 0) : 0;
+    let watchdogShown = false;
 
     while (!token.isCancellationRequested) {
         const elapsed = Date.now() - startTime;
@@ -271,7 +330,17 @@ async function monitorBacktest(mql5Root, eaName, progress, token, isWine = false
             return false;
         }
 
-        const secs = Math.round((Date.now() - startTime) / 1000);
+        const elapsedNow = Date.now() - startTime;
+        const secs = Math.round(elapsedNow / 1000);
+
+        if (logDir && !watchdogShown) {
+            const currentMtimeMs = findLatestTesterLog(logDir)?.mtimeMs ?? 0;
+            if (shouldTriggerWatchdog(elapsedNow, startupGraceMs, baselineMtimeMs, currentMtimeMs, watchdogShown)) {
+                watchdogShown = true;
+                showWatchdogNotification(mql5Root, eaName, secs, diagnostics);
+            }
+        }
+
         progress.report({ message: `Running... (${secs}s)` });
     }
 
@@ -349,6 +418,7 @@ async function runBacktest(context, opts) {
     if (!params) return;
 
     const portableMode = config.get('Metaeditor.Portable5', false);
+    const startupGraceSeconds = config.get(STARTUP_GRACE_SETTING, DEFAULT_STARTUP_GRACE_SECONDS);
 
     const completed = await executeBacktest(eaName, params, {
         mql5Root,
@@ -359,6 +429,7 @@ async function runBacktest(context, opts) {
         winePrefix,
         wineEnv,
         portableMode,
+        startupGraceSeconds,
     });
 
     if (completed && autoOpen) vscode.commands.executeCommand('mql_tools.openTradeReport');
@@ -374,5 +445,7 @@ module.exports = {
     resolveBacktestPathSetting,
     parseMqlDate,
     isValidDate,
+    shouldTriggerWatchdog,
+    resolveStartupGraceMs,
     TESTER_LOG_DIR_SETTING_ID,
 };

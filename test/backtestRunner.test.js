@@ -8,6 +8,8 @@ const {
     resolveBacktestPathSetting,
     parseMqlDate,
     isValidDate,
+    shouldTriggerWatchdog,
+    resolveStartupGraceMs,
 } = require('../src/backtestRunner');
 
 suite('backtestRunner — internal runner helpers', function () {
@@ -43,5 +45,58 @@ suite('backtestRunner — internal runner helpers', function () {
         assert.strictEqual(parseMqlDate('invalid-date'), null);
         assert.strictEqual(parseMqlDate('2025.13.01'), null);
         assert.strictEqual(parseMqlDate('2025.02.30'), null);
+    });
+});
+
+suite('backtestRunner — startup watchdog', function () {
+    const GRACE_MS = 45 * 1000;
+
+    test('does not trigger before the grace period elapses', function () {
+        assert.strictEqual(shouldTriggerWatchdog(10000, GRACE_MS, 0, 0, false), false);
+    });
+
+    test('triggers after the grace period when no log activity is seen', function () {
+        // currentMtime unchanged from the baseline -> MT5 never wrote.
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS, GRACE_MS, 1000, 1000, false), true);
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS + 5000, GRACE_MS, 0, 0, false), true);
+    });
+
+    test('does not trigger when the tester log shows fresh activity', function () {
+        // currentMtime advanced past the baseline -> MT5 is writing logs.
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS + 5000, GRACE_MS, 1000, 2000, false), false);
+    });
+
+    test('only fires once (suppressed after it has been shown)', function () {
+        assert.strictEqual(shouldTriggerWatchdog(GRACE_MS + 10000, GRACE_MS, 1000, 1000, true), false);
+    });
+});
+
+suite('backtestRunner — startup grace resolution', function () {
+    const DEFAULT_MS = 45 * 1000;
+    const MIN_MS = 5 * 1000;
+
+    test('uses the default when the setting is missing', function () {
+        assert.strictEqual(resolveStartupGraceMs(undefined), DEFAULT_MS);
+        assert.strictEqual(resolveStartupGraceMs(null), DEFAULT_MS);
+    });
+
+    test('converts a valid numeric setting to milliseconds', function () {
+        assert.strictEqual(resolveStartupGraceMs(90), 90 * 1000);
+    });
+
+    test('falls back to the default for non-finite values', function () {
+        assert.strictEqual(resolveStartupGraceMs(NaN), DEFAULT_MS);
+        assert.strictEqual(resolveStartupGraceMs('not-a-number'), DEFAULT_MS);
+        assert.strictEqual(resolveStartupGraceMs(Infinity), DEFAULT_MS);
+    });
+
+    test('clamps tiny or negative values to the minimum floor', function () {
+        assert.strictEqual(resolveStartupGraceMs(-10), MIN_MS);
+        assert.strictEqual(resolveStartupGraceMs(0), MIN_MS);
+        assert.strictEqual(resolveStartupGraceMs(1), MIN_MS);
+    });
+
+    test('accepts numeric strings from settings', function () {
+        assert.strictEqual(resolveStartupGraceMs('60'), 60 * 1000);
     });
 });
