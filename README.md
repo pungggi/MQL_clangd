@@ -15,6 +15,7 @@
 - [Auto-Reload EA After Compile (MT5 Service)](#auto-reload-ea-after-compile-mt5-service)
 - [Live Runtime Log](#live-runtime-log)
 - [Trade Report Dashboard](#trade-report-dashboard)
+- [Backtest Setup](#backtest-setup)
 - [Run Backtest](#run-backtest)
 - [MQL Debugger (Real-Time Variable Inspection)](#mql-debugger-real-time-variable-inspection)
 - [Troubleshooting clangd diagnostics (MQL-specific)](#troubleshooting-clangd-diagnostics-mql-specific)
@@ -346,6 +347,62 @@ When a snapshot exists the Trade Report shows **two clickable badges** per sourc
 The dashboard also marks runs that have a snapshot with a small **snapshot** label.
 
 > **Warning:** Enabling this setting increases disk usage because a full copy of every referenced source file is stored per run. If you run many tests the extra space can add up — disable the setting or delete `snapshot/` folders you no longer need.
+
+---
+
+### Backtest Setup
+
+Before running your first backtest, each EA needs a `tester.ini` file describing its default test configuration. This section covers what the extension reads, what it writes, and which settings matter.
+
+#### `tester.ini` location
+
+`tester.ini` must live in the EA's folder under your MQL5 data folder:
+
+```
+MQL5/Experts/<YourEA>/tester.ini
+```
+
+A starter template is available at [`docs/backtest/artifacts/tester.ini.example`](docs/backtest/artifacts/tester.ini.example). Copy it into your EA folder and adjust the values for your strategy.
+
+#### Required fields
+
+The runner reads these keys from the `[Tester]` section:
+
+| Field | Required | Format | Example |
+|-------|----------|--------|---------|
+| `Symbol` | yes | broker symbol name | `EURUSD` |
+| `FromDate` | yes | `YYYY.MM.DD` | `2025.01.01` |
+| `ToDate` | yes | `YYYY.MM.DD` | `2025.01.31` |
+| `Period` | optional | MT5 timeframe code (`M1`, `M5`, `H1`, …) | `M5` |
+
+Dates **must** use the `YYYY.MM.DD` format (dots, four-digit year). Other separators or two-digit years are rejected as invalid.
+
+When `mql_tools.Backtest.PromptForParameters` is `true` (the default), VS Code prompts for `Symbol`, `FromDate`, and `ToDate` with the values from `tester.ini` pre-filled. With prompting disabled, missing or malformed values produce a validation error and the run is not launched.
+
+#### Relevant settings
+
+| Setting | Required | Purpose |
+|---------|----------|---------|
+| `mql_tools.Terminal.Terminal5Dir` | yes | Full path to `terminal64.exe` — used to launch MT5 in tester mode. |
+| `mql_tools.Metaeditor.Include5Dir` | yes | MQL5 data folder containing `Experts/`, `Include/`, etc. The runner derives the terminal data folder from this path. |
+| `mql_tools.Backtest.PromptForParameters` | no (default `true`) | When `false`, the run uses `Symbol`/`FromDate`/`ToDate` from `tester.ini` silently. |
+| `mql_tools.Backtest.TesterLogDir` | no | Override for the Strategy Tester agent log directory. Leave empty to auto-detect. |
+
+#### Where MT5 writes the tester log
+
+When MT5 executes a backtest, the Strategy Tester agent writes its log into:
+
+```
+%APPDATA%\MetaQuotes\Tester\<terminalId>\Agent-127.0.0.1-3000\logs\
+```
+
+The extension auto-detects this folder from your MQL5 data folder (the terminal ID is the parent directory of `MQL5/`) and picks the freshest matching `Agent-*/logs` directory. On Linux/macOS the equivalent path under your Wine prefix is searched instead.
+
+If auto-detection fails — for example on non-standard MT5 installs or custom agent ports — set `mql_tools.Backtest.TesterLogDir` to point directly at the correct `…\Agent-…\logs` folder.
+
+When a run completes, the freshest log from that folder is copied into `MQL5/Experts/<YourEA>/runs/`, where the Trade Report Dashboard picks it up.
+
+> For a full step-by-step walkthrough including Wine and negative cases, see [`docs/backtest/windows-manual-test-guide.md`](docs/backtest/windows-manual-test-guide.md).
 
 ---
 
