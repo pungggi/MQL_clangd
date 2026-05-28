@@ -1018,23 +1018,29 @@ async function Compile(rt, context, options = {}) {
     diagnosticCollection.clear();
 
     // Auto-version bump: bump #property version and/or const string version constants
-    // before compilation, if configured.
+    // before compilation, if configured. Guarded by internalSaveDepth so the document
+    // save inside bumpVersionsInFile does not re-trigger CheckOnSave.
     const config = vscode.workspace.getConfiguration('mql_tools');
     const autoBump = config.get('Compile.AutoVersionBump');
     const versionConstantNames = config.get('Compile.VersionConstantNames');
     if (autoBump || (Array.isArray(versionConstantNames) && versionConstantNames.length > 0)) {
-        for (const p of pathsToCompile) {
-            try {
-                await bumpVersionsInFile({
-                    filePath: p,
-                    bumpPropertyVersion: autoBump,
-                    versionConstantNames: versionConstantNames || [],
-                    vscode,
-                    outputChannel
-                });
-            } catch (bumpErr) {
-                outputChannel.appendLine(`[Version] Error bumping version in ${pathModule.basename(p)}: ${bumpErr.message}`);
+        internalSaveDepth++;
+        try {
+            for (const p of pathsToCompile) {
+                try {
+                    await bumpVersionsInFile({
+                        filePath: p,
+                        bumpPropertyVersion: autoBump,
+                        versionConstantNames: versionConstantNames || [],
+                        vscode,
+                        outputChannel
+                    });
+                } catch (bumpErr) {
+                    outputChannel.appendLine(`[Version] Error bumping version in ${pathModule.basename(p)}: ${bumpErr.message}`);
+                }
             }
+        } finally {
+            internalSaveDepth = Math.max(0, internalSaveDepth - 1);
         }
     }
 
