@@ -123,7 +123,7 @@ function isUsableMql5Root(mql5Root) {
 async function resolveEAName(context, mql5Root, resolveCompileTargets) {
     const eaList = discoverBacktestEAs(mql5Root);
     if (eaList.length === 0) {
-        vscode.window.showErrorMessage('No EAs with tester.ini or runs/ folders were found under MQL5/Experts.');
+        vscode.window.showErrorMessage('No EAs with tester configuration files (*.ini) or runs/ folders were found under MQL5/Experts.');
         return null;
     }
 
@@ -173,6 +173,35 @@ async function resolveCandidateEAName(context, editor, resolveCompileTargets) {
         console.error(`resolveCompileTargets failed for ${filePath}:`, err);
         return null;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tester INI selection
+// ---------------------------------------------------------------------------
+
+async function selectTesterIniFile(ea) {
+    const candidates = ea.getTesterIniCandidates();
+    if (candidates.length === 0) return undefined;
+    if (candidates.length === 1) return ea.testerIniPath;
+
+    const defaultName = 'tester.ini';
+    const items = candidates.map(p => {
+        const name = path.basename(p);
+        return {
+            label: name,
+            description: name.toLowerCase() === defaultName ? '(default)' : undefined,
+            path: p,
+        };
+    });
+
+    const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: `Multiple tester INI files in ${ea.name} — choose one for this run`,
+        title: `MQL Backtest: Select tester INI for ${ea.name}`,
+    });
+    if (!pick) return undefined;
+
+    ea.testerIniPath = pick.path;
+    return pick.path;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +270,8 @@ async function promptForSymbolInput(defaultSymbol) {
 }
 
 function getSilentParameters(mql5Root, eaName) {
+    const ea = findBacktestEA(mql5Root, eaName);
+    const iniName = ea && ea.testerIniPath ? path.basename(ea.testerIniPath) : 'tester.ini';
     const defaults = getDefaults(mql5Root, eaName);
     const missing = ['symbol', 'fromDate', 'toDate'].filter(key => !defaults[key]);
     if (missing.length > 0) {
@@ -248,7 +279,7 @@ function getSilentParameters(mql5Root, eaName) {
         return null;
     }
     if (!isValidDate(defaults.fromDate) || !isValidDate(defaults.toDate)) {
-        vscode.window.showErrorMessage(`Tester configuration for ${eaName} contains invalid dates (expected YYYY.MM.DD or YYYYMMDD).`);
+        vscode.window.showErrorMessage(`${iniName} for ${eaName} contains invalid dates (expected YYYY.MM.DD or YYYYMMDD).`);
         return null;
     }
     return defaults;
@@ -444,6 +475,14 @@ async function runBacktest(context, opts) {
 
     const eaName = await resolveEAName(context, mql5Root, opts.resolveCompileTargets);
     if (!eaName) return;
+
+    const ea = findBacktestEA(mql5Root, eaName);
+    if (!ea) {
+        vscode.window.showErrorMessage(`EA ${eaName} not found.`);
+        return;
+    }
+    const iniSelected = await selectTesterIniFile(ea);
+    if (iniSelected === undefined) return;
 
     const params = promptParams ? await getTestParameters(mql5Root, eaName) : getSilentParameters(mql5Root, eaName);
     if (!params) return;

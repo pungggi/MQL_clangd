@@ -26,11 +26,29 @@ class BacktestEAInfo {
         this.name = name;
         this.dir = dir;
         this.runsDir = path.join(dir, 'runs');
-        this.testerIniPath = path.join(dir, 'tester.ini');
+        const candidates = this.getTesterIniCandidates();
+        this.testerIniPath = candidates[0] || path.join(dir, 'tester.ini');
     }
 
     hasTesterConfig() {
-        return fs.existsSync(this.testerIniPath);
+        return this.getTesterIniCandidates().length > 0;
+    }
+
+    getTesterIniCandidates() {
+        let entries;
+        try { entries = fs.readdirSync(this.dir, { withFileTypes: true }); } catch { return []; }
+
+        const iniFiles = entries
+            .filter(e => e.isFile() && e.name.toLowerCase().endsWith('.ini'))
+            .map(e => e.name);
+
+        iniFiles.sort((a, b) => {
+            const aDefault = a.toLowerCase() === 'tester.ini';
+            const bDefault = b.toLowerCase() === 'tester.ini';
+            if (aDefault !== bDefault) return aDefault ? -1 : 1;
+            return a.localeCompare(b);
+        });
+        return iniFiles.map(name => path.join(this.dir, name));
     }
 
     getAllLogs() {
@@ -69,7 +87,13 @@ function isDirectory(dir) {
 }
 
 function isBacktestEaDirectory(dir) {
-    return fs.existsSync(path.join(dir, 'tester.ini')) || isDirectory(path.join(dir, 'runs'));
+    if (isDirectory(path.join(dir, 'runs'))) return true;
+    try {
+        return fs.readdirSync(dir, { withFileTypes: true })
+            .some(e => e.isFile() && e.name.toLowerCase().endsWith('.ini'));
+    } catch {
+        return false;
+    }
 }
 
 function discoverBacktestEAs(mql5Root, maxDepth = DEFAULT_MAX_SCAN_DEPTH) {
@@ -421,7 +445,7 @@ async function startBacktest(options) {
     const ea = findBacktestEA(mql5Root, eaName);
     if (!ea) return { started: false, code: 'EA_NOT_FOUND', message: 'EA not found' };
     if (runningTests.has(ea.dir)) return { started: false, code: 'ALREADY_RUNNING', message: 'Test already running for this EA' };
-    if (!ea.hasTesterConfig()) return { started: false, code: 'NO_TESTER_INI', message: 'No tester.ini found in EA folder' };
+    if (!ea.hasTesterConfig()) return { started: false, code: 'NO_TESTER_INI', message: 'No tester configuration file (*.ini) found in EA folder' };
     if (!terminalPath) return { started: false, code: 'NO_TERMINAL', message: 'MT5 terminal not found' };
 
     const wineOpts = useWine ? { winePrefix } : null;
