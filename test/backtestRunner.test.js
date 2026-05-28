@@ -46,6 +46,23 @@ suite('backtestRunner — internal runner helpers', function () {
         assert.strictEqual(parseMqlDate('2025.13.01'), null);
         assert.strictEqual(parseMqlDate('2025.02.30'), null);
     });
+
+    test('accepts the compact YYYYMMDD form from tester INI filenames', function () {
+        assert.ok(isValidDate('20260201'));
+        assert.ok(isValidDate('20240229'));
+
+        const parsed = parseMqlDate('20260201');
+        assert.strictEqual(parsed.getFullYear(), 2026);
+        assert.strictEqual(parsed.getMonth(), 1);
+        assert.strictEqual(parsed.getDate(), 1);
+    });
+
+    test('rejects calendrically invalid compact dates', function () {
+        assert.strictEqual(isValidDate('20250229'), false);
+        assert.strictEqual(isValidDate('20251301'), false);
+        assert.strictEqual(isValidDate('2026020'), false);
+        assert.strictEqual(isValidDate('202602011'), false);
+    });
 });
 
 suite('backtestRunner — startup watchdog', function () {
