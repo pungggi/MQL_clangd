@@ -40,9 +40,20 @@ const DEFAULT_TERMINAL_PATHS = [
 // Date helpers
 // ---------------------------------------------------------------------------
 
+// Accepts the canonical dotted form `YYYY.MM.DD` and the compact `YYYYMMDD`
+// form used in MT5 tester INI filenames (users often copy-paste from there).
 function parseMqlDate(v) {
-    if (!/^\d{4}\.\d{2}\.\d{2}$/.test(v)) return null;
-    const [year, month, day] = v.split('.').map(Number);
+    if (typeof v !== 'string') return null;
+
+    let year, month, day;
+    if (/^\d{4}\.\d{2}\.\d{2}$/.test(v)) {
+        [year, month, day] = v.split('.').map(Number);
+    } else if (/^\d{8}$/.test(v)) {
+        [year, month, day] = [v.slice(0, 4), v.slice(4, 6), v.slice(6, 8)].map(Number);
+    } else {
+        return null;
+    }
+
     const d = new Date(year, month - 1, day);
     if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
     return d;
@@ -158,18 +169,18 @@ async function getTestParameters(mql5Root, eaName) {
     if (symbol === null) return null;
 
     const fromDate = await vscode.window.showInputBox({
-        prompt: 'From date (YYYY.MM.DD)',
+        prompt: 'From date (YYYY.MM.DD or YYYYMMDD)',
         value: defaults.fromDate,
         title: 'MQL Backtest: Start Date',
-        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
+        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD or YYYYMMDD)',
     });
     if (fromDate === undefined) return null;
 
     const toDate = await vscode.window.showInputBox({
-        prompt: 'To date (YYYY.MM.DD)',
+        prompt: 'To date (YYYY.MM.DD or YYYYMMDD)',
         value: defaults.toDate,
         title: 'MQL Backtest: End Date',
-        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD)',
+        validateInput: v => isValidDate(v) ? null : 'Invalid date (YYYY.MM.DD or YYYYMMDD)',
     });
     if (toDate === undefined) return null;
 

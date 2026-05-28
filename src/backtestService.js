@@ -191,11 +191,17 @@ function updateTesterIniContent(content, params, lineEnding) {
     return result.join(detectedEnding);
 }
 
+// MT5 only accepts the dotted `YYYY.MM.DD` form in tester.ini. Inputs may arrive
+// in the compact `YYYYMMDD` form (copied from tester INI filenames), so normalize.
+function normalizeMqlDate(v) {
+    return /^\d{8}$/.test(v) ? `${v.slice(0, 4)}.${v.slice(4, 6)}.${v.slice(6, 8)}` : v;
+}
+
 function getTesterIniReplacement(section, key, oldValue, params) {
     if (section === 'tester') {
         if (key === 'Symbol' && params.symbol) return `Symbol=${params.symbol}`;
-        if (key === 'FromDate' && params.fromDate) return `FromDate=${params.fromDate}`;
-        if (key === 'ToDate' && params.toDate) return `ToDate=${params.toDate}`;
+        if (key === 'FromDate' && params.fromDate) return `FromDate=${normalizeMqlDate(params.fromDate)}`;
+        if (key === 'ToDate' && params.toDate) return `ToDate=${normalizeMqlDate(params.toDate)}`;
     }
 
     if (section === 'inputs' && key === 'RiskPercentage' && params.riskPercentage !== undefined) {

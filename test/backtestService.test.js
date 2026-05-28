@@ -73,6 +73,16 @@ suite('backtestService', function () {
         assert.ok(updated.includes('RiskPercentage=1.25||1||0.5||10||Y'));
     });
 
+    test('normalizes compact YYYYMMDD dates to the dotted form MT5 expects', function () {
+        const updated = updateTesterIniContent(testerIni(), {
+            fromDate: '20260201',
+            toDate: '20260430',
+        });
+
+        assert.ok(updated.includes('FromDate=2026.02.01'));
+        assert.ok(updated.includes('ToDate=2026.04.30'));
+    });
+
     test('finds tester agent log directory from MQL5 root terminal id', function () {
         const mql5Root = path.join(tempDir, 'MetaQuotes', 'Terminal', 'ABCDEF', 'MQL5');
         const logDir = path.join(tempDir, 'MetaQuotes', 'Tester', 'ABCDEF', 'Agent-127.0.0.1-3000', 'logs');
