@@ -236,7 +236,7 @@ function getSilentParameters(mql5Root, eaName) {
         return null;
     }
     if (!isValidDate(defaults.fromDate) || !isValidDate(defaults.toDate)) {
-        vscode.window.showErrorMessage(`tester.ini for ${eaName} contains invalid dates (expected YYYY.MM.DD).`);
+        vscode.window.showErrorMessage(`tester.ini for ${eaName} contains invalid dates (expected YYYY.MM.DD or YYYYMMDD).`);
         return null;
     }
     return defaults;
