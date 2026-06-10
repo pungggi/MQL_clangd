@@ -370,6 +370,9 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 |---------|---------|-------------|
 | `mql_tools.Backtest.PromptForParameters` | `true` | Show symbol/date prompts before running. Set `false` to use `tester.ini` defaults silently. |
 | `mql_tools.Backtest.AutoOpenReport` | `true` | Open the Trade Report Dashboard when the test completes. |
+| `mql_tools.Backtest.VisualMode` | `null` | `true`/`false` forces `Visual=1`/`Visual=0` in the generated `tester.ini` (visual chart testing). `null` keeps the EA's INI value. |
+| `mql_tools.Backtest.KeepTerminalOpen` | `null` | `true` writes `ShutdownTerminal=0` so MT5 stays open after the test; `false` writes `ShutdownTerminal=1`. `null` keeps the EA's INI value. An open terminal can block the next launch (one MT5 instance per data folder). |
+| `mql_tools.Backtest.MonitorTimeoutMinutes` | `10` | Minutes to monitor a running test before giving up. Only stops the VS Code progress notification — the MT5 test keeps running. Increase for visual mode or long date ranges. |
 | `mql_tools.Backtest.AutoStartServer` | `true` | Auto-start TradeReportServer if it isn't already running. |
 | `mql_tools.Backtest.ServerDir` | empty | Optional path to the TradeReportServer Node.js package folder. When empty, auto-start uses `<MQL5 data folder>/Tools/TradeReportServer`. |
 | `mql_tools.Backtest.ServerPort` | `3002` | Port used by TradeReportServer. |
@@ -430,6 +433,8 @@ RiskPercentage=1.0||1||0.1||10||Y
 |---------|-------------|
 | `mql_tools.Backtest.PromptForParameters` | If `true`, prompts for symbol and date before running. If `false`, uses `tester.ini` defaults silently. |
 | `mql_tools.Backtest.TesterLogDir` | Optional path to MT5's tester agent log directory. Only set if auto-detection fails. |
+| `mql_tools.Backtest.VisualMode` | Force visual mode on (`true`) or off (`false`) for every launch. `null` (default) respects the EA's INI. |
+| `mql_tools.Backtest.KeepTerminalOpen` | Keep MT5 open after the test (`true` → `ShutdownTerminal=0`). `null` (default) respects the EA's INI. |
 | `mql_tools.Terminal.Terminal5Dir` | Path to `terminal64.exe`. Required on all platforms. Auto-detects common locations on Windows. |
 | `mql_tools.Metaeditor.Include5Dir` | Path to MQL5 data folder (contains `Include`, `Experts`, `Logs`, etc.). |
 

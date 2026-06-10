@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.1.54",
+    "version": "1.1.57",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
@@ -276,10 +276,32 @@
                     "default": true,
                     "description": "Automatically open the Trade Report Dashboard when a backtest completes."
                 },
+                "mql_tools.Backtest.VisualMode": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "default": null,
+                    "markdownDescription": "Run backtests in visual mode (writes `Visual=1` or `Visual=0` into the generated `tester.ini`). Leave unset (`null`) to keep the value from the EA's INI file."
+                },
+                "mql_tools.Backtest.KeepTerminalOpen": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "default": null,
+                    "markdownDescription": "Keep the MT5 terminal open after the backtest finishes (writes `ShutdownTerminal=0` into the generated `tester.ini`; `false` writes `ShutdownTerminal=1`). Leave unset (`null`) to keep the value from the EA's INI file. Note: MT5 allows one instance per data folder, so a terminal left open can block the next backtest launch until you close it."
+                },
                 "mql_tools.Backtest.TesterLogDir": {
                     "type": "string",
                     "default": "",
                     "markdownDescription": "Optional Strategy Tester agent log directory override. Leave empty to auto-detect from the MQL5 data folder. Supports `${workspaceFolder}`, `~`, and relative paths."
+                },
+                "mql_tools.Backtest.MonitorTimeoutMinutes": {
+                    "type": "number",
+                    "default": 10,
+                    "minimum": 1,
+                    "markdownDescription": "Minutes to monitor a running backtest before giving up. The MT5 test itself keeps running — only the VS Code progress notification stops. Increase for long runs (e.g. visual mode or multi-year date ranges)."
                 },
                 "mql_tools.Backtest.StartupGraceSeconds": {
                     "type": "number",

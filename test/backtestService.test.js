@@ -110,6 +110,57 @@ suite('backtestService', function () {
         assert.ok(updated.includes('RiskPercentage=1.25||1||0.5||10||Y'));
     });
 
+    test('injects Visual and ShutdownTerminal under [Tester] when absent from the source ini', function () {
+        const updated = updateTesterIniContent(testerIni(), {
+            visualMode: true,
+            shutdownTerminal: false,
+        });
+
+        const lines = updated.split('\n');
+        const testerIndex = lines.indexOf('[Tester]');
+        assert.ok(testerIndex !== -1);
+        assert.deepStrictEqual(lines.slice(testerIndex + 1, testerIndex + 3).sort(), ['ShutdownTerminal=0', 'Visual=1']);
+    });
+
+    test('replaces existing Visual and ShutdownTerminal values case-insensitively', function () {
+        const source = [
+            '[Tester]',
+            'Symbol=EURUSD',
+            'visual=0',
+            'ShutdownTerminal=1',
+            '',
+        ].join('\n');
+
+        const updated = updateTesterIniContent(source, {
+            visualMode: true,
+            shutdownTerminal: false,
+        });
+
+        assert.ok(updated.includes('Visual=1'));
+        assert.ok(updated.includes('ShutdownTerminal=0'));
+        assert.strictEqual(updated.includes('visual=0'), false);
+        assert.strictEqual((updated.match(/ShutdownTerminal=/g) || []).length, 1);
+    });
+
+    test('leaves Visual and ShutdownTerminal untouched when params omit them', function () {
+        const source = [
+            '[Tester]',
+            'Symbol=EURUSD',
+            'Visual=1',
+            'ShutdownTerminal=0',
+            '',
+        ].join('\n');
+
+        const updated = updateTesterIniContent(source, { symbol: 'GBPUSD' });
+
+        assert.ok(updated.includes('Visual=1'));
+        assert.ok(updated.includes('ShutdownTerminal=0'));
+
+        const untouched = updateTesterIniContent(testerIni(), { symbol: 'GBPUSD' });
+        assert.strictEqual(untouched.includes('Visual='), false);
+        assert.strictEqual(untouched.includes('ShutdownTerminal='), false);
+    });
+
     test('normalizes compact YYYYMMDD dates to the dotted form MT5 expects', function () {
         const updated = updateTesterIniContent(testerIni(), {
             fromDate: '20260201',

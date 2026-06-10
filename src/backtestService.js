@@ -190,11 +190,14 @@ function updateTesterIniContent(content, params, lineEnding) {
     const detectedEnding = lineEnding || (content.includes('\r\n') ? '\r\n' : '\n');
     const result = [];
     let currentSection = '';
+    let testerHeaderIndex = -1;
+    const seenTesterKeys = new Set();
 
     for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
             currentSection = trimmed.slice(1, -1).toLowerCase();
+            if (currentSection === 'tester' && testerHeaderIndex === -1) testerHeaderIndex = result.length;
             result.push(line);
             continue;
         }
@@ -202,6 +205,7 @@ function updateTesterIniContent(content, params, lineEnding) {
         const eqIndex = trimmed.indexOf('=');
         if (eqIndex > 0) {
             const key = trimmed.slice(0, eqIndex).trim();
+            if (currentSection === 'tester') seenTesterKeys.add(key.toLowerCase());
             const replacement = getTesterIniReplacement(currentSection, key, trimmed.slice(eqIndex + 1), params);
             if (replacement) {
                 result.push(replacement);
@@ -212,7 +216,30 @@ function updateTesterIniContent(content, params, lineEnding) {
         result.push(line);
     }
 
+    // Launch-behavior keys (Visual, ShutdownTerminal) are usually absent from
+    // EA-authored INIs, so inject them right under [Tester] when requested.
+    if (testerHeaderIndex !== -1) {
+        const missing = getTesterLaunchOverrides(params)
+            .filter(o => !seenTesterKeys.has(o.key.toLowerCase()))
+            .map(o => `${o.key}=${o.value}`);
+        result.splice(testerHeaderIndex + 1, 0, ...missing);
+    }
+
     return result.join(detectedEnding);
+}
+
+/**
+ * Map launch-behavior params to `[Tester]` key/value overrides. A param left
+ * undefined/null means "keep whatever the EA's INI says" and produces no entry.
+ *
+ * @param {object} params - Backtest parameters (visualMode, shutdownTerminal).
+ * @returns {{key: string, value: number}[]} Overrides to apply to the `[Tester]` section.
+ */
+function getTesterLaunchOverrides(params) {
+    const overrides = [];
+    if (typeof params.visualMode === 'boolean') overrides.push({ key: 'Visual', value: params.visualMode ? 1 : 0 });
+    if (typeof params.shutdownTerminal === 'boolean') overrides.push({ key: 'ShutdownTerminal', value: params.shutdownTerminal ? 1 : 0 });
+    return overrides;
 }
 
 /**
@@ -245,6 +272,10 @@ function getTesterIniReplacement(section, key, oldValue, params) {
         if (key === 'Symbol' && params.symbol) return `Symbol=${params.symbol}`;
         if (key === 'FromDate' && params.fromDate) return `FromDate=${normalizeMqlDate(params.fromDate)}`;
         if (key === 'ToDate' && params.toDate) return `ToDate=${normalizeMqlDate(params.toDate)}`;
+
+        const launchOverride = getTesterLaunchOverrides(params)
+            .find(o => o.key.toLowerCase() === key.toLowerCase());
+        if (launchOverride) return `${launchOverride.key}=${launchOverride.value}`;
     }
 
     if (section === 'inputs' && key === 'RiskPercentage' && params.riskPercentage !== undefined) {

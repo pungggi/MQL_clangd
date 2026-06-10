@@ -11,7 +11,9 @@ const {
     isValidDate,
     shouldTriggerWatchdog,
     resolveStartupGraceMs,
+    resolveMonitorTimeoutMs,
     promptForSymbol,
+    applyLaunchBehaviorSettings,
 } = require('../src/backtestRunner');
 
 suite('backtestRunner — internal runner helpers', function () {
@@ -26,6 +28,23 @@ suite('backtestRunner — internal runner helpers', function () {
         const resolved = resolveBacktestPathSetting('~/tester-logs', '');
 
         assert.strictEqual(resolved, path.join(os.homedir(), 'tester-logs'));
+    });
+
+    test('applyLaunchBehaviorSettings maps boolean settings onto params', function () {
+        const stubConfig = values => ({ get: (key, fallback) => key in values ? values[key] : fallback });
+
+        const params = {};
+        applyLaunchBehaviorSettings(stubConfig({
+            'Backtest.VisualMode': true,
+            'Backtest.KeepTerminalOpen': true,
+        }), params);
+        assert.strictEqual(params.visualMode, true);
+        assert.strictEqual(params.shutdownTerminal, false);
+
+        const untouched = {};
+        applyLaunchBehaviorSettings(stubConfig({}), untouched);
+        assert.strictEqual('visualMode' in untouched, false);
+        assert.strictEqual('shutdownTerminal' in untouched, false);
     });
 
     test('validates MQL date strings calendrically', function () {
@@ -117,6 +136,30 @@ suite('backtestRunner — startup grace resolution', function () {
 
     test('accepts numeric strings from settings', function () {
         assert.strictEqual(resolveStartupGraceMs('60'), 60 * 1000);
+    });
+});
+
+suite('backtestRunner — resolveMonitorTimeoutMs', function () {
+    const DEFAULT_MS = 10 * 60 * 1000;
+    const MIN_MS = 1 * 60 * 1000;
+
+    test('uses the default when the setting is missing or non-finite', function () {
+        assert.strictEqual(resolveMonitorTimeoutMs(undefined), DEFAULT_MS);
+        assert.strictEqual(resolveMonitorTimeoutMs(null), DEFAULT_MS);
+        assert.strictEqual(resolveMonitorTimeoutMs(NaN), DEFAULT_MS);
+        assert.strictEqual(resolveMonitorTimeoutMs('not-a-number'), DEFAULT_MS);
+        assert.strictEqual(resolveMonitorTimeoutMs(Infinity), DEFAULT_MS);
+    });
+
+    test('converts valid minutes (including numeric strings) to milliseconds', function () {
+        assert.strictEqual(resolveMonitorTimeoutMs(45), 45 * 60 * 1000);
+        assert.strictEqual(resolveMonitorTimeoutMs('30'), 30 * 60 * 1000);
+    });
+
+    test('clamps tiny or negative values to the minimum floor', function () {
+        assert.strictEqual(resolveMonitorTimeoutMs(-5), MIN_MS);
+        assert.strictEqual(resolveMonitorTimeoutMs(0), MIN_MS);
+        assert.strictEqual(resolveMonitorTimeoutMs(0.5), MIN_MS);
     });
 });
 

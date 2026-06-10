@@ -1,3 +1,10 @@
 {"ts":1779983612968,"kind":"slash","value":"/new","weight":1}
 {"ts":1779983632880,"kind":"ngram","n":3,"tokens":["git","switch","master"],"weight":1}
 {"ts":1779983638393,"kind":"ngram","n":3,"tokens":["git","switch","main"],"weight":1}
+{"ts":1780578721675,"kind":"slash","value":"/re","weight":1}
+{"ts":1780578740237,"kind":"slash","value":"/rem","weight":1}
+{"ts":1780578749057,"kind":"slash","value":"/remote-pi","weight":1}
+{"ts":1780578749731,"kind":"slash","value":"/remote-pi","weight":1}
+{"ts":1780578777070,"kind":"slash","value":"/re","weight":1}
+{"ts":1780579880637,"kind":"slash","value":"/r","weight":1}
+{"ts":1780579883989,"kind":"slash","value":"/new","weight":1}

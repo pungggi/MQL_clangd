@@ -29,10 +29,12 @@ const {
 } = require('./wineHelper');
 
 const POLL_INTERVAL_MS = 2000;
-const MAX_POLL_TIME_MS = 10 * 60 * 1000;
 const DEFAULT_STARTUP_GRACE_SECONDS = 45;
 const STARTUP_GRACE_SETTING = 'Backtest.StartupGraceSeconds';
 const MIN_STARTUP_GRACE_SECONDS = 5;
+const DEFAULT_MONITOR_TIMEOUT_MINUTES = 10;
+const MONITOR_TIMEOUT_SETTING = 'Backtest.MonitorTimeoutMinutes';
+const MIN_MONITOR_TIMEOUT_MINUTES = 1;
 const TERMINAL_SETTING_ID = 'mql_tools.Terminal.Terminal5Dir';
 const TESTER_LOG_DIR_SETTING = 'Backtest.TesterLogDir';
 const TESTER_LOG_DIR_SETTING_ID = `mql_tools.${TESTER_LOG_DIR_SETTING}`;
@@ -269,6 +271,21 @@ async function promptForSymbolInput(defaultSymbol) {
     return input === undefined ? null : input;
 }
 
+/**
+ * Merge launch-behavior settings into the backtest params. Both settings are
+ * tri-state: `true`/`false` overrides the EA's INI, anything else (the `null`
+ * default) leaves the INI value untouched.
+ *
+ * @param {vscode.WorkspaceConfiguration} config - The `mql_tools` configuration.
+ * @param {object} params - Backtest parameters to mutate.
+ */
+function applyLaunchBehaviorSettings(config, params) {
+    const visualMode = config.get('Backtest.VisualMode', null);
+    const keepTerminalOpen = config.get('Backtest.KeepTerminalOpen', null);
+    if (typeof visualMode === 'boolean') params.visualMode = visualMode;
+    if (typeof keepTerminalOpen === 'boolean') params.shutdownTerminal = !keepTerminalOpen;
+}
+
 function getSilentParameters(mql5Root, eaName) {
     const ea = findBacktestEA(mql5Root, eaName);
     const iniName = ea && ea.testerIniPath ? path.basename(ea.testerIniPath) : 'tester.ini';
@@ -301,6 +318,18 @@ function resolveStartupGraceMs(rawSeconds) {
     return Math.max(MIN_STARTUP_GRACE_SECONDS, seconds) * 1000;
 }
 
+/**
+ * Coerces the configured monitor timeout into a sane millisecond value.
+ * Falls back to the default when the setting is missing, non-numeric, or
+ * non-finite, and clamps to a minimum floor so the monitor can't give up
+ * before the first poll. Long visual-mode runs may need a generous value.
+ */
+function resolveMonitorTimeoutMs(rawMinutes) {
+    const minutes = rawMinutes === undefined || rawMinutes === null ? DEFAULT_MONITOR_TIMEOUT_MINUTES : Number(rawMinutes);
+    if (!Number.isFinite(minutes)) return DEFAULT_MONITOR_TIMEOUT_MINUTES * 60 * 1000;
+    return Math.max(MIN_MONITOR_TIMEOUT_MINUTES, minutes) * 60 * 1000;
+}
+
 async function executeBacktest(eaName, params, options) {
     const startResult = await startBacktest({ eaName, params, ...options });
     if (!startResult.started) {
@@ -311,6 +340,7 @@ async function executeBacktest(eaName, params, options) {
     const isWine = !!options.useWine;
     const diagnostics = startResult.diagnostics || null;
     const startupGraceMs = resolveStartupGraceMs(options.startupGraceSeconds);
+    const monitorTimeoutMs = resolveMonitorTimeoutMs(options.monitorTimeoutMinutes);
     return vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
@@ -321,6 +351,7 @@ async function executeBacktest(eaName, params, options) {
             isWine,
             diagnostics,
             startupGraceMs,
+            monitorTimeoutMs,
         }),
     );
 }
@@ -365,7 +396,12 @@ function showStartFailure(eaName, result) {
 }
 
 async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions = {}) {
-    const { isWine = false, diagnostics = null, startupGraceMs = DEFAULT_STARTUP_GRACE_SECONDS * 1000 } = monitorOptions;
+    const {
+        isWine = false,
+        diagnostics = null,
+        startupGraceMs = DEFAULT_STARTUP_GRACE_SECONDS * 1000,
+        monitorTimeoutMs = DEFAULT_MONITOR_TIMEOUT_MINUTES * 60 * 1000,
+    } = monitorOptions;
     const startTime = Date.now();
     progress.report({ message: 'Starting...' });
 
@@ -375,8 +411,12 @@ async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions
 
     while (!token.isCancellationRequested) {
         const elapsed = Date.now() - startTime;
-        if (elapsed > MAX_POLL_TIME_MS) {
-            vscode.window.showWarningMessage('Backtest monitoring timed out (10 min). The test may still be running in MT5.');
+        if (elapsed > monitorTimeoutMs) {
+            const timeoutMin = Math.round(monitorTimeoutMs / 60000);
+            vscode.window.showWarningMessage(
+                `Backtest monitoring timed out (${timeoutMin} min). The test may still be running in MT5. `
+                + `Increase mql_tools.${MONITOR_TIMEOUT_SETTING} for long runs.`,
+            );
             return false;
         }
 
@@ -486,9 +526,11 @@ async function runBacktest(context, opts) {
 
     const params = promptParams ? await getTestParameters(mql5Root, eaName) : getSilentParameters(mql5Root, eaName);
     if (!params) return;
+    applyLaunchBehaviorSettings(config, params);
 
     const portableMode = config.get('Metaeditor.Portable5', false);
     const startupGraceSeconds = config.get(STARTUP_GRACE_SETTING, DEFAULT_STARTUP_GRACE_SECONDS);
+    const monitorTimeoutMinutes = config.get(MONITOR_TIMEOUT_SETTING, DEFAULT_MONITOR_TIMEOUT_MINUTES);
 
     const completed = await executeBacktest(eaName, params, {
         mql5Root,
@@ -500,6 +542,7 @@ async function runBacktest(context, opts) {
         wineEnv,
         portableMode,
         startupGraceSeconds,
+        monitorTimeoutMinutes,
     });
 
     if (completed && autoOpen) vscode.commands.executeCommand('mql_tools.openTradeReport');
@@ -517,6 +560,8 @@ module.exports = {
     isValidDate,
     shouldTriggerWatchdog,
     resolveStartupGraceMs,
+    resolveMonitorTimeoutMs,
     promptForSymbol,
+    applyLaunchBehaviorSettings,
     TESTER_LOG_DIR_SETTING_ID,
 };

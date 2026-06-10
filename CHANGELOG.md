@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.55
+
+### Features
+
+- **Backtest launch behavior settings**: Two new tri-state settings control the `[Tester]` section of the generated `tester.ini`. `mql_tools.Backtest.VisualMode` (`true`/`false`/`null`, default `null`) forces `Visual=1`/`Visual=0` for visual chart testing; `mql_tools.Backtest.KeepTerminalOpen` (default `null`) writes `ShutdownTerminal=0` so MT5 stays open after the run (`false` writes `ShutdownTerminal=1`). With the `null` default the EA's INI value is left untouched. Keys are replaced case-insensitively when present, or injected directly under `[Tester]` when absent. Applies to both native Windows and Wine launch paths. Note: a terminal left open can block the next launch, since MT5 allows one instance per data folder.
+- **Configurable backtest monitor timeout**: New setting `mql_tools.Backtest.MonitorTimeoutMinutes` (default `10`, clamped to a 1-minute floor) replaces the hard-coded 10-minute monitoring limit. The timeout warning now reports the configured duration and points to the setting. Only the VS Code progress notification stops at timeout — the MT5 test keeps running. Increase for visual-mode or multi-year runs.
+
 ## 1.1.54
 
 ### Features

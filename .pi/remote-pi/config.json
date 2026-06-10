@@ -1,0 +1,4 @@
+{
+  "agent_name": "source/MQL_clangd",
+  "auto_start_relay": true
+}
