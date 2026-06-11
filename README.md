@@ -226,8 +226,8 @@ Monitor your MQL4/MQL5 terminal logs in real-time directly within VS Code—no n
 | **LiveLog (Common/Tester)** | Tails `%APPDATA%\MetaQuotes\Terminal\Common\Files\LiveLog.txt` - shared by the terminal **and all strategy-tester agents**, so backtests stream in real-time too. Requires `#define LIVELOG_COMMON` before the include | **Instant** (incl. tester) |
 | **Standard Journal** | Tails `MQL5/Logs/YYYYMMDD.log` - uses standard `Print()` output | Delayed (MetaTrader buffering) |
 
-**Why two modes?**
-MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** uses a custom library (`LiveLog.mqh`) that writes directly to disk with immediate flush.
+**Why multiple modes?**
+MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** uses a custom library (`LiveLog.mqh`) that writes directly to disk with immediate flush. The **Common/Tester** variant writes to the shared common data folder so strategy-tester runs are visible too.
 
 #### Setting up LiveLog (Real-time) Mode
 

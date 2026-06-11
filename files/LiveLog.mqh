@@ -89,6 +89,12 @@ void LiveLogClose() {
 
 //+------------------------------------------------------------------+
 //| Check file size and rotate if needed                             |
+//|                                                                  |
+//| Note: with multiple writers sharing the file (charts / tester    |
+//| agents, esp. LIVELOG_COMMON), a writer still holding the old     |
+//| handle keeps appending to the rotated file until its own size    |
+//| check reopens LIVELOG_FILENAME. No lines are lost; they just     |
+//| land in the rotated file.                                        |
 //+------------------------------------------------------------------+
 void LiveLogRotate() {
   if (__llHandle == INVALID_HANDLE)

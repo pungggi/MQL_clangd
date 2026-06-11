@@ -3,6 +3,8 @@ const vscode = require('vscode');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 const path = require('path');
+const os = require('os');
+const { isWineEnabled, getWinePrefix } = require('./wineHelper');
 
 // LiveLog configuration
 const LIVELOG_FILENAME = 'LiveLog.txt';
@@ -68,28 +70,19 @@ class MqlLogTailer {
 
         this.mqlVersion = version;
 
-        // Common mode tails the shared common data folder, which is
-        // independent of the terminal data folder - no include path needed.
+        // Resolve the MQL data folder. Required for livelog/standard modes;
+        // in common mode (which tails the data-folder-independent common
+        // folder) it is optional and only used for the library install check.
         let basePath = null;
-        if (this.mode !== 'common') {
-            const logFolderName = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
-            let rawIncDir = config.get(`Metaeditor.${logFolderName}`);
+        const logFolderName = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
+        let rawIncDir = config.get(`Metaeditor.${logFolderName}`);
 
-            if (!rawIncDir) {
-                // Attempt to infer path from active file or workspace
-                rawIncDir = this.inferDataFolder(version);
-            }
+        if (!rawIncDir) {
+            // Attempt to infer path from active file or workspace
+            rawIncDir = this.inferDataFolder(version);
+        }
 
-            if (!rawIncDir) {
-                vscode.window.showErrorMessage(`Include path for ${version.toUpperCase()} is not set and could not be inferred. Please configure MQL Tools settings.`, 'Configure')
-                    .then(selection => {
-                        if (selection === 'Configure') {
-                            vscode.commands.executeCommand('workbench.action.openSettings', `mql_tools.Metaeditor.Include${version === 'mql4' ? '4' : '5'}Dir`);
-                        }
-                    });
-                return;
-            }
-
+        if (rawIncDir) {
             // Resolve workspace variables
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
             if (rawIncDir.includes('${workspaceFolder}')) {
@@ -102,6 +95,45 @@ class MqlLogTailer {
                 basePath = path.dirname(basePath);
             }
             this.basePath = basePath;
+        } else if (this.mode !== 'common') {
+            vscode.window.showErrorMessage(`Include path for ${version.toUpperCase()} is not set and could not be inferred. Please configure MQL Tools settings.`, 'Configure')
+                .then(selection => {
+                    if (selection === 'Configure') {
+                        vscode.commands.executeCommand('workbench.action.openSettings', `mql_tools.Metaeditor.Include${version === 'mql4' ? '4' : '5'}Dir`);
+                    }
+                });
+            return;
+        }
+
+        // Both LiveLog-based modes need LiveLog.mqh in the EA; offer to
+        // install it if missing (skipped when the data folder is unknown)
+        if ((this.mode === 'livelog' || this.mode === 'common') && basePath) {
+            const liveLogMqhPath = path.join(basePath, 'Include', LIVELOG_MQH_FILENAME);
+
+            if (!fs.existsSync(liveLogMqhPath)) {
+                const answer = await vscode.window.showInformationMessage(
+                    'LiveLog library not found. Install it to enable real-time logging?',
+                    'Install LiveLog.mqh',
+                    'Use Standard Logs'
+                );
+
+                if (answer === 'Install LiveLog.mqh') {
+                    const installed = await this.deployLiveLogLibrary();
+                    if (!installed) {
+                        return; // Deployment failed, error already shown
+                    }
+                    const defineHint = this.mode === 'common' ? '`#define LIVELOG_COMMON` and ' : '';
+                    vscode.window.showInformationMessage(
+                        `LiveLog.mqh installed! Add ${defineHint}\`#include <LiveLog.mqh>\` to your EA and use PrintLive() for real-time output.`,
+                        'OK'
+                    );
+                } else if (answer === 'Use Standard Logs') {
+                    // Fall back to standard mode
+                    this.mode = 'standard';
+                } else {
+                    return; // User cancelled
+                }
+            }
         }
 
         // Determine log file path based on mode
@@ -114,7 +146,10 @@ class MqlLogTailer {
             // #define LIVELOG_COMMON before #include <LiveLog.mqh> in the EA)
             const commonDir = this.getCommonFilesDir();
             if (!commonDir) {
-                vscode.window.showErrorMessage('Cannot resolve the MetaTrader common data folder (%APPDATA% is not set).');
+                const hint = process.platform === 'win32'
+                    ? '%APPDATA% is not set'
+                    : 'enable mql_tools.Wine and run MetaTrader at least once in the Wine prefix';
+                vscode.window.showErrorMessage(`Cannot resolve the MetaTrader common data folder (${hint}).`);
                 return;
             }
             logFilePath = path.join(commonDir, LIVELOG_FILENAME);
@@ -136,44 +171,13 @@ class MqlLogTailer {
             logFilePath = path.join(filesDir, LIVELOG_FILENAME);
             logDescription = 'LiveLog (real-time)';
 
-            // Check if LiveLog.mqh is installed, offer to install if not
-            const includeDir = path.join(basePath, 'Include');
-            const liveLogMqhPath = path.join(includeDir, LIVELOG_MQH_FILENAME);
-
-            if (!fs.existsSync(liveLogMqhPath)) {
-                const answer = await vscode.window.showInformationMessage(
-                    'LiveLog library not found. Install it to enable real-time logging?',
-                    'Install LiveLog.mqh',
-                    'Use Standard Logs'
-                );
-
-                if (answer === 'Install LiveLog.mqh') {
-                    const installed = await this.deployLiveLogLibrary();
-                    if (!installed) {
-                        return; // Deployment failed, error already shown
-                    }
-                    vscode.window.showInformationMessage(
-                        'LiveLog.mqh installed! Add `#include <LiveLog.mqh>` to your EA and use PrintLive() for real-time output.',
-                        'OK'
-                    );
-                } else if (answer === 'Use Standard Logs') {
-                    // Fall back to standard mode
-                    this.mode = 'standard';
-                } else {
-                    return; // User cancelled
-                }
-            }
-
-            // If still in livelog mode after potential fallback
-            if (this.mode === 'livelog') {
-                // Ensure Files directory exists
-                if (!fs.existsSync(filesDir)) {
-                    try {
-                        fs.mkdirSync(filesDir, { recursive: true });
-                    } catch (err) {
-                        vscode.window.showErrorMessage(`Failed to create Files folder: ${err.message}`);
-                        return;
-                    }
+            // Ensure Files directory exists
+            if (!fs.existsSync(filesDir)) {
+                try {
+                    fs.mkdirSync(filesDir, { recursive: true });
+                } catch (err) {
+                    vscode.window.showErrorMessage(`Failed to create Files folder: ${err.message}`);
+                    return;
                 }
             }
         }
@@ -417,12 +421,41 @@ class MqlLogTailer {
      * (%APPDATA%\MetaQuotes\Terminal\Common\Files). Shared by the terminal
      * and all strategy-tester agents; not affected by /portable mode
      * (portable changes the data folder, not the common folder).
-     * @returns {string|null} Path, or null if %APPDATA% is unavailable
+     * On non-Windows platforms with Wine mode enabled, resolves inside the
+     * Wine prefix (drive_c/users/<user>/AppData/Roaming/...).
+     * @returns {string|null} Path, or null if it cannot be resolved
      */
     getCommonFilesDir() {
-        const appData = process.env.APPDATA;
-        if (!appData) return null;
-        return path.join(appData, 'MetaQuotes', 'Terminal', 'Common', 'Files');
+        if (process.platform === 'win32') {
+            const appData = process.env.APPDATA;
+            if (!appData) return null;
+            return path.join(appData, 'MetaQuotes', 'Terminal', 'Common', 'Files');
+        }
+
+        const config = vscode.workspace.getConfiguration('mql_tools');
+        if (!isWineEnabled(config)) return null;
+
+        const usersDir = path.join(getWinePrefix(config), 'drive_c', 'users');
+
+        // Wine names the Windows user after the Unix user; try that first,
+        // then scan for any user dir where MetaTrader has run
+        const userDirs = [];
+        try { userDirs.push(os.userInfo().username); } catch { /* ignore */ }
+        try {
+            for (const u of fs.readdirSync(usersDir)) {
+                if (!userDirs.includes(u)) userDirs.push(u);
+            }
+        } catch {
+            return null;
+        }
+
+        for (const u of userDirs) {
+            const terminalDir = path.join(usersDir, u, 'AppData', 'Roaming', 'MetaQuotes', 'Terminal');
+            if (fs.existsSync(terminalDir)) {
+                return path.join(terminalDir, 'Common', 'Files');
+            }
+        }
+        return null;
     }
 
     /**
