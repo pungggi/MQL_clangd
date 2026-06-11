@@ -94,7 +94,6 @@ class MqlLogTailer {
             if (path.basename(basePath).toLowerCase() === 'include') {
                 basePath = path.dirname(basePath);
             }
-            this.basePath = basePath;
         } else if (this.mode !== 'common') {
             vscode.window.showErrorMessage(`Include path for ${version.toUpperCase()} is not set and could not be inferred. Please configure MQL Tools settings.`, 'Configure')
                 .then(selection => {
@@ -104,6 +103,11 @@ class MqlLogTailer {
                 });
             return;
         }
+
+        // Keep the instance path in sync even when unresolved (common mode),
+        // so deployLiveLogLibrary() never acts on a stale folder from a
+        // previous run
+        this.basePath = basePath;
 
         // Both LiveLog-based modes need LiveLog.mqh in the EA; offer to
         // install it if missing (skipped when the data folder is unknown)
