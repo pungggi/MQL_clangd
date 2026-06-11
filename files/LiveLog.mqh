@@ -3,7 +3,7 @@
 //|                             MQL Tools Extension - Real-Time Log  |
 //+------------------------------------------------------------------+
 #property copyright "MQL Tools Extension"
-#property version "1.20"
+#property version "1.30"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -29,6 +29,18 @@
 #define LIVELOG_FILENAME "LiveLog.txt"
 #define LIVELOG_MAX_SIZE 10485760 // 10 MB - auto-rotate when exceeded
 
+// Opt-in: write to the shared common data folder
+// (%APPDATA%\MetaQuotes\Terminal\Common\Files) instead of the caller's
+// sandbox. Strategy-tester agents have their own sandbox, so without this
+// the watcher cannot see tester runs. Define before including this file:
+//   #define LIVELOG_COMMON
+//   #include <LiveLog.mqh>
+#ifdef LIVELOG_COMMON
+#define LIVELOG_FLAGS_EXTRA FILE_COMMON
+#else
+#define LIVELOG_FLAGS_EXTRA 0
+#endif
+
 // Global state
 int __llHandle = INVALID_HANDLE;
 bool __llInit = false;
@@ -42,7 +54,8 @@ bool LiveLogInit() {
 
   __llHandle =
       FileOpen(LIVELOG_FILENAME, FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI |
-                                     FILE_SHARE_READ | FILE_SHARE_WRITE);
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE |
+                                     LIVELOG_FLAGS_EXTRA);
 
   if (__llHandle == INVALID_HANDLE) {
     PrintFormat("LiveLog: Failed to open file. Error: %d", GetLastError());
@@ -76,6 +89,12 @@ void LiveLogClose() {
 
 //+------------------------------------------------------------------+
 //| Check file size and rotate if needed                             |
+//|                                                                  |
+//| Note: with multiple writers sharing the file (charts / tester    |
+//| agents, esp. LIVELOG_COMMON), a writer still holding the old     |
+//| handle keeps appending to the rotated file until its own size    |
+//| check reopens LIVELOG_FILENAME. No lines are lost; they just     |
+//| land in the rotated file.                                        |
 //+------------------------------------------------------------------+
 void LiveLogRotate() {
   if (__llHandle == INVALID_HANDLE)
@@ -92,9 +111,11 @@ void LiveLogRotate() {
     StringReplace(newName, ":", "_");
 
     // Check FileMove return value before proceeding
-    if (FileMove(LIVELOG_FILENAME, 0, newName, FILE_REWRITE)) {
+    if (FileMove(LIVELOG_FILENAME, LIVELOG_FLAGS_EXTRA, newName,
+                 FILE_REWRITE | LIVELOG_FLAGS_EXTRA)) {
       __llHandle = FileOpen(LIVELOG_FILENAME, FILE_WRITE | FILE_TXT | FILE_ANSI |
-                                             FILE_SHARE_READ | FILE_SHARE_WRITE);
+                                             FILE_SHARE_READ | FILE_SHARE_WRITE |
+                                             LIVELOG_FLAGS_EXTRA);
 
       if (__llHandle != INVALID_HANDLE) {
         FileWriteString(__llHandle, "=== LiveLog Rotated ===\n");
@@ -143,6 +164,12 @@ void LiveLogWrite(string msg) {
     LiveLogInit();
   if (__llHandle == INVALID_HANDLE)
     return;
+
+  // Other charts/agents sharing this file may have extended it since our
+  // last write; re-seek to the real end so concurrent writers append
+  // instead of clobbering each other (also keeps FileTell in
+  // LiveLogRotate accurate).
+  FileSeek(__llHandle, 0, SEEK_END);
 
   LiveLogRotate();
 
@@ -388,6 +415,12 @@ void PrintFormatLive(string fmt, double a1, int a2, string a3 = "",
 //| Option 2: Redirect all Print() calls (add before include):        |
 //|   #define LIVELOG_REDIRECT                                        |
 //|   #include <LiveLog.mqh>                                          |
+//|                                                                  |
+//| Option 3: Shared log for tester + live (add before include):      |
+//|   #define LIVELOG_COMMON                                          |
+//|   #include <LiveLog.mqh>                                          |
+//|   Writes to Common\Files\LiveLog.txt - visible to the VS Code     |
+//|   watcher during strategy-tester runs (mode: LiveLog Common).     |
 //|                                                                  |
 //| To DISABLE live logging (use standard Print instead):            |
 //| Replace the #include with these macros:                          |

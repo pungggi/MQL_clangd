@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **LiveLog common-folder mode for strategy-tester runs**: Tester agents write to their own sandbox (`Tester/Agent-*/MQL5/Files/`), so backtest runs were invisible to the live watcher. New opt-in `#define LIVELOG_COMMON` (before `#include <LiveLog.mqh>`) routes the log to the shared common data folder (`%APPDATA%\MetaQuotes\Terminal\Common\Files\LiveLog.txt`), used by both the terminal and all tester agents — one real-time file for live charts and backtests. The `FILE_COMMON` flag is applied to both `FileOpen` calls and the rotation `FileMove`. Default behavior unchanged (closes #60).
+- **Watcher log mode `LiveLog (Common/Tester)`**: The `MQL: Switch Log Tail Mode` Quick Pick gains a third mode tailing the common-folder `LiveLog.txt`. The common path is resolved from `%APPDATA%` on Windows — valid in portable mode too (portable moves the data folder, not the common folder) — or inside the Wine prefix (`drive_c/users/<user>/AppData/Roaming/...`) on Linux/macOS when `mql_tools.Wine` is enabled. Unlike the data-folder LiveLog mode, the common file is never truncated on start — concurrent writers hold open handles positioned at the old EOF — the tail begins at the current end of file instead. The LiveLog.mqh install prompt now covers both LiveLog modes (previously data-folder mode only).
+
+### Fixes
+
+- **LiveLog concurrent-writer clobbering**: Each chart including `LiveLog.mqh` holds its own file handle and only seeked to the end once at init, so two writers could write at the same offset and overwrite each other (observed torn lines like `2026.06.112026...`). `LiveLogWrite` now re-seeks to `SEEK_END` before every write, which also keeps the rotation size check accurate when other writers extend the file (refs #60).
+
 ## 1.1.55
 
 ### Features

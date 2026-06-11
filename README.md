@@ -216,17 +216,18 @@ Monitor your MQL4/MQL5 terminal logs in real-time directly within VS Code—no n
 **Features:**
 - **Real-time log tailing**: See log messages as they happen
 - **Status bar integration**: Click the status bar item to toggle log monitoring on/off
-- **Two tailing modes**: Choose between standard journal logs or real-time LiveLog output
+- **Three tailing modes**: Standard journal logs, real-time LiveLog output, or the shared common-folder LiveLog (visible during strategy-tester runs)
 
 #### Log Modes
 
 | Mode | Description | Latency |
 |------|-------------|---------|
 | **LiveLog (Real-time)** | Tails `MQL5/Files/LiveLog.txt` (auto-rotate at 10MB → `LiveLog_YYYY_MM_DD.txt`) - uses `PrintLive()` with immediate disk flush | **Instant** |
+| **LiveLog (Common/Tester)** | Tails `%APPDATA%\MetaQuotes\Terminal\Common\Files\LiveLog.txt` - shared by the terminal **and all strategy-tester agents**, so backtests stream in real-time too. Requires `#define LIVELOG_COMMON` before the include | **Instant** (incl. tester) |
 | **Standard Journal** | Tails `MQL5/Logs/YYYYMMDD.log` - uses standard `Print()` output | Delayed (MetaTrader buffering) |
 
-**Why two modes?**
-MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** uses a custom library (`LiveLog.mqh`) that writes directly to disk with immediate flush.
+**Why multiple modes?**
+MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** uses a custom library (`LiveLog.mqh`) that writes directly to disk with immediate flush. The **Common/Tester** variant writes to the shared common data folder so strategy-tester runs are visible too.
 
 #### Setting up LiveLog (Real-time) Mode
 
@@ -264,7 +265,17 @@ MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** us
    PrintFormat("Value: %d", 42);
    ```
 
-5. **Optional - Clean session end marker**:
+5. **Optional - See strategy-tester runs live (common folder)**:
+   Tester agents run in their own sandbox, so the default LiveLog file is invisible during backtests. Add `#define LIVELOG_COMMON` **before** the include to write to the shared common data folder instead, then switch the watcher to **LiveLog (Common/Tester)** mode:
+   ```mql5
+   #define LIVELOG_COMMON
+   #include <LiveLog.mqh>
+
+   // Log lands in Common\Files\LiveLog.txt - one real-time file
+   // for live charts AND strategy-tester runs
+   ```
+
+6. **Optional - Clean session end marker**:
    Call `LiveLogClose()` from your `OnDeinit` to write a "Session Ended" marker:
    ```mql5
    void OnDeinit(const int reason)
@@ -278,7 +289,7 @@ MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** us
 **Commands:**
 - `MQL: Toggle Live Runtime Log` — Start/stop log tailing
 - `MQL: Install LiveLog Library` — Deploy `LiveLog.mqh` to your Include folder
-- `MQL: Switch Log Tail Mode (Live/Standard)` — Switch between real-time and standard modes
+- `MQL: Switch Log Tail Mode (Live/Common/Standard)` — Switch between real-time, common-folder (tester) and standard modes
 
 **Notes:**
 - The extension automatically detects MQL version from your active file, workspace folder name, or configured settings
