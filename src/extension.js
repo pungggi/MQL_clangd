@@ -2936,11 +2936,12 @@ function activate(context) {
         const current = logTailer.mode;
         const items = [
             { label: 'LiveLog (Real-time)', description: 'Tail MQL5/Files/LiveLog.txt - requires PrintLive() in EA', mode: 'livelog' },
+            { label: 'LiveLog (Common/Tester)', description: 'Tail Common\\Files\\LiveLog.txt - shared with strategy-tester agents, requires #define LIVELOG_COMMON in EA', mode: 'common' },
             { label: 'Standard Journal', description: 'Tail MQL5/Logs/YYYYMMDD.log - uses Print() output (not real-time)', mode: 'standard' }
         ];
 
         const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: `Current: ${current === 'livelog' ? 'LiveLog (Real-time)' : 'Standard Journal'}`,
+            placeHolder: `Current: ${items.find(i => i.mode === current)?.label || current}`,
             title: 'MQL: Switch Log Tail Mode'
         });
 

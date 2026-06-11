@@ -18,7 +18,7 @@ class MqlLogTailer {
         this.isTailing = false;
         this.mqlVersion = null; // 'mql4' or 'mql5'
         this.statusBarItem = null;
-        this.mode = 'livelog'; // 'standard' or 'livelog' - default to livelog for real-time updates
+        this.mode = 'livelog'; // 'standard', 'livelog' or 'common' - default to livelog for real-time updates
         this.basePath = null; // Base MQL folder path
         this.isChecking = false; // Guard against concurrent checkForNewContent() calls
     }
@@ -48,7 +48,7 @@ class MqlLogTailer {
 
     /**
      * Starts tailing the log file.
-     * @param {string} [mode] - 'livelog' or 'standard'. Defaults to this.mode
+     * @param {string} [mode] - 'livelog', 'standard' or 'common'. Defaults to this.mode
      */
     async start(mode = null) {
         if (mode) {
@@ -67,40 +67,68 @@ class MqlLogTailer {
         }
 
         this.mqlVersion = version;
-        const logFolderName = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
-        let rawIncDir = config.get(`Metaeditor.${logFolderName}`);
 
-        if (!rawIncDir) {
-            // Attempt to infer path from active file or workspace
-            rawIncDir = this.inferDataFolder(version);
-        }
+        // Common mode tails the shared common data folder, which is
+        // independent of the terminal data folder - no include path needed.
+        let basePath = null;
+        if (this.mode !== 'common') {
+            const logFolderName = version === 'mql4' ? 'Include4Dir' : 'Include5Dir';
+            let rawIncDir = config.get(`Metaeditor.${logFolderName}`);
 
-        if (!rawIncDir) {
-            vscode.window.showErrorMessage(`Include path for ${version.toUpperCase()} is not set and could not be inferred. Please configure MQL Tools settings.`, 'Configure')
-                .then(selection => {
-                    if (selection === 'Configure') {
-                        vscode.commands.executeCommand('workbench.action.openSettings', `mql_tools.Metaeditor.Include${version === 'mql4' ? '4' : '5'}Dir`);
-                    }
-                });
-            return;
-        }
+            if (!rawIncDir) {
+                // Attempt to infer path from active file or workspace
+                rawIncDir = this.inferDataFolder(version);
+            }
 
-        // Resolve workspace variables
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-        if (rawIncDir.includes('${workspaceFolder}')) {
-            rawIncDir = rawIncDir.replace(/\$\{workspaceFolder\}/g, workspaceFolder);
-        }
+            if (!rawIncDir) {
+                vscode.window.showErrorMessage(`Include path for ${version.toUpperCase()} is not set and could not be inferred. Please configure MQL Tools settings.`, 'Configure')
+                    .then(selection => {
+                        if (selection === 'Configure') {
+                            vscode.commands.executeCommand('workbench.action.openSettings', `mql_tools.Metaeditor.Include${version === 'mql4' ? '4' : '5'}Dir`);
+                        }
+                    });
+                return;
+            }
 
-        // Find the base MQL folder
-        let basePath = rawIncDir;
-        if (path.basename(basePath).toLowerCase() === 'include') {
-            basePath = path.dirname(basePath);
+            // Resolve workspace variables
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            if (rawIncDir.includes('${workspaceFolder}')) {
+                rawIncDir = rawIncDir.replace(/\$\{workspaceFolder\}/g, workspaceFolder);
+            }
+
+            // Find the base MQL folder
+            basePath = rawIncDir;
+            if (path.basename(basePath).toLowerCase() === 'include') {
+                basePath = path.dirname(basePath);
+            }
+            this.basePath = basePath;
         }
-        this.basePath = basePath;
 
         // Determine log file path based on mode
         let logFilePath;
         let logDescription;
+
+        if (this.mode === 'common') {
+            // Common mode: tail the shared common data folder, visible to the
+            // terminal AND all strategy-tester agents (requires
+            // #define LIVELOG_COMMON before #include <LiveLog.mqh> in the EA)
+            const commonDir = this.getCommonFilesDir();
+            if (!commonDir) {
+                vscode.window.showErrorMessage('Cannot resolve the MetaTrader common data folder (%APPDATA% is not set).');
+                return;
+            }
+            logFilePath = path.join(commonDir, LIVELOG_FILENAME);
+            logDescription = 'LiveLog (Common/Tester)';
+
+            if (!fs.existsSync(commonDir)) {
+                try {
+                    fs.mkdirSync(commonDir, { recursive: true });
+                } catch (err) {
+                    vscode.window.showErrorMessage(`Failed to create common Files folder: ${err.message}`);
+                    return;
+                }
+            }
+        }
 
         if (this.mode === 'livelog') {
             // LiveLog mode: tail Files/LiveLog.txt (written by LiveLog.mqh with FileFlush)
@@ -183,6 +211,12 @@ class MqlLogTailer {
             this.outputChannel.appendLine('[Info] Add: #include <LiveLog.mqh>');
         }
 
+        if (this.mode === 'common') {
+            this.outputChannel.appendLine('[Info] Common mode: live charts AND strategy-tester runs share this file');
+            this.outputChannel.appendLine('[Info] In your EA, add before the include: #define LIVELOG_COMMON');
+            this.outputChannel.appendLine('[Info] Then: #include <LiveLog.mqh> and use PrintLive()');
+        }
+
         // Set initial size and start tailing before any file operations
         this.lastSize = 0;
         this.isTailing = true;
@@ -197,6 +231,18 @@ class MqlLogTailer {
                 this.outputChannel.appendLine('[Info] Cleared previous log content');
             } catch (err) {
                 this.outputChannel.appendLine(`[Warning] Could not clear log file: ${err.message}`);
+            }
+        }
+
+        // Common mode: never truncate - charts/tester agents may hold open
+        // handles positioned at the old EOF, and truncating under them
+        // corrupts subsequent writes. Tail from the current end instead.
+        if (this.mode === 'common' && fs.existsSync(this.currentFilePath)) {
+            try {
+                this.lastSize = fs.statSync(this.currentFilePath).size;
+                this.outputChannel.appendLine('[Info] Tailing from current end of file (common log is not truncated)');
+            } catch (err) {
+                this.outputChannel.appendLine(`[Warning] Could not stat log file: ${err.message}`);
             }
         }
 
@@ -367,6 +413,19 @@ class MqlLogTailer {
     }
 
     /**
+     * Resolves the MetaTrader common data folder
+     * (%APPDATA%\MetaQuotes\Terminal\Common\Files). Shared by the terminal
+     * and all strategy-tester agents; not affected by /portable mode
+     * (portable changes the data folder, not the common folder).
+     * @returns {string|null} Path, or null if %APPDATA% is unavailable
+     */
+    getCommonFilesDir() {
+        const appData = process.env.APPDATA;
+        if (!appData) return null;
+        return path.join(appData, 'MetaQuotes', 'Terminal', 'Common', 'Files');
+    }
+
+    /**
      * Formats current date as YYYYMMDD.log
      */
     getLogFileName() {
@@ -383,14 +442,17 @@ class MqlLogTailer {
     updateStatusBar() {
         if (!this.statusBarItem) return;
         if (this.isTailing) {
-            const modeLabel = this.mode === 'livelog' ? 'LIVE' : 'STD';
+            const modeLabel = this.mode === 'livelog' ? 'LIVE' : this.mode === 'common' ? 'COMMON' : 'STD';
+            const modeName = this.mode === 'livelog' ? 'Real-time mode'
+                : this.mode === 'common' ? 'Common/Tester mode'
+                    : 'Standard journal';
             this.statusBarItem.text = `$(sync~spin) MQL Log: ${this.mqlVersion?.toUpperCase() || 'MQL'} (${modeLabel})`;
-            this.statusBarItem.backgroundColor = this.mode === 'livelog'
-                ? new vscode.ThemeColor('statusBarItem.prominentBackground')
-                : new vscode.ThemeColor('statusBarItem.warningBackground');
-            this.statusBarItem.tooltip = `Click to stop log tailing (${this.mode === 'livelog' ? 'Real-time mode' : 'Standard journal'})`;
+            this.statusBarItem.backgroundColor = this.mode === 'standard'
+                ? new vscode.ThemeColor('statusBarItem.warningBackground')
+                : new vscode.ThemeColor('statusBarItem.prominentBackground');
+            this.statusBarItem.tooltip = `Click to stop log tailing (${modeName})`;
             this.statusBarItem.accessibilityInformation = {
-                label: `MQL Log tailing active, ${this.mode === 'livelog' ? 'real-time mode' : 'standard journal'}, click to stop`,
+                label: `MQL Log tailing active, ${modeName}, click to stop`,
                 role: 'button'
             };
         } else {
@@ -517,12 +579,13 @@ class MqlLogTailer {
 
             fs.readSync(fd, buffer, 0, length, this.lastSize);
 
-            // LiveLog uses ANSI/UTF-8, standard MetaTrader logs use UTF-16LE
+            // LiveLog (data folder and common) uses ANSI/UTF-8,
+            // standard MetaTrader logs use UTF-16LE
             let content;
-            if (this.mode === 'livelog') {
-                content = buffer.toString('utf8');
-            } else {
+            if (this.mode === 'standard') {
                 content = buffer.toString('utf16le');
+            } else {
+                content = buffer.toString('utf8');
             }
 
             // Trim BOM if present in the middle of a stream (unlikely but safe)

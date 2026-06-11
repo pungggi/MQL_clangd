@@ -16,7 +16,7 @@
                         Runtime Log</span>.
                 </div>
 
-                <h3>Two Tailing Modes</h3>
+                <h3>Three Tailing Modes</h3>
                 <table>
                     <tr>
                         <th>Mode</th>
@@ -33,6 +33,14 @@
                         <td>&#9889; Instant</td>
                     </tr>
                     <tr>
+                        <td><strong>LiveLog (Common/Tester)</strong></td>
+                        <td>Tails <span class="code-inline">Common\Files\LiveLog.txt</span> in the shared common data
+                            folder, written by the terminal <strong>and all strategy-tester agents</strong> — backtests
+                            stream in real-time too. Add <span class="code-inline">#define LIVELOG_COMMON</span> before
+                            the include in your EA.</td>
+                        <td>&#9889; Instant (incl. tester)</td>
+                    </tr>
+                    <tr>
                         <td><strong>Standard Journal</strong></td>
                         <td>Tails the daily <span class="code-inline">MQL5/Logs/YYYYMMDD.log</span> file produced by
                             MetaTrader's built-in <span class="code-inline">Print()</span>.</td>
@@ -40,7 +48,7 @@
                     </tr>
                 </table>
                 <p>Switch between modes at any time with <span class="code-inline">MQL: Switch Log Tail Mode
-                        (Live/Standard)</span>.</p>
+                        (Live/Common/Standard)</span>.</p>
 
                 <h3>Setting Up LiveLog (Real-Time Mode)</h3>
                 <ul class="step-list">
@@ -109,9 +117,9 @@ Print("This appears in VS Code in real-time!");</pre>
                         in the status bar)</li>
                     <li><span class="code-inline">MQL: Install LiveLog Library</span> — Deploy <span
                             class="code-inline">LiveLog.mqh</span> to your Include folder</li>
-                    <li><span class="code-inline">MQL: Switch Log Tail Mode (Live/Standard)</span> — Switch between
-                        real-time
-                        and standard modes</li>
+                    <li><span class="code-inline">MQL: Switch Log Tail Mode (Live/Common/Standard)</span> — Switch
+                        between
+                        real-time, common-folder (tester) and standard modes</li>
                 </ul>
 
                 <h3>Notes</h3>
