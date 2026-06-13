@@ -137,6 +137,11 @@ class MqlLogTailer {
                 } else {
                     return; // User cancelled
                 }
+            } else {
+                // Already installed: the EA compiles against this copy, not the
+                // bundled source, so an extension update never refreshes it.
+                // Offer a re-deploy when the bundle is newer. Non-fatal.
+                await this.maybeOfferLiveLogUpdate(liveLogMqhPath);
             }
         }
 
@@ -280,13 +285,11 @@ class MqlLogTailer {
         const targetPath = path.join(includeDir, LIVELOG_MQH_FILENAME);
 
         // Find source file in extension resources
-        const extensionPath = vscode.extensions.getExtension('ngsoftware.mql-clangd')?.extensionPath;
-        if (!extensionPath) {
+        const sourcePath = this.getBundledLiveLogSource();
+        if (!sourcePath) {
             vscode.window.showErrorMessage('Cannot find MQL Tools extension path');
             return false;
         }
-
-        const sourcePath = path.join(extensionPath, 'files', LIVELOG_MQH_FILENAME);
         if (!fs.existsSync(sourcePath)) {
             vscode.window.showErrorMessage(`LiveLog.mqh template not found at: ${sourcePath}`);
             return false;
@@ -303,6 +306,83 @@ class MqlLogTailer {
         } catch (err) {
             vscode.window.showErrorMessage(`Failed to install LiveLog.mqh: ${err.message}`);
             return false;
+        }
+    }
+
+    /**
+     * Resolves the LiveLog.mqh bundled inside the extension (the update source).
+     * @returns {string|null} absolute path, or null if the extension isn't found
+     */
+    getBundledLiveLogSource() {
+        const extensionPath = vscode.extensions.getExtension('ngsoftware.mql-clangd')?.extensionPath;
+        if (!extensionPath) {
+            return null;
+        }
+        return path.join(extensionPath, 'files', LIVELOG_MQH_FILENAME);
+    }
+
+    /**
+     * Reads the `#property version "X.YY"` string from an .mqh file.
+     * @param {string} filePath
+     * @returns {string|null} the version string, or null if unreadable/absent
+     */
+    readMqhVersion(filePath) {
+        try {
+            const text = fs.readFileSync(filePath, 'utf8');
+            const m = text.match(/#property\s+version\s+"([^"]+)"/i);
+            return m ? m[1].trim() : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Compares dotted version strings segment-by-segment ("1.30" vs "1.4").
+     * @returns {number} >0 if a is newer than b, <0 if older, 0 if equal
+     */
+    compareVersions(a, b) {
+        const pa = String(a).split('.');
+        const pb = String(b).split('.');
+        const len = Math.max(pa.length, pb.length);
+        for (let i = 0; i < len; i++) {
+            const diff = (parseInt(pa[i], 10) || 0) - (parseInt(pb[i], 10) || 0);
+            if (diff !== 0) return diff;
+        }
+        return 0;
+    }
+
+    /**
+     * When LiveLog.mqh already exists in the user's Include folder, compares it
+     * against the version bundled with the extension and offers a re-deploy when
+     * the bundle is newer. The installed copy is what the EA compiles against, so
+     * updating the extension alone never refreshes it (see deployLiveLogLibrary).
+     * Non-fatal: declining or unparseable versions leave the working copy in place.
+     * @param {string} installedPath - path to the LiveLog.mqh in the Include folder
+     */
+    async maybeOfferLiveLogUpdate(installedPath) {
+        const sourcePath = this.getBundledLiveLogSource();
+        if (!sourcePath || !fs.existsSync(sourcePath)) return;
+
+        const installedVer = this.readMqhVersion(installedPath);
+        const bundledVer = this.readMqhVersion(sourcePath);
+        // Can't read either side -> stay silent rather than nag on every start
+        if (!installedVer || !bundledVer) return;
+        if (this.compareVersions(bundledVer, installedVer) <= 0) return;
+
+        const answer = await vscode.window.showInformationMessage(
+            `A newer LiveLog.mqh is available (installed ${installedVer} → ${bundledVer}). Update it now?`,
+            'Update LiveLog.mqh',
+            'Keep Current'
+        );
+
+        if (answer === 'Update LiveLog.mqh') {
+            const updated = await this.deployLiveLogLibrary();
+            if (updated) {
+                vscode.window.showInformationMessage(
+                    `LiveLog.mqh updated to ${bundledVer}. Recompile your EA (F7) so the change takes effect.`,
+                    'OK'
+                );
+            }
         }
     }
 

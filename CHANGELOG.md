@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.59
+
+### Features
+
+- **LiveLog auto-update prompt**: The `LiveLog.mqh` in the user's `Include/` folder is the copy the EA compiles against, but updating the extension refreshes only the bundled template (`files/LiveLog.mqh`) — so prior LiveLog fixes silently never reached users who had already installed the library. When a LiveLog tail starts and the file already exists, its `#property version` is now compared against the bundled version; if the bundle is newer the watcher offers a one-click re-deploy (`installed X → Y`) and then prompts to recompile (F7). Declining, a matching version, or an unparseable version leaves the working copy untouched (non-fatal). Detection relies on `#property version` being bumped on each `LiveLog.mqh` change (refs #60).
+
 ## 1.1.58
 
 ### Features
