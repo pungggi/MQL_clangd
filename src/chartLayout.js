@@ -37,13 +37,24 @@ function getPresets() {
     return raw;
 }
 
-// Coerce a grid block {monitor,rows,cols} into safe integers; null if unusable.
+// A grid-template-areas value is an array of non-empty row strings; null if not.
+function normalizeAreas(a) {
+    if (!Array.isArray(a)) return null;
+    const rows = a.map(r => String(r).trim()).filter(r => r !== '');
+    return rows.length ? rows : null;
+}
+
+// Coerce a grid block into {monitor, areas} or {monitor, rows, cols}; null if unusable.
+// `areas` (CSS grid-template-areas) wins over rows/cols when present.
 function normalizeGrid(g) {
     if (!g) return null;
     const monitor = Math.trunc(Number(g.monitor)) || 0;
+    if (monitor < 1) return null;
+    const areas = normalizeAreas(g.areas);
+    if (areas) return { monitor, areas };
     const rows = Math.trunc(Number(g.rows)) || 0;
     const cols = Math.trunc(Number(g.cols)) || 0;
-    if (monitor < 1 || rows < 1 || cols < 1) return null;
+    if (rows < 1 || cols < 1) return null;
     return { monitor, rows, cols };
 }
 
@@ -57,16 +68,23 @@ function normalizePreset(p) {
     return { name: p.name.trim(), docked, floating, gap };
 }
 
+// CLI args for one grid group. `grid` is null when a floating group is absent
+// (monitor 0 tells the worker to skip it). Areas are passed only when present;
+// the worker prefers areas over rows/cols.
+function gridArgs(prefix, grid) {
+    const monitor = grid ? grid.monitor : 0;
+    const rows = grid && grid.rows ? grid.rows : 1;
+    const cols = grid && grid.cols ? grid.cols : 1;
+    const a = [`-${prefix}Monitor`, String(monitor), `-${prefix}Rows`, String(rows), `-${prefix}Cols`, String(cols)];
+    if (grid && grid.areas) a.push(`-${prefix}Areas`, grid.areas.join('|'));
+    return a;
+}
+
 function buildArgs(scriptPath, preset) {
-    const f = preset.floating;
     return [
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath,
-        '-DockMonitor', String(preset.docked.monitor),
-        '-DockRows', String(preset.docked.rows),
-        '-DockCols', String(preset.docked.cols),
-        '-FloatMonitor', String(f ? f.monitor : 0),
-        '-FloatRows', String(f ? f.rows : 1),
-        '-FloatCols', String(f ? f.cols : 1),
+        ...gridArgs('Dock', preset.docked),
+        ...gridArgs('Float', preset.floating),
         '-Gap', String(preset.gap),
     ];
 }
@@ -82,13 +100,13 @@ function runArrangeScript(scriptPath, preset) {
     });
 }
 
+function gridLabel(g) {
+    return g.areas ? `areas (${g.areas.length} rows)` : `${g.rows}×${g.cols}`;
+}
+
 function describe(preset) {
-    const d = preset.docked;
-    let s = `docked ${d.rows}×${d.cols} on mon ${d.monitor}`;
-    if (preset.floating) {
-        const f = preset.floating;
-        s += `  •  floating ${f.rows}×${f.cols} on mon ${f.monitor}`;
-    }
+    let s = `docked ${gridLabel(preset.docked)} on mon ${preset.docked.monitor}`;
+    if (preset.floating) s += `  •  floating ${gridLabel(preset.floating)} on mon ${preset.floating.monitor}`;
     return s;
 }
 

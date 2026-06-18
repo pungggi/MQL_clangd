@@ -517,6 +517,20 @@ Define presets in `mql_tools.ChartLayout.Presets`. Each has a required `docked` 
 
 Charts are matched by `SYMBOL,TIMEFRAME` title, so panels (Market Watch, Navigator) are never touched.
 
+**Beyond uniform grids:** a `docked`/`floating` block can use a CSS `grid-template-areas` template for spans (one chart wider or taller than the rest), and naming the cells after timeframes (`M5`, `H1`, …) places charts by timeframe, bound to the active chart's symbol (others minimized).
+
+```jsonc
+"mql_tools.ChartLayout.Presets": [
+  // Letters = spans: A wide on top, B tall down the right, C wide on the bottom.
+  { "name": "tall-right", "docked": { "monitor": 1, "areas": ["A A B", "C C B"] } },
+  // Timeframe names = match by timeframe: M5 wide top, H1 tall right, M15 bottom,
+  // all from the active chart's symbol; charts of other symbols are minimized.
+  { "name": "scalp",      "docked": { "monitor": 1, "areas": ["M5 M5 H1", "M15 M15 H1"] } }
+]
+```
+
+See the [full guide](docs/chart-layout.md) for the rules (rectangular regions, empty `.` cells, timeframe tokens).
+
 > ⚠️ **Windows only (for now)** — it moves native MT5 windows via the Win32 API; a no-op on macOS / Linux / Wine.
 
 **Full guide:** [docs/chart-layout.md](docs/chart-layout.md).

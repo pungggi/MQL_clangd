@@ -97,11 +97,9 @@
                             },
                             "docked": {
                                 "type": "object",
-                                "description": "Grid for charts docked inside the MT5 window.",
+                                "description": "Grid for charts docked inside the MT5 window. Use rows + cols for a uniform grid, or areas for spans.",
                                 "required": [
-                                    "monitor",
-                                    "rows",
-                                    "cols"
+                                    "monitor"
                                 ],
                                 "properties": {
                                     "monitor": {
@@ -112,22 +110,27 @@
                                     "rows": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "description": "Grid rows."
+                                        "description": "Grid rows (uniform grid)."
                                     },
                                     "cols": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "description": "Grid columns."
+                                        "description": "Grid columns (uniform grid)."
+                                    },
+                                    "areas": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "markdownDescription": "CSS `grid-template-areas` layout (overrides `rows`/`cols`). One string per row; cell names separated by spaces. Repeat a name to span cells in any direction; use `.` for an empty cell. Example: `[\"A A B\", \"C C B\"]` — A spans 2 columns, B spans 2 rows (tall).\n\nIf every cell name is a **timeframe** (`M5`, `H1`, …), charts are placed by timeframe and bound to the **active chart's symbol** — charts of other symbols (and unused timeframes) are minimized."
                                     }
                                 }
                             },
                             "floating": {
                                 "type": "object",
-                                "description": "Grid for undocked (floating) charts, on another monitor. Omit to leave them untouched.",
+                                "description": "Grid for undocked (floating) charts, on another monitor. Omit to leave them untouched. Use rows + cols, or areas for spans.",
                                 "required": [
-                                    "monitor",
-                                    "rows",
-                                    "cols"
+                                    "monitor"
                                 ],
                                 "properties": {
                                     "monitor": {
@@ -138,12 +141,19 @@
                                     "rows": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "description": "Grid rows."
+                                        "description": "Grid rows (uniform grid)."
                                     },
                                     "cols": {
                                         "type": "integer",
                                         "minimum": 1,
-                                        "description": "Grid columns."
+                                        "description": "Grid columns (uniform grid)."
+                                    },
+                                    "areas": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "markdownDescription": "CSS `grid-template-areas` layout (overrides `rows`/`cols`). See `docked.areas`."
                                     }
                                 }
                             },
