@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.60
+
+### Features
+
+- **Backtest launch-args diagnostics**: The output channel and watchdog notification now show the actual arguments passed to `terminal64.exe` (e.g. `/config:... /portable`), so you can confirm whether the `/portable` flag was applied for portable MT5 setups without guessing. Args are logged on both the native Windows and Wine launch paths (parity), arguments containing spaces are quoted so `/config:C:\Path With Spaces\...` reads as one token, and `launchArgs` is returned in the `startBacktest` diagnostics (#63).
+
 ## 1.1.59
 
 ### Features
