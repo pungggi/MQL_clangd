@@ -2,7 +2,7 @@
     "name": "mql-clangd",
     "displayName": "MQL Clangd",
     "description": "High-performance MQL4/MQL5 tools with Clangd support.",
-    "version": "1.1.60",
+    "version": "1.1.61",
     "publisher": "ngsoftware",
     "engines": {
         "vscode": "^1.90.0",
@@ -80,6 +80,48 @@
                     "type": "string",
                     "default": "C:\\MT5_Install\\MetaTrader\\terminal64.exe",
                     "description": "%mql_tools.configuration.Terminal5Dir.description%"
+                },
+                "mql_tools.ChartLayout.Presets": {
+                    "type": "array",
+                    "markdownDescription": "Named layouts for the **MQL: Arrange MT5 Charts** command. Each preset tiles charts into two independent groups:\n\n- **`docked`** (required) — charts docked inside the MT5 window; tiled into a `rows × cols` grid there, and the MT5 window is moved to `monitor` first.\n- **`floating`** (optional) — charts you have **undocked** (right-click chart → uncheck *Docked*); tiled onto another `monitor` in their own grid. Omit to leave undocked charts alone.\n\nMonitor numbers match `System.Windows.Forms.Screen.AllScreens` order (1-based). See `docs/chart-layout.md` for the full guide.",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "docked"],
+                        "properties": {
+                            "name": { "type": "string", "description": "Preset name shown in the picker." },
+                            "docked": {
+                                "type": "object",
+                                "description": "Grid for charts docked inside the MT5 window.",
+                                "required": ["monitor", "rows", "cols"],
+                                "properties": {
+                                    "monitor": { "type": "integer", "minimum": 1, "description": "Monitor the MT5 window is moved to (1-based)." },
+                                    "rows": { "type": "integer", "minimum": 1, "description": "Grid rows." },
+                                    "cols": { "type": "integer", "minimum": 1, "description": "Grid columns." }
+                                }
+                            },
+                            "floating": {
+                                "type": "object",
+                                "description": "Grid for undocked (floating) charts, on another monitor. Omit to leave them untouched.",
+                                "required": ["monitor", "rows", "cols"],
+                                "properties": {
+                                    "monitor": { "type": "integer", "minimum": 1, "description": "Monitor for floating charts (1-based)." },
+                                    "rows": { "type": "integer", "minimum": 1, "description": "Grid rows." },
+                                    "cols": { "type": "integer", "minimum": 1, "description": "Grid columns." }
+                                }
+                            },
+                            "gap": { "type": "integer", "minimum": 0, "default": 0, "description": "Pixels between and around cells." }
+                        }
+                    },
+                    "default": [
+                        { "name": "wall", "docked": { "monitor": 1, "rows": 2, "cols": 3 }, "gap": 0 },
+                        { "name": "quad", "docked": { "monitor": 1, "rows": 2, "cols": 2 }, "gap": 0 },
+                        { "name": "focus", "docked": { "monitor": 1, "rows": 1, "cols": 1 }, "gap": 0 }
+                    ]
+                },
+                "mql_tools.ChartLayout.ShowStatusBarButton": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Show a **Charts** button in the status bar (Windows only) that opens the **MQL: Arrange MT5 Charts** preset picker for fast layout switching. The button label shows the last preset applied this session."
                 },
                 "mql_tools.Metaeditor.Include4Dir": {
                     "type": "string",
@@ -505,6 +547,11 @@
             {
                 "command": "mql_tools.openTradingTerminal",
                 "title": "%mql_tools.commands.openTradingTerminal.title%",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.arrangeCharts",
+                "title": "Arrange MT5 Charts",
                 "category": "MQL"
             },
             {

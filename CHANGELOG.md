@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.61
+
+### Features
+
+- **Arrange MT5 Charts**: New `MQL: Arrange MT5 Charts` command tiles open MetaTrader 5 chart windows into saved, named layouts defined in `mql_tools.ChartLayout.Presets`. Each preset has a required `docked` grid — charts docked inside the MT5 window are tiled into `rows × cols` after the main window is moved to the chosen monitor — and an optional `floating` grid that tiles **undocked** charts (right-click chart → uncheck *Docked*) onto another monitor, enabling multi-monitor layouts that a single MDI-confined terminal cannot produce. Detection is automatic and class-agnostic (MT5 randomizes window class names per launch via ASLR): docked charts are the immediate children of `MDIClient`; floating charts are top-level windows owned by the main window whose title matches `SYMBOL,TIMEFRAME`, so docked panels (Market Watch, Navigator, Toolbox) are never touched and matching is locale-independent. Windows are moved through `user32.dll` from PowerShell (no compiled DLL); Windows-only (no-op under Wine), targeting the first running `terminal64` instance. A **Charts** status-bar button (Windows only, toggle with `mql_tools.ChartLayout.ShowStatusBarButton`) opens the preset picker for fast switching and shows the last preset applied. Full guide in `docs/chart-layout.md`.
+
 ## 1.1.60
 
 ### Features
