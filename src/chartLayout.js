@@ -19,6 +19,7 @@
 
 const vscode = require('vscode');
 const path = require('path');
+const fs = require('fs');
 const { execFile } = require('child_process');
 
 const STATUS_SETTING = 'mql_tools.ChartLayout.ShowStatusBarButton';
@@ -89,9 +90,18 @@ function buildArgs(scriptPath, preset) {
     ];
 }
 
+// Resolve the system PowerShell by absolute path so we don't rely on PATH /
+// current-directory search order (which could run a hijacked powershell.exe in
+// an untrusted workspace). Fall back to the bare name only if it's missing.
+function resolvePowershell() {
+    const root = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const abs = path.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    return fs.existsSync(abs) ? abs : 'powershell.exe';
+}
+
 function runArrangeScript(scriptPath, preset) {
     return new Promise((resolve, reject) => {
-        execFile('powershell.exe', buildArgs(scriptPath, preset), { windowsHide: true }, (err, stdout, stderr) => {
+        execFile(resolvePowershell(), buildArgs(scriptPath, preset), { windowsHide: true }, (err, stdout, stderr) => {
             const out = String(stdout || '').trim();
             if (out.startsWith('OK')) return resolve(out);
             const detail = out || String(stderr || '').trim() || (err && err.message) || 'unknown error';
@@ -118,7 +128,7 @@ async function ArrangeCharts(context) {
 
     const presets = getPresets().map(normalizePreset).filter(Boolean);
     if (presets.length === 0) {
-        vscode.window.showErrorMessage('No valid chart-layout presets. Each needs a name and a docked grid (monitor ≥ 1, rows ≥ 1, cols ≥ 1). Check mql_tools.ChartLayout.Presets.');
+        vscode.window.showErrorMessage('No valid chart-layout presets. Each needs a name and a docked grid: monitor ≥ 1 plus either rows ≥ 1 and cols ≥ 1, or an areas template. Check mql_tools.ChartLayout.Presets.');
         return;
     }
 

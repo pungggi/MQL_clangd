@@ -889,7 +889,7 @@
     "capabilities": {
         "untrustedWorkspaces": {
             "supported": "limited",
-            "description": "Backtest commands can launch the configured MetaTrader terminal and write tester.ini files; review terminal and MQL data-folder settings before running them in untrusted workspaces."
+            "description": "Backtest commands can launch the configured MetaTrader terminal and write tester.ini files, and the Arrange MT5 Charts command runs a bundled PowerShell script to reposition terminal windows; review terminal and MQL data-folder settings before running these in untrusted workspaces."
         }
     }
 }
