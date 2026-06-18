@@ -372,6 +372,7 @@ function showWatchdogNotification(mql5Root, eaName, elapsedSecs, diagnostics) {
     const lines = [`Backtest "${eaName}": MT5 launched ${elapsedSecs}s ago but no Strategy Tester log activity was detected.`];
     if (diagnostics) {
         if (diagnostics.terminalPath) lines.push(`Terminal: ${diagnostics.terminalPath}`);
+        if (diagnostics.launchArgs) lines.push(`Args: ${diagnostics.launchArgs.join(' ')}`);
         if (diagnostics.testerIniPath) lines.push(`tester.ini: ${diagnostics.testerIniPath}`);
         if (diagnostics.logDir) lines.push(`Watching: ${diagnostics.logDir}`);
     }
