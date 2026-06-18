@@ -529,13 +529,14 @@ async function startBacktest(options) {
     child.unref();
     wineLog(`[Backtest] Launch mode: windows | PID: ${child.pid}`);
     wineLog(`[Backtest] Terminal: ${terminalPath}`);
+    wineLog(`[Backtest] Args: ${launchArgs.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}`);
     wineLog(`[Backtest] Config (tester.ini): ${mql5TesterIni}`);
     wineLog(`[Backtest] Tester log dir: ${logDir}`);
     return {
         started: true,
         pid: child.pid,
         config: effectiveConfig,
-        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir },
+        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir, launchArgs },
     };
 }
 
@@ -573,6 +574,7 @@ async function startBacktestWine(ctx) {
     wineLog('[Backtest] Launch mode: wine');
     wineLog(`[Backtest] Terminal (host): ${terminalPath}`);
     wineLog(`[Backtest] Terminal (wine): ${termResult.path}`);
+    wineLog(`[Backtest] Args: ${args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}`);
     wineLog(`[Backtest] Config (tester.ini host): ${mql5TesterIni}`);
     wineLog(`[Backtest] Config  (wine): /config:${iniResult.path}`);
     wineLog(`[Backtest] Tester log dir: ${logDir}`);
@@ -603,7 +605,7 @@ async function startBacktestWine(ctx) {
         started: true,
         pid: result.pid,
         config: effectiveConfig,
-        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir },
+        diagnostics: { terminalPath, testerIniPath: mql5TesterIni, logDir, launchArgs: args },
     };
 }
 
