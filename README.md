@@ -16,28 +16,28 @@
 - [Live Runtime Log](#live-runtime-log)
 - [Trade Report Dashboard](#trade-report-dashboard)
 - [Run Backtest](#run-backtest)
+- [Arrange MT5 Charts](#arrange-mt5-charts)
 - [MQL Debugger (Real-Time Variable Inspection)](#mql-debugger-real-time-variable-inspection)
 - [Troubleshooting clangd diagnostics (MQL-specific)](#troubleshooting-clangd-diagnostics-mql-specific)
 - [FAQ: Common Questions](#faq-common-questions)
 - [Preserving Custom Diagnostic Suppressions](#preserving-custom-diagnostic-suppressions)
-- [Developer Setup: Local Claude Settings](#developer-setup-local-claude-settings)
 
 ---
 
 ### Differences from MQL Tools
 
-| Feature | MQL Tools | MQL Clangd |
-|---------|-----------|------------|
-| IntelliSense Engine | Microsoft C++ | **clangd** |
-| Performance | Synchronous I/O | **Async I/O** |
-| Diagnostics in Problems tab | ❌ | ✅ |
-| Multi-root workspace support | ❌ | ✅ |
-| Direct MQL5 doc links | ❌ | ✅ |
-| Compilation - not necessary to open MetaEditor | ❌ | ✅ |
-| Smart Compile Target for Headers | ❌ | ✅ |
-| Document Symbols (Outline, Breadcrumbs) | ❌ | ✅ |
-| Trigger Backtest from VS Code | ❌ | ✅ |
-| Debugging | ❌ | ✅ |
+| Feature                                        | MQL Tools       | MQL Clangd    |
+| ---------------------------------------------- | --------------- | ------------- |
+| IntelliSense Engine                            | Microsoft C++   | **clangd**    |
+| Performance                                    | Synchronous I/O | **Async I/O** |
+| Diagnostics in Problems tab                    | ❌              | ✅            |
+| Multi-root workspace support                   | ❌              | ✅            |
+| Direct MQL5 doc links                          | ❌              | ✅            |
+| Compilation - not necessary to open MetaEditor | ❌              | ✅            |
+| Smart Compile Target for Headers               | ❌              | ✅            |
+| Document Symbols (Outline, Breadcrumbs)        | ❌              | ✅            |
+| Trigger Backtest from VS Code                  | ❌              | ✅            |
+| Debugging                                      | ❌              | ✅            |
 
 ---
 
@@ -45,16 +45,19 @@
 
 When editing `.mqh` header files, the extension now intelligently determines which main `.mq4/.mq5` file to compile—without hardcoding filenames in the header itself.
 
-*   **Automatic Inference**: The extension builds a reverse include graph to find which main files include your header.
-*   **Smart Selection**:
-  - If exactly 1 main file includes the header → **auto-compiles and remembers** the choice
-  - If multiple main files include it → shows a picker to select which one(s) to compile
-  - If no main files include it → shows all available main files to pick from
-*   **Persistent Mappings**: Your choices are remembered across sessions (configurable storage: workspace-local, global, or shared via `.vscode/settings.json`).
-*   **Multi-Target Support**: Compile multiple main files from a single header in one go.
-*   **Backward Compatible**: The old magic comment syntax (`//###<path/to/file.mq5>`) still works as a fallback.
+- **Automatic Inference**: The extension builds a reverse include graph to find which main files include your header.
+- **Smart Selection**:
+
+* If exactly 1 main file includes the header → **auto-compiles and remembers** the choice
+* If multiple main files include it → shows a picker to select which one(s) to compile
+* If no main files include it → shows all available main files to pick from
+
+- **Persistent Mappings**: Your choices are remembered across sessions (configurable storage: workspace-local, global, or shared via `.vscode/settings.json`).
+- **Multi-Target Support**: Compile multiple main files from a single header in one go.
+- **Backward Compatible**: The old magic comment syntax (`//###<path/to/file.mq5>`) still works as a fallback.
 
 **Commands**:
+
 - `MQL: Select Compile Target(s) for Header` — Manually choose compile targets
 - `MQL: Reset Compile Target for Current Header` — Clear the mapping
 - `MQL: Reset All Compile Target Mappings` — Clear all stored mappings
@@ -62,15 +65,16 @@ When editing `.mqh` header files, the extension now intelligently determines whi
 ---
 
 ### IntelliSense & Semantic Support
+
 This extension now uses **clangd** to provide state-of-the-art IntelliSense, code completion, and navigation for MQL4/5.
 
-*   **Why clangd?** Faster, more accurate semantic analysis than the default Microsoft C++ engine — especially for complex MQL projects.
-*   **Automatic Configuration**: Run `"MQL: Create configuration"` to set up the correct include paths and compiler flags for your MQL version. **clangd restarts automatically** to apply the new settings.
-*   **Conflict Prevention**: The extension automatically disables the Microsoft C++ IntelliSense engine (keeping the extension installed for other features) to prevent duplicate diagnostics and completions.
+- **Why clangd?** Faster, more accurate semantic analysis than the default Microsoft C++ engine — especially for complex MQL projects.
+- **Automatic Configuration**: Run `"MQL: Create configuration"` to set up the correct include paths and compiler flags for your MQL version. **clangd restarts automatically** to apply the new settings.
+- **Conflict Prevention**: The extension automatically disables the Microsoft C++ IntelliSense engine (keeping the extension installed for other features) to prevent duplicate diagnostics and completions.
 
 #### Symbol Visibility Inside Headers
 
-clangd parses each translation unit once, top-down — unlike the MetaEditor compiler, which concatenates all sources and resolves names multi-pass. By itself this would make symbols declared in the parent `.mq4`/`.mq5` invisible to its included `.mqh` files (their bodies appear *after* the header is included).
+clangd parses each translation unit once, top-down — unlike the MetaEditor compiler, which concatenates all sources and resolves names multi-pass. By itself this would make symbols declared in the parent `.mq4`/`.mq5` invisible to its included `.mqh` files (their bodies appear _after_ the header is included).
 
 To solve this transparently, `MQL: Create Configuration` scans every entry-point `.mq4`/`.mq5` for top-level function definitions and writes a generated header `<workspace>/.mql-auto-forwards/<basename>.auto.mqh` containing one forward declaration per function. That file is injected via `-include` ahead of all sibling headers in `compile_commands.json`, so every `.mqh` in the chain transparently sees the parent's API.
 
@@ -87,23 +91,23 @@ You can safely add `.mql-auto-forwards/` to your `.gitignore` — it is regenera
 ### Quick Setup Guide
 
 1.  **Installation**:
-    *   Install this **MQL Clangd** extension from the VS Code Marketplace.
-    *   *Note: The **clangd** extension will be automatically installed as a required dependency.*
+    - Install this **MQL Clangd** extension from the VS Code Marketplace.
+    - _Note: The **clangd** extension will be automatically installed as a required dependency._
 
 2.  **Open your project**:
-    *   Open your MQL project folder (e.g., your `MQL5` or `MQL4` folder).
-    *   **Pro Tip**: Ensure your folder name contains "MQL4" or "MQL5" for automatic version detection.
+    - Open your MQL project folder (e.g., your `MQL5` or `MQL4` folder).
+    - **Pro Tip**: Ensure your folder name contains "MQL4" or "MQL5" for automatic version detection.
 
 3.  **Basic Configuration**:
-    *   Open Settings (`Ctrl+,`) and search for `MQL Clangd`.
-    *   Provide the path to your **MetaEditor** executable (essential for compilation).
+    - Open Settings (`Ctrl+,`) and search for `MQL Clangd`.
+    - Provide the path to your **MetaEditor** executable (essential for compilation).
 
 4.  **Initialize IntelliSense**:
-    *   Press `Ctrl+Shift+P` and run the command: `"MQL: Create configuration"`.
-    *   This one-time setup configures `clangd` to recognize your MQL code and libraries.
+    - Press `Ctrl+Shift+P` and run the command: `"MQL: Create configuration"`.
+    - This one-time setup configures `clangd` to recognize your MQL code and libraries.
 
 5.  **Bonus: Icons**:
-    *   If you wish, set custom icons for MQL files. Press `Ctrl+Shift+P`, select `"MQL: Add icons to the theme"`, and choose your preferred MQL-supported theme.
+    - If you wish, set custom icons for MQL files. Press `Ctrl+Shift+P`, select `"MQL: Add icons to the theme"`, and choose your preferred MQL-supported theme.
 
 #### 💡 Windows Tip: Open MQL5 from Your Projects Folder
 
@@ -118,35 +122,37 @@ This creates a zero-cost pointer — no duplication, files exist only once. You 
 ---
 
 ### Important Notes
-*   **Multi-root workspaces**: Fully supported. Settings are resolved from the active file's folder.
-*   **Settings Merge**: MQL flags are merged into your existing `clangd.fallbackFlags` — never overwritten.
-*   **Compiler Flags**: We automatically inject `-xc++` and `-std=c++17` along with version-specific defines (`__MQL4__`/`__MQL5__`) to help clangd understand MQL syntax.
-*   **CPU Architecture (MQL5)**: `mql_tools.Compile.CpuArchitecture` lets you compile for AVX/AVX2/AVX512 instruction sets via a temporary `.mqproj` wrapper. Only affects MQL5; incompatible binaries will fail to load on older CPUs. Market uploads require `x64` (default).
-*   **Relative Paths & Portable Mode**: Settings like `mql_tools.Metaeditor.Metaeditor5Dir` and `mql_tools.Metaeditor.Include5Dir` now support `${workspaceFolder}` variable substitution and relative paths. This is perfect for portable MetaTrader installations:
-    ```json
-    {
-        "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../MetaEditor64.exe",
-        "mql_tools.Metaeditor.Include5Dir": "${workspaceFolder}"
-    }
-    ```
-*   **Third-party Libraries**: If you use libraries like `JAson.mqh` and clangd reports "Unknown type" errors, you have two options:
 
-    **Option A** - Add to settings (global, affects all files):
-    ```json
-    {
-        "mql_tools.Clangd.ForcedIncludes": [
-            "Include/JAson.mqh"
-        ]
-    }
-    ```
+- **Multi-root workspaces**: Fully supported. Settings are resolved from the active file's folder.
+- **Settings Merge**: MQL flags are merged into your existing `clangd.fallbackFlags` — never overwritten.
+- **Compiler Flags**: We automatically inject `-xc++` and `-std=c++17` along with version-specific defines (`__MQL4__`/`__MQL5__`) to help clangd understand MQL syntax.
+- **CPU Architecture (MQL5)**: `mql_tools.Compile.CpuArchitecture` lets you compile for AVX/AVX2/AVX512 instruction sets via a temporary `.mqproj` wrapper. Only affects MQL5; incompatible binaries will fail to load on older CPUs. Market uploads require `x64` (default).
+- **Relative Paths & Portable Mode**: Settings like `mql_tools.Metaeditor.Metaeditor5Dir` and `mql_tools.Metaeditor.Include5Dir` now support `${workspaceFolder}` variable substitution and relative paths. This is perfect for portable MetaTrader installations:
+  ```json
+  {
+    "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../MetaEditor64.exe",
+    "mql_tools.Metaeditor.Include5Dir": "${workspaceFolder}"
+  }
+  ```
+- **Third-party Libraries**: If you use libraries like `JAson.mqh` and clangd reports "Unknown type" errors, you have two options:
 
-    **Option B** - Add conditional include in your code (per-file):
-	```mql5
-	#ifdef __clang__
-	#include <JAson.mqh>
-	#endif
-	```
-This include is only seen by clangd and ignored by MetaEditor.
+      **Option A** - Add to settings (global, affects all files):
+      ```json
+      {
+          "mql_tools.Clangd.ForcedIncludes": [
+              "Include/JAson.mqh"
+          ]
+      }
+      ```
+
+      **Option B** - Add conditional include in your code (per-file):
+      ```mql5
+      #ifdef __clang__
+      #include <JAson.mqh>
+      #endif
+      ```
+
+  This include is only seen by clangd and ignored by MetaEditor.
 
 ### MetaEditor on macOS / Linux (Wine)
 
@@ -157,7 +163,7 @@ On non-Windows platforms you can run MetaEditor through Wine while keeping the s
 
    ```json
    {
-       "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../drive_c/Program Files/MetaTrader 5/MetaEditor64.exe"
+     "mql_tools.Metaeditor.Metaeditor5Dir": "${workspaceFolder}/../drive_c/Program Files/MetaTrader 5/MetaEditor64.exe"
    }
    ```
 
@@ -165,8 +171,8 @@ On non-Windows platforms you can run MetaEditor through Wine while keeping the s
 
    ```json
    {
-       "mql_tools.Wine.Enabled": true,
-       "mql_tools.Wine.Binary": "wine64" // or "wine", or full path like "/usr/local/bin/wine64"
+     "mql_tools.Wine.Enabled": true,
+     "mql_tools.Wine.Binary": "wine64" // or "wine", or full path like "/usr/local/bin/wine64"
    }
    ```
 
@@ -196,10 +202,10 @@ A ready-to-use service ships under [`files/CompileListenerService.mq5`](files/Co
 
 **Service inputs**
 
-| Input | Default | Purpose |
-|-------|---------|---------|
-| `expertNames` | `"EA_Name_1,EA_Name_2"` | Comma-separated EA names to watch (no extension). Whitespace around names is trimmed. |
-| `showDebugOutput` | `true` | Print per-chart scan info and "applying template" lines to the Experts log. |
+| Input             | Default                 | Purpose                                                                               |
+| ----------------- | ----------------------- | ------------------------------------------------------------------------------------- |
+| `expertNames`     | `"EA_Name_1,EA_Name_2"` | Comma-separated EA names to watch (no extension). Whitespace around names is trimmed. |
+| `showDebugOutput` | `true`                  | Print per-chart scan info and "applying template" lines to the Experts log.           |
 
 **Notes**
 
@@ -214,17 +220,18 @@ A ready-to-use service ships under [`files/CompileListenerService.mq5`](files/Co
 Monitor your MQL4/MQL5 terminal logs in real-time directly within VS Code—no need to switch to MetaTrader or open external log files.
 
 **Features:**
+
 - **Real-time log tailing**: See log messages as they happen
 - **Status bar integration**: Click the status bar item to toggle log monitoring on/off
 - **Three tailing modes**: Standard journal logs, real-time LiveLog output, or the shared common-folder LiveLog (visible during strategy-tester runs)
 
 #### Log Modes
 
-| Mode | Description | Latency |
-|------|-------------|---------|
-| **LiveLog (Real-time)** | Tails `MQL5/Files/LiveLog.txt` (auto-rotate at 10MB → `LiveLog_YYYY_MM_DD.txt`) - uses `PrintLive()` with immediate disk flush | **Instant** |
-| **LiveLog (Common/Tester)** | Tails `%APPDATA%\MetaQuotes\Terminal\Common\Files\LiveLog.txt` - shared by the terminal **and all strategy-tester agents**, so backtests stream in real-time too. Requires `#define LIVELOG_COMMON` before the include | **Instant** (incl. tester) |
-| **Standard Journal** | Tails `MQL5/Logs/YYYYMMDD.log` - uses standard `Print()` output | Delayed (MetaTrader buffering) |
+| Mode                        | Description                                                                                                                                                                                                            | Latency                        |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **LiveLog (Real-time)**     | Tails `MQL5/Files/LiveLog.txt` (auto-rotate at 10MB → `LiveLog_YYYY_MM_DD.txt`) - uses `PrintLive()` with immediate disk flush                                                                                         | **Instant**                    |
+| **LiveLog (Common/Tester)** | Tails `%APPDATA%\MetaQuotes\Terminal\Common\Files\LiveLog.txt` - shared by the terminal **and all strategy-tester agents**, so backtests stream in real-time too. Requires `#define LIVELOG_COMMON` before the include | **Instant** (incl. tester)     |
+| **Standard Journal**        | Tails `MQL5/Logs/YYYYMMDD.log` - uses standard `Print()` output                                                                                                                                                        | Delayed (MetaTrader buffering) |
 
 **Why multiple modes?**
 MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** uses a custom library (`LiveLog.mqh`) that writes directly to disk with immediate flush. The **Common/Tester** variant writes to the shared common data folder so strategy-tester runs are visible too.
@@ -235,11 +242,13 @@ MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** us
    Run `MQL: Install LiveLog Library` from the Command Palette, or start tailing and accept the prompt to install.
 
 2. **Include in your EA**:
+
    ```mql5
    #include <LiveLog.mqh>
    ```
 
 3. **Use `PrintLive()` or the level-prefixed log functions**:
+
    ```mql5
    PrintLive("Hello, World!");
    PrintFormatLive("Value: %d, Price: %.5f", 42, 1.23456);
@@ -256,10 +265,11 @@ MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** us
 
 4. **Optional - Redirect all Print() calls automatically**:
    Add `#define LIVELOG_REDIRECT` **before** the include to automatically redirect all `Print()` and `PrintFormat()` calls:
+
    ```mql5
    #define LIVELOG_REDIRECT
    #include <LiveLog.mqh>
-   
+
    // Now all Print() calls automatically go to LiveLog.txt!
    Print("This will appear in LiveLog.txt");
    PrintFormat("Value: %d", 42);
@@ -267,6 +277,7 @@ MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** us
 
 5. **Optional - See strategy-tester runs live (common folder)**:
    Tester agents run in their own sandbox, so the default LiveLog file is invisible during backtests. Add `#define LIVELOG_COMMON` **before** the include to write to the shared common data folder instead, then switch the watcher to **LiveLog (Common/Tester)** mode:
+
    ```mql5
    #define LIVELOG_COMMON
    #include <LiveLog.mqh>
@@ -285,13 +296,14 @@ MetaTrader's `Print()` buffers output, causing delays in VS Code. **LiveLog** us
    }
    ```
 
-
 **Commands:**
+
 - `MQL: Toggle Live Runtime Log` — Start/stop log tailing
 - `MQL: Install LiveLog Library` — Deploy `LiveLog.mqh` to your Include folder
 - `MQL: Switch Log Tail Mode (Live/Common/Standard)` — Switch between real-time, common-folder (tester) and standard modes
 
 **Notes:**
+
 - The extension automatically detects MQL version from your active file, workspace folder name, or configured settings
 - If the data folder path is not configured, the extension will attempt to infer it from your workspace structure
 - Only new log entries are shown (historical logs are not dumped on start)
@@ -306,6 +318,7 @@ Analyze your Strategy Tester results directly in VS Code. The Trade Report parse
 **Command:** `MQL: Open Trade Report Dashboard`
 
 **Features:**
+
 - Auto-discovers EAs with test runs under `MQL5/Experts/`
 - Shows trade summary: count, net P&L, win rate, gross profit/loss, commissions
 - Individual trade table with entry/exit prices, SL, TP, lots, and exit reason
@@ -334,6 +347,7 @@ void OnTick()
 ```
 
 The Trade Report will show:
+
 - **Source column** in the trades table with clickable entry/exit source links
 - **Yellow source badges** on each log entry (e.g. `OnTick:12`) that open the file at that line
 
@@ -351,6 +365,7 @@ Editing your EA after a test run can break `{File:Function:Line}` links. **Sourc
 ```
 
 When a snapshot exists the Trade Report shows **two clickable badges** per source location:
+
 - **Green badge** — opens the **snapshot** (frozen copy from test time, line numbers always match)
 - **Yellow badge** — opens the **current** (live) file in your workspace
 
@@ -377,19 +392,20 @@ Launch an MT5 Strategy Tester run for your EA directly from VS Code — without 
 
 **Settings:**
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `mql_tools.Backtest.PromptForParameters` | `true` | Show symbol/date prompts before running. Set `false` to use `tester.ini` defaults silently. |
-| `mql_tools.Backtest.AutoOpenReport` | `true` | Open the Trade Report Dashboard when the test completes. |
-| `mql_tools.Backtest.VisualMode` | `null` | `true`/`false` forces `Visual=1`/`Visual=0` in the generated `tester.ini` (visual chart testing). `null` keeps the EA's INI value. |
-| `mql_tools.Backtest.KeepTerminalOpen` | `null` | `true` writes `ShutdownTerminal=0` so MT5 stays open after the test; `false` writes `ShutdownTerminal=1`. `null` keeps the EA's INI value. An open terminal can block the next launch (one MT5 instance per data folder). |
-| `mql_tools.Backtest.MonitorTimeoutMinutes` | `10` | Minutes to monitor a running test before giving up. Only stops the VS Code progress notification — the MT5 test keeps running. Increase for visual mode or long date ranges. |
-| `mql_tools.Backtest.AutoStartServer` | `true` | Auto-start TradeReportServer if it isn't already running. |
-| `mql_tools.Backtest.ServerDir` | empty | Optional path to the TradeReportServer Node.js package folder. When empty, auto-start uses `<MQL5 data folder>/Tools/TradeReportServer`. |
-| `mql_tools.Backtest.ServerPort` | `3002` | Port used by TradeReportServer. |
-| `mql_tools.ShowButton.RunBacktest` | `true` | Show/hide the toolbar button on MQL files. |
+| Setting                                    | Default | Description                                                                                                                                                                                                               |
+| ------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mql_tools.Backtest.PromptForParameters`   | `true`  | Show symbol/date prompts before running. Set `false` to use `tester.ini` defaults silently.                                                                                                                               |
+| `mql_tools.Backtest.AutoOpenReport`        | `true`  | Open the Trade Report Dashboard when the test completes.                                                                                                                                                                  |
+| `mql_tools.Backtest.VisualMode`            | `null`  | `true`/`false` forces `Visual=1`/`Visual=0` in the generated `tester.ini` (visual chart testing). `null` keeps the EA's INI value.                                                                                        |
+| `mql_tools.Backtest.KeepTerminalOpen`      | `null`  | `true` writes `ShutdownTerminal=0` so MT5 stays open after the test; `false` writes `ShutdownTerminal=1`. `null` keeps the EA's INI value. An open terminal can block the next launch (one MT5 instance per data folder). |
+| `mql_tools.Backtest.MonitorTimeoutMinutes` | `10`    | Minutes to monitor a running test before giving up. Only stops the VS Code progress notification — the MT5 test keeps running. Increase for visual mode or long date ranges.                                              |
+| `mql_tools.Backtest.AutoStartServer`       | `true`  | Auto-start TradeReportServer if it isn't already running.                                                                                                                                                                 |
+| `mql_tools.Backtest.ServerDir`             | empty   | Optional path to the TradeReportServer Node.js package folder. When empty, auto-start uses `<MQL5 data folder>/Tools/TradeReportServer`.                                                                                  |
+| `mql_tools.Backtest.ServerPort`            | `3002`  | Port used by TradeReportServer.                                                                                                                                                                                           |
+| `mql_tools.ShowButton.RunBacktest`         | `true`  | Show/hide the toolbar button on MQL files.                                                                                                                                                                                |
 
 **Notes:**
+
 - The test runs fully inside MT5 — cancelling the VS Code progress notification only stops monitoring, not the MT5 test itself.
 - A `tester.ini` file must exist in the EA's folder (e.g. `Experts/Trading/MyEA/tester.ini`) for the server to know the default test configuration.
 - `mql_tools.Metaeditor.Include5Dir` should point to the MQL5 data folder (the folder containing `Include`, `Experts`, `Logs`, etc.). On Linux/Wine this is usually a host path under your Wine prefix, for example `/home/<user>/.wine/drive_c/Program Files/<Vendor> MT5 Terminal/MQL5`.
@@ -411,13 +427,13 @@ Copy the template from [`docs/backtest/artifacts/tester.ini.example`](docs/backt
 
 **Required fields in the `[Tester]` section:**
 
-| Field | Description | Example |
-|-------|-------------|----------|
-| `Expert` | EA name (without `.ex5` extension) | `MyEA` |
-| `Symbol` | Trading symbol | `EURUSD` |
-| `FromDate` | Start date (format: `YYYY.MM.DD`) | `2025.01.01` |
-| `ToDate` | End date (format: `YYYY.MM.DD`) | `2025.01.31` |
-| `Period` | Timeframe (optional, defaults to `M1`) | `M5` |
+| Field      | Description                            | Example      |
+| ---------- | -------------------------------------- | ------------ |
+| `Expert`   | EA name (without `.ex5` extension)     | `MyEA`       |
+| `Symbol`   | Trading symbol                         | `EURUSD`     |
+| `FromDate` | Start date (format: `YYYY.MM.DD`)      | `2025.01.01` |
+| `ToDate`   | End date (format: `YYYY.MM.DD`)        | `2025.01.31` |
+| `Period`   | Timeframe (optional, defaults to `M1`) | `M5`         |
 
 **Date format:** All dates must use the `YYYY.MM.DD` format (e.g., `2025.01.31`).
 
@@ -440,30 +456,33 @@ RiskPercentage=1.0||1||0.1||10||Y
 
 #### VS Code Settings for Backtesting
 
-| Setting | Description |
-|---------|-------------|
-| `mql_tools.Backtest.PromptForParameters` | If `true`, prompts for symbol and date before running. If `false`, uses `tester.ini` defaults silently. |
-| `mql_tools.Backtest.TesterLogDir` | Optional path to MT5's tester agent log directory. Only set if auto-detection fails. |
-| `mql_tools.Backtest.VisualMode` | Force visual mode on (`true`) or off (`false`) for every launch. `null` (default) respects the EA's INI. |
-| `mql_tools.Backtest.KeepTerminalOpen` | Keep MT5 open after the test (`true` → `ShutdownTerminal=0`). `null` (default) respects the EA's INI. |
-| `mql_tools.Terminal.Terminal5Dir` | Path to `terminal64.exe`. Required on all platforms. Auto-detects common locations on Windows. |
-| `mql_tools.Metaeditor.Include5Dir` | Path to MQL5 data folder (contains `Include`, `Experts`, `Logs`, etc.). |
+| Setting                                  | Description                                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `mql_tools.Backtest.PromptForParameters` | If `true`, prompts for symbol and date before running. If `false`, uses `tester.ini` defaults silently.  |
+| `mql_tools.Backtest.TesterLogDir`        | Optional path to MT5's tester agent log directory. Only set if auto-detection fails.                     |
+| `mql_tools.Backtest.VisualMode`          | Force visual mode on (`true`) or off (`false`) for every launch. `null` (default) respects the EA's INI. |
+| `mql_tools.Backtest.KeepTerminalOpen`    | Keep MT5 open after the test (`true` → `ShutdownTerminal=0`). `null` (default) respects the EA's INI.    |
+| `mql_tools.Terminal.Terminal5Dir`        | Path to `terminal64.exe`. Required on all platforms. Auto-detects common locations on Windows.           |
+| `mql_tools.Metaeditor.Include5Dir`       | Path to MQL5 data folder (contains `Include`, `Experts`, `Logs`, etc.).                                  |
 
 #### How MT5 Writes the Tester Log
 
 When a backtest runs, MT5's Strategy Tester agent writes logs to a specific directory. The runner finds these logs as follows:
 
 **Windows:**
+
 ```
 %APPDATA%\MetaQuotes\Tester\<terminal-id>\Agent-127.0.0.1-3000\logs
 ```
 
 **Linux/macOS (Wine):**
+
 ```
 <Wine_prefix>/drive_c/users/<user>/AppData/Roaming/MetaQuotes/Tester/<terminal-id>/Agent-127.0.0.1-3000/logs
 ```
 
 The extension:
+
 1. Auto-detects the log directory based on the terminal identity (derived from `Include5Dir`)
 2. Monitors the latest `*.log` file for the completion marker (`MetaTester 5 stopped`)
 3. Copies the completed log to the EA's `runs/` folder: `MQL5/Experts/<YourEA>/runs/<timestamp>.log`
@@ -478,6 +497,46 @@ If auto-detection fails, set `mql_tools.Backtest.TesterLogDir` to the full path 
 
 ---
 
+### Arrange MT5 Charts
+
+Tile your MetaTrader 5 chart windows into saved layouts from VS Code. Charts **docked** inside the terminal snap into a grid; charts you **undock** (right-click → uncheck _Docked_) spread across your other monitors.
+
+**Command:** `MQL: Arrange MT5 Charts` — pick a named preset. Or click the **Charts** button in the status bar for fast switching (toggle with `mql_tools.ChartLayout.ShowStatusBarButton`).
+
+Define presets in `mql_tools.ChartLayout.Presets`. Each has a required `docked` grid and an optional `floating` grid for undocked charts. Monitors are numbered 1-based (Windows enumeration order).
+
+```jsonc
+"mql_tools.ChartLayout.Presets": [
+  // All charts docked, tiled 2×4 inside MT5 on monitor 1.
+  { "name": "wall",  "docked": { "monitor": 1, "rows": 2, "cols": 4 } },
+  // Docked charts on monitor 1; undocked charts side-by-side on monitor 2.
+  { "name": "split", "docked":   { "monitor": 1, "rows": 2, "cols": 3 },
+                     "floating": { "monitor": 2, "rows": 1, "cols": 2 } }
+]
+```
+
+Charts are matched by `SYMBOL,TIMEFRAME` title, so panels (Market Watch, Navigator) are never touched.
+
+**Beyond uniform grids:** a `docked`/`floating` block can use a CSS `grid-template-areas` template for spans (one chart wider or taller than the rest), and naming the cells after timeframes (`M5`, `H1`, …) places charts by timeframe, bound to the active chart's symbol (others minimized).
+
+```jsonc
+"mql_tools.ChartLayout.Presets": [
+  // Letters = spans: A wide on top, B tall down the right, C wide on the bottom.
+  { "name": "tall-right", "docked": { "monitor": 1, "areas": ["A A B", "C C B"] } },
+  // Timeframe names = match by timeframe: M5 wide top, H1 tall right, M15 bottom,
+  // all from the active chart's symbol; charts of other symbols are minimized.
+  { "name": "scalp",      "docked": { "monitor": 1, "areas": ["M5 M5 H1", "M15 M15 H1"] } }
+]
+```
+
+See the [full guide](docs/chart-layout.md) for the rules (rectangular regions, empty `.` cells, timeframe tokens).
+
+> ⚠️ **Windows only (for now)** — it moves native MT5 windows via the Win32 API; a no-op on macOS / Linux / Wine.
+
+**Full guide:** [docs/chart-layout.md](docs/chart-layout.md).
+
+---
+
 ### MQL Debugger (Real-Time Variable Inspection)
 
 Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The extension injects telemetry at your breakpoints, compiles an instrumented build, and streams variable states to a live debug dashboard — no MetaEditor debugger needed.
@@ -487,7 +546,7 @@ Debug your MetaTrader Expert Advisors and Scripts directly from VS Code. The ext
 1. Open the `.mq5`, `.mq4`, or `.mqh` file you want to debug.
 2. Place breakpoints in the editor margin (click to the left of the line numbers) where you want to inspect variables.
 3. Click the **Start Debugging** (bug icon) button in the editor title bar, or press `Ctrl+Alt+D`, or run `MQL: Start Debugging` from the Command Palette.
-   - *Starting from an `.mqh` file automatically resolves dependencies and asks which main EA to instrument.*
+   - _Starting from an `.mqh` file automatically resolves dependencies and asks which main EA to instrument._
 4. The extension will automatically:
    - Deploy `MqlDebug.mqh` to your MetaTrader `Include/` folder (always up to date).
    - Instrument all relevant source files (main EA + included headers with breakpoints).
@@ -504,20 +563,20 @@ At each breakpoint the extension automatically collects variables into two tiers
 
 **Default mode** (always active):
 
-| Source | Example |
-|--------|---------|
-| Function parameters | `double price`, `int magic` |
-| Local variables declared before the breakpoint | `int bar = 0;` |
-| Member access expressions used in the function | `g_timers.lastTime`, `this.m_count`, `a.b.c` |
-| Implicit class members referenced near the breakpoint | `m_lotSize` used inside a class method |
+| Source                                                | Example                                      |
+| ----------------------------------------------------- | -------------------------------------------- |
+| Function parameters                                   | `double price`, `int magic`                  |
+| Local variables declared before the breakpoint        | `int bar = 0;`                               |
+| Member access expressions used in the function        | `g_timers.lastTime`, `this.m_count`, `a.b.c` |
+| Implicit class members referenced near the breakpoint | `m_lotSize` used inside a class method       |
 
 **Deep Analysis mode** (`mql_tools.Debug.DetailLevel: deepAnalysis`) — additionally:
 
-| Source | Example |
-|--------|---------|
-| Global primitive variables referenced within ±15 lines | `g_spread`, `g_signal` |
-| `input` / `sinput` parameter variables (always, no proximity filter) | `InpLotSize`, `InpMaxOrders` |
-| Primitive fields of local class-typed variables | `order.lots`, `order.openPrice` |
+| Source                                                               | Example                         |
+| -------------------------------------------------------------------- | ------------------------------- |
+| Global primitive variables referenced within ±15 lines               | `g_spread`, `g_signal`          |
+| `input` / `sinput` parameter variables (always, no proximity filter) | `InpLotSize`, `InpMaxOrders`    |
+| Primitive fields of local class-typed variables                      | `order.lots`, `order.openPrice` |
 
 **Supported types:** `int`, `uint`, `short`, `ushort`, `char`, `uchar`, `long`, `ulong`, `double`, `float`, `string`, `bool`, `datetime`, `color`, common `ENUM_*` types, and arrays of numeric types.
 
@@ -549,12 +608,13 @@ Functions containing breakpoints automatically get `ENTER`/`EXIT` instrumentatio
 
 #### Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `mql_tools.Debug.DetailLevel` | `default` | `default`: locals + member access. `deepAnalysis`: also global primitives, `input` vars, and class field expansion. |
-| `mql_tools.ShowButton.StartDebugging` | `true` | Show/hide the toolbar bug button on MQL files. |
+| Setting                               | Default   | Description                                                                                                         |
+| ------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `mql_tools.Debug.DetailLevel`         | `default` | `default`: locals + member access. `deepAnalysis`: also global primitives, `input` vars, and class field expansion. |
+| `mql_tools.ShowButton.StartDebugging` | `true`    | Show/hide the toolbar bug button on MQL files.                                                                      |
 
 **Notes:**
+
 - Class-typed variables are not serialized directly (would cause compile errors). Only their primitive/enum fields are watched.
 - If an injection point is unsafe (e.g. inside a braceless single-line block), the debugger warns and skips that line. Use `// @watch` or add a statement to create a safe injection point.
 - The instrumented build uses `.mql_dbg_build` in the filename — never commit or deploy these files.
@@ -592,6 +652,7 @@ If you open built-in examples like `MQL5/Experts/Examples/MACD/MACD Sample.mq5` 
    **Tip: Intentional assignment in conditions**
 
    If you see "Possible assignment in condition" for intentional code like `if(ticket = OrderSend(...))`, you can silence it by adding extra parentheses:
+
    ```mql5
    // Warning: assignment in condition
    if (ticket = OrderSend(...)) { }
@@ -613,6 +674,7 @@ If clang-format is reformatting your MQL code in ways you don't like, you have s
 
 1. **Disable formatting entirely for MQL files** (recommended for MQL):
    Add this to your `.clangd` file:
+
    ```yaml
    ---
    If:
@@ -626,6 +688,7 @@ If clang-format is reformatting your MQL code in ways you don't like, you have s
 
 2. **Customize clang-format style**:
    Create a `.clang-format` file in your workspace root with relaxed settings:
+
    ```yaml
    BasedOnStyle: LLVM
    IndentWidth: 3
@@ -645,6 +708,7 @@ If clang-format is reformatting your MQL code in ways you don't like, you have s
 **Short answer:** For MQL code, it's necessary and safe.
 
 **Why we suppress diagnostics:**
+
 - MQL is **not standard C++**. It has different syntax, keywords, and semantics.
 - clangd is a C++ language server that doesn't natively understand MQL-specific features like:
   - `#property` and `#import` directives
@@ -656,22 +720,26 @@ If clang-format is reformatting your MQL code in ways you don't like, you have s
   - MQL's custom string type
 
 **What we suppress:**
+
 - **False positives**: Errors that clangd reports but are valid MQL code
 - **MQL-specific syntax**: Features that don't exist in standard C++
 - **Type system differences**: MQL is more permissive with conversions
 
 **What we DON'T suppress:**
+
 - Logic errors in your code
 - Undefined variables (that aren't MQL built-ins)
 - Type mismatches that would also fail in MQL
 - Most code completion and IntelliSense features
 
 **The trade-off:**
+
 - ✅ You get excellent IntelliSense, code completion, and navigation
 - ✅ You avoid hundreds of false-positive errors
 - ⚠️ You might miss some edge-case C++ errors (but MetaEditor will catch them during compilation)
 
 **Best practice:** Use both tools together:
+
 - Use VS Code + clangd for editing, navigation, and IntelliSense
 - Use MetaEditor for final compilation and testing
 - If you see a real error, add it to your `.clangd` suppressions only if it's a false positive and report an issue to this repository.
@@ -686,6 +754,7 @@ Yes! If you encounter additional false positives:
 
 2. **Add it to `.clangd`**:
    Open the `.clangd` file in your workspace root and add the code to the `Suppress` list:
+
    ```yaml
    Diagnostics:
      Suppress:
@@ -701,6 +770,7 @@ Yes! If you encounter additional false positives:
 The `.clangd` file is generated by the "MQL: Create configuration" command. If you have added custom diagnostic suppressions, you can preserve them when re-running the command.
 
 Configuration option: `mql_tools.Clangd.PreserveSuppressions`
+
 - **prompt** (default): Ask whether to merge suppressions each time
 - **always**: Automatically merge existing suppressions
 - **never**: Always overwrite the `.clangd` file
@@ -709,7 +779,7 @@ Merging combines your custom suppressions with the defaults, deduplicating autom
 
 ```json
 {
-    "mql_tools.Clangd.PreserveSuppressions": "always"
+  "mql_tools.Clangd.PreserveSuppressions": "always"
 }
 ```
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Arrange MT5 Charts**: New `MQL: Arrange MT5 Charts` command and status-bar button tile open MT5 chart windows into named layout presets (`mql_tools.ChartLayout.Presets`). Each preset grids **docked** charts inside the terminal on a chosen monitor, and optionally tiles **undocked** charts onto another monitor. Grids are uniform `rows×cols` or a CSS `grid-template-areas` template for spans (a chart wider or taller than the rest). Naming the cells after timeframes (`M5`, `H1`, …) places charts by timeframe, bound to the active chart's symbol. Extra charts beyond a grid are minimized. Windows-only. Full guide: `docs/chart-layout.md`.
+
 ## 1.1.60
 
 ### Features

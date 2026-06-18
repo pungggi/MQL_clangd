@@ -8,6 +8,9 @@ node_modules/**
 src/**
 test/**
 scripts/**
+# ...but ship the chart-arranger worker: it is a runtime asset loaded from
+# extensionPath/scripts, not bundled by webpack.
+!scripts/mt5-arrange-charts.ps1
 .agent/**
 package-lock.json
 *.log

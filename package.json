@@ -81,6 +81,125 @@
                     "default": "C:\\MT5_Install\\MetaTrader\\terminal64.exe",
                     "description": "%mql_tools.configuration.Terminal5Dir.description%"
                 },
+                "mql_tools.ChartLayout.Presets": {
+                    "type": "array",
+                    "markdownDescription": "Named layouts for the **MQL: Arrange MT5 Charts** command. Each preset tiles charts into two independent groups:\n\n- **`docked`** (required) — charts docked inside the MT5 window; tiled into a `rows × cols` grid there, and the MT5 window is moved to `monitor` first.\n- **`floating`** (optional) — charts you have **undocked** (right-click chart → uncheck *Docked*); tiled onto another `monitor` in their own grid. Omit to leave undocked charts alone.\n\nMonitor numbers match `System.Windows.Forms.Screen.AllScreens` order (1-based). See `docs/chart-layout.md` for the full guide.",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "name",
+                            "docked"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Preset name shown in the picker."
+                            },
+                            "docked": {
+                                "type": "object",
+                                "description": "Grid for charts docked inside the MT5 window. Use rows + cols for a uniform grid, or areas for spans.",
+                                "required": [
+                                    "monitor"
+                                ],
+                                "properties": {
+                                    "monitor": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "description": "Monitor the MT5 window is moved to (1-based)."
+                                    },
+                                    "rows": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "description": "Grid rows (uniform grid)."
+                                    },
+                                    "cols": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "description": "Grid columns (uniform grid)."
+                                    },
+                                    "areas": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "markdownDescription": "CSS `grid-template-areas` layout (overrides `rows`/`cols`). One string per row; cell names separated by spaces. Repeat a name to span cells in any direction; use `.` for an empty cell. Example: `[\"A A B\", \"C C B\"]` — A spans 2 columns, B spans 2 rows (tall).\n\nIf every cell name is a **timeframe** (`M5`, `H1`, …), charts are placed by timeframe and bound to the **active chart's symbol** — charts of other symbols (and unused timeframes) are minimized."
+                                    }
+                                }
+                            },
+                            "floating": {
+                                "type": "object",
+                                "description": "Grid for undocked (floating) charts, on another monitor. Omit to leave them untouched. Use rows + cols, or areas for spans.",
+                                "required": [
+                                    "monitor"
+                                ],
+                                "properties": {
+                                    "monitor": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "description": "Monitor for floating charts (1-based)."
+                                    },
+                                    "rows": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "description": "Grid rows (uniform grid)."
+                                    },
+                                    "cols": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "description": "Grid columns (uniform grid)."
+                                    },
+                                    "areas": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "markdownDescription": "CSS `grid-template-areas` layout (overrides `rows`/`cols`). See `docked.areas`."
+                                    }
+                                }
+                            },
+                            "gap": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": 0,
+                                "description": "Pixels between and around cells."
+                            }
+                        }
+                    },
+                    "default": [
+                        {
+                            "name": "wall",
+                            "docked": {
+                                "monitor": 1,
+                                "rows": 2,
+                                "cols": 3
+                            },
+                            "gap": 0
+                        },
+                        {
+                            "name": "quad",
+                            "docked": {
+                                "monitor": 1,
+                                "rows": 2,
+                                "cols": 2
+                            },
+                            "gap": 0
+                        },
+                        {
+                            "name": "focus",
+                            "docked": {
+                                "monitor": 1,
+                                "rows": 1,
+                                "cols": 1
+                            },
+                            "gap": 0
+                        }
+                    ]
+                },
+                "mql_tools.ChartLayout.ShowStatusBarButton": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Show a **Charts** button in the status bar (Windows only) that opens the **MQL: Arrange MT5 Charts** preset picker for fast layout switching. The button label shows the last preset applied this session."
+                },
                 "mql_tools.Metaeditor.Include4Dir": {
                     "type": "string",
                     "default": "",
@@ -508,6 +627,11 @@
                 "category": "MQL"
             },
             {
+                "command": "mql_tools.arrangeCharts",
+                "title": "Arrange MT5 Charts",
+                "category": "MQL"
+            },
+            {
                 "command": "mql_tools.reportNoisyDiagnostic",
                 "title": "%mql_tools.commands.reportNoisyDiagnostic.title%",
                 "category": "MQL"
@@ -765,7 +889,7 @@
     "capabilities": {
         "untrustedWorkspaces": {
             "supported": "limited",
-            "description": "Backtest commands can launch the configured MetaTrader terminal and write tester.ini files; review terminal and MQL data-folder settings before running them in untrusted workspaces."
+            "description": "Backtest commands can launch the configured MetaTrader terminal and write tester.ini files, and the Arrange MT5 Charts command runs a bundled PowerShell script to reposition terminal windows; review terminal and MQL data-folder settings before running these in untrusted workspaces."
         }
     }
 }
