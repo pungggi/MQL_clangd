@@ -26,18 +26,22 @@
 
 ### Differences from MQL Tools
 
-| Feature                                        | MQL Tools       | MQL Clangd    |
-| ---------------------------------------------- | --------------- | ------------- |
-| IntelliSense Engine                            | Microsoft C++   | **clangd**    |
-| Performance                                    | Synchronous I/O | **Async I/O** |
-| Diagnostics in Problems tab                    | ❌              | ✅            |
-| Multi-root workspace support                   | ❌              | ✅            |
-| Direct MQL5 doc links                          | ❌              | ✅            |
-| Compilation - not necessary to open MetaEditor | ❌              | ✅            |
-| Smart Compile Target for Headers               | ❌              | ✅            |
-| Document Symbols (Outline, Breadcrumbs)        | ❌              | ✅            |
-| Trigger Backtest from VS Code                  | ❌              | ✅            |
-| Debugging                                      | ❌              | ✅            |
+| Feature                                            | MQL Tools       | MQL Clangd        |
+| -------------------------------------------------- | --------------- | ----------------- |
+| IntelliSense Engine                                | Microsoft C++   | **clangd**        |
+| Performance                                        | Synchronous I/O | **Async I/O**     |
+| Diagnostics in Problems tab                        | ❌              | ✅                |
+| Document Symbols (Outline, Breadcrumbs)            | ❌              | ✅                |
+| Compile without opening MetaEditor                 | ❌              | ✅                |
+| Smart Compile Target for Headers                   | ❌              | ✅                |
+| Multi-root / MQL4+MQL5 mixed workspace support     | ❌              | ✅                |
+| MetaEditor on macOS / Linux via Wine               | ❌              | ✅                |
+| CPU Architecture Selection (AVX/AVX2/AVX512)       | ❌              | ✅                |
+| Auto-Reload EA After Compile (MT5 Service)         | ❌              | ✅                |
+| Live Runtime Log (LiveLog, 3 tail modes)           | ❌              | ✅                |
+| Trigger Backtest from VS Code                      | ❌              | ✅                |
+| Arrange MT5 Charts (multi-monitor layouts)         | ❌              | ✅                |
+| MQL Debugger (real-time variable inspection)       | ❌              | ✅                |
 
 ---
 
