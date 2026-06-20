@@ -860,6 +860,46 @@ function round(num, precision = 2) {
 // =============================================================================
 
 /**
+ * Returns a copy of `text` with comment characters replaced by spaces,
+ * preserving all newlines so that character offsets and line numbers remain
+ * identical to the original.  This prevents the symbol regexes from matching
+ * function-like patterns that appear inside // or block comments.
+ */
+function stripMQLComments(text) {
+    let result = '';
+    let i = 0;
+    const len = text.length;
+    let inLineComment = false;
+    let inBlockComment = false;
+    let inString = false;
+
+    while (i < len) {
+        const ch = text[i];
+        if (inLineComment) {
+            if (ch === '\n') { inLineComment = false; result += '\n'; }
+            else { result += ' '; }
+            i++;
+        } else if (inBlockComment) {
+            if (ch === '*' && i + 1 < len && text[i + 1] === '/') {
+                result += '  '; i += 2; inBlockComment = false;
+            } else if (ch === '\n') { result += '\n'; i++; }
+            else { result += ' '; i++; }
+        } else if (inString) {
+            if (ch === '\\' && i + 1 < len) { result += ch + text[i + 1]; i += 2; }
+            else { if (ch === '"') inString = false; result += ch; i++; }
+        } else {
+            if (ch === '"') { inString = true; result += ch; i++; }
+            else if (ch === '/' && i + 1 < len && text[i + 1] === '/') {
+                inLineComment = true; result += '  '; i += 2;
+            } else if (ch === '/' && i + 1 < len && text[i + 1] === '*') {
+                inBlockComment = true; result += '  '; i += 2;
+            } else { result += ch; i++; }
+        }
+    }
+    return result;
+}
+
+/**
  * Provides document symbols for MQL files (Outline view, Breadcrumbs, Go to Symbol)
  * Shows: #property, #include, #define, input/sinput, functions, classes/structs
  */
@@ -869,6 +909,11 @@ function MQLDocumentSymbolProvider() {
             const symbols = [];
             const text = document.getText();
             const lines = text.split('\n');
+            // Work on comment-stripped text so that function-like patterns inside
+            // /* */ blocks or // comments don't produce phantom outline entries.
+            // Character offsets and line numbers are identical to `text`.
+            const strippedText = stripMQLComments(text);
+            const strippedLines = strippedText.split('\n');
 
             // MQL types for matching
             const mqlTypes = 'int|uint|long|ulong|short|ushort|char|uchar|double|float|string|bool|datetime|color|void';
@@ -884,7 +929,7 @@ function MQLDocumentSymbolProvider() {
             // #property directives
             const propertyRegex = /^#property\s+(\w+)\s*(.*)/gm;
             let match;
-            while ((match = propertyRegex.exec(text)) !== null) {
+            while ((match = propertyRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const line = document.lineAt(pos.line);
                 const propName = match[1];
@@ -902,7 +947,7 @@ function MQLDocumentSymbolProvider() {
 
             // #include directives
             const includeRegex = /^#include\s*[<"]([^>"]+)[>"]/gm;
-            while ((match = includeRegex.exec(text)) !== null) {
+            while ((match = includeRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const line = document.lineAt(pos.line);
                 const includePath = match[1];
@@ -919,7 +964,7 @@ function MQLDocumentSymbolProvider() {
 
             // #define macros
             const defineRegex = /^#define\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+(.*))?/gm;
-            while ((match = defineRegex.exec(text)) !== null) {
+            while ((match = defineRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const line = document.lineAt(pos.line);
                 const defineName = match[1];
@@ -937,7 +982,7 @@ function MQLDocumentSymbolProvider() {
 
             // #import directives
             const importRegex = /^#import\s*"([^"]+)"/gm;
-            while ((match = importRegex.exec(text)) !== null) {
+            while ((match = importRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const line = document.lineAt(pos.line);
                 const importPath = match[1];
@@ -962,8 +1007,8 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             // INPUT PARAMETERS - Critical for EA/Indicator configuration
             // =========================================================
-            const inputRegex = new RegExp(`^\\s*(input|sinput)\\s+(${mqlTypes})\\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s*=\\s*([^;]+))?`, 'gm');
-            while ((match = inputRegex.exec(text)) !== null) {
+            const inputRegex = new RegExp(`^[ \\t]*(input|sinput)[ \\t]+(${mqlTypes})[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)(?:[ \\t]*=[ \\t]*([^;\\n]+))?`, 'gm');
+            while ((match = inputRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const line = document.lineAt(pos.line);
                 const inputType = match[1]; // input or sinput
@@ -984,21 +1029,21 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             // ENUMS
             // =========================================================
-            const enumRegex = /^\s*enum\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{/gm;
-            while ((match = enumRegex.exec(text)) !== null) {
+            const enumRegex = /^[ \t]*enum[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*\{/gm;
+            while ((match = enumRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const startLine = pos.line;
 
-                // Find closing brace
-                let braceCount = 1;
+                // Find closing brace (start at 0 — the loop counts the opening { itself)
+                let braceCount = 0;
                 let endLine = startLine;
-                for (let i = startLine; i < lines.length && braceCount > 0; i++) {
-                    const lineText = lines[i];
+                for (let i = startLine; i < strippedLines.length && (braceCount > 0 || i === startLine); i++) {
+                    const lineText = strippedLines[i];
                     for (const char of lineText) {
                         if (char === '{') braceCount++;
                         else if (char === '}') braceCount--;
                     }
-                    if (braceCount === 0) endLine = i;
+                    if (braceCount === 0 && i > startLine) { endLine = i; break; }
                 }
 
                 const range = new vscode.Range(startLine, 0, endLine, lines[endLine]?.length || 0);
@@ -1015,8 +1060,8 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             // CLASSES AND STRUCTS
             // =========================================================
-            const classRegex = /^\s*(class|struct)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*:\s*(?:public|protected|private)?\s*([a-zA-Z_][a-zA-Z0-9_]*))?\s*\{?/gm;
-            while ((match = classRegex.exec(text)) !== null) {
+            const classRegex = /^[ \t]*(class|struct)[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)(?:[ \t]*:[ \t]*(?:public|protected|private)?[ \t]*([a-zA-Z_][a-zA-Z0-9_]*))?[ \t]*\{?/gm;
+            while ((match = classRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const startLine = pos.line;
                 const kind = match[1]; // class or struct
@@ -1027,8 +1072,8 @@ function MQLDocumentSymbolProvider() {
                 let braceCount = 0;
                 let foundOpen = false;
                 let endLine = startLine;
-                for (let i = startLine; i < lines.length; i++) {
-                    const lineText = lines[i];
+                for (let i = startLine; i < strippedLines.length; i++) {
+                    const lineText = strippedLines[i];
                     for (const char of lineText) {
                         if (char === '{') {
                             braceCount++;
@@ -1059,20 +1104,22 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             // FUNCTIONS - Including methods inside classes
             // =========================================================
-            const funcRegex = new RegExp(`^\\s*(?:static\\s+)?(?:virtual\\s+)?(?:export\\s+)?(${mqlTypes})\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(([^)]*)\\)`, 'gm');
-            while ((match = funcRegex.exec(text)) !== null) {
+            // Use ([^)\n]*) so params don't span multiple lines, and run against
+            // strippedText so signatures inside /* */ comments are ignored.
+            const funcRegex = new RegExp(`^[ \\t]*(?:static[ \\t]+)?(?:virtual[ \\t]+)?(?:export[ \\t]+)?(${mqlTypes})[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\(([^)\\n]*)\\)`, 'gm');
+            while ((match = funcRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const startLine = pos.line;
                 const returnType = match[1];
                 const funcName = match[2];
                 const params = match[3].trim();
 
-                // Find function body end
+                // Find function body end (brace-count on comment-stripped lines)
                 let braceCount = 0;
                 let foundOpen = false;
                 let endLine = startLine;
-                for (let i = startLine; i < lines.length; i++) {
-                    const lineText = lines[i];
+                for (let i = startLine; i < strippedLines.length; i++) {
+                    const lineText = strippedLines[i];
                     for (const char of lineText) {
                         if (char === '{') {
                             braceCount++;
