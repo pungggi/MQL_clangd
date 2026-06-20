@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.1.62
 
 ### Fixes
 
-- **Outline duplicates and broken Breadcrumbs** (#65): Every function appeared twice in the Outline (`Ctrl+Shift+O`) and clicking a function in Breadcrumbs jumped to the end of the *previous* function. Two root causes:
+- **Outline duplicates and broken Breadcrumbs** (#65): Every function appeared twice in the Outline (`Ctrl+Shift+O`) and clicking a function in Breadcrumbs jumped to the end of the _previous_ function. Two root causes:
   - `^\s*` in the symbol regexes consumed newlines in multiline mode, so a blank line before a function caused `match.index` to point to the empty line rather than the function signature — the symbol's start line was off by one (Variant A).
   - The regexes ran against raw document text, so a function signature written inside a `/* */` doc-comment produced a phantom symbol whose range started inside the comment, alongside the real symbol (Variant B).
   - The enum `braceCount` started at `1` but the loop also counted the opening `{` on the enum line, causing double-counting and the enum range to extend far beyond its closing `};`.
