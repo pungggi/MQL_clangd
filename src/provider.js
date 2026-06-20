@@ -1029,21 +1029,27 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             // ENUMS
             // =========================================================
-            const enumRegex = /^[ \t]*enum[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*\{/gm;
+            // `[ \t]*` keeps the leading anchor on the `enum` line (so match.index
+            // never jumps to a preceding blank line), but the trailing `\s*\{`
+            // intentionally allows the opening brace on a following line — the
+            // common MQL style (`enum NAME` then `{` on the next line).
+            const enumRegex = /^[ \t]*enum[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{/gm;
             while ((match = enumRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const startLine = pos.line;
 
-                // Find closing brace (start at 0 — the loop counts the opening { itself)
+                // Find closing brace — `foundOpen` handles the brace being on the
+                // enum line OR a later line (brace-count on comment-stripped lines).
                 let braceCount = 0;
+                let foundOpen = false;
                 let endLine = startLine;
-                for (let i = startLine; i < strippedLines.length && (braceCount > 0 || i === startLine); i++) {
+                for (let i = startLine; i < strippedLines.length; i++) {
                     const lineText = strippedLines[i];
                     for (const char of lineText) {
-                        if (char === '{') braceCount++;
+                        if (char === '{') { braceCount++; foundOpen = true; }
                         else if (char === '}') braceCount--;
                     }
-                    if (braceCount === 0 && i > startLine) { endLine = i; break; }
+                    if (foundOpen && braceCount === 0) { endLine = i; break; }
                 }
 
                 const range = new vscode.Range(startLine, 0, endLine, lines[endLine]?.length || 0);
@@ -1104,15 +1110,19 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             // FUNCTIONS - Including methods inside classes
             // =========================================================
-            // Use ([^)\n]*) so params don't span multiple lines, and run against
-            // strippedText so signatures inside /* */ comments are ignored.
-            const funcRegex = new RegExp(`^[ \\t]*(?:static[ \\t]+)?(?:virtual[ \\t]+)?(?:export[ \\t]+)?(${mqlTypes})[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\(([^)\\n]*)\\)`, 'gm');
+            // `([^)]*)` lets the parameter list span multiple lines (a common
+            // MQL style for overloaded helpers). The leading `[ \t]*` still keeps
+            // match.index anchored on the signature line, and running against
+            // strippedText ignores signatures inside /* */ comments.
+            const funcRegex = new RegExp(`^[ \\t]*(?:static[ \\t]+)?(?:virtual[ \\t]+)?(?:export[ \\t]+)?(${mqlTypes})[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)[ \\t]*\\(([^)]*)\\)`, 'gm');
             while ((match = funcRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const startLine = pos.line;
                 const returnType = match[1];
                 const funcName = match[2];
-                const params = match[3].trim();
+                // Collapse internal whitespace (incl. newlines) so a multi-line
+                // signature renders as a single tidy detail label.
+                const params = match[3].replace(/\s+/g, ' ').trim();
 
                 // Find function body end (brace-count on comment-stripped lines)
                 let braceCount = 0;

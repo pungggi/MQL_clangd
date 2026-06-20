@@ -152,6 +152,59 @@ suite('MQLDocumentSymbolProvider', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Enum with opening brace on the NEXT line (common MQL style, e.g.
+    // tools/stub-generator/test/Trade/Trade.mqh) — PR #66 review
+    // -----------------------------------------------------------------------
+
+    test('enum with opening brace on the next line is detected with correct range', () => {
+        const doc = makeDocument([
+            'enum ENUM_TRADE_REQUEST_ACTIONS',
+            '  {',
+            '   TRADE_ACTION_DEAL    = 0,',
+            '   TRADE_ACTION_PENDING = 1',
+            '  };',
+            '',
+            'void FuncA() {',
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const enums = symbols.filter(s => s.kind === vscode.SymbolKind.Enum);
+        assert.strictEqual(enums.length, 1, 'Expected 1 enum');
+        assert.strictEqual(enums[0].name, 'ENUM_TRADE_REQUEST_ACTIONS');
+        assert.strictEqual(enums[0].range.start.line, 0, 'Enum must start at the enum line');
+        assert.strictEqual(enums[0].range.end.line, 4, 'Enum must end at the }; line');
+
+        const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
+        assert.strictEqual(funcs.length, 1);
+        assert.strictEqual(funcs[0].name, 'FuncA');
+    });
+
+    // -----------------------------------------------------------------------
+    // Multi-line function signature (params span several lines, e.g.
+    // files/LiveLog.mqh's LLF overloads) — PR #66 review
+    // -----------------------------------------------------------------------
+
+    test('function with a multi-line parameter list is detected once with correct range', () => {
+        const doc = makeDocument([
+            'void LLF(string fmt, string a1 = "", string a2 = "",',
+            '         string a3 = "", string a4 = "",',
+            '         string a5 = "") {',
+            '   int x = 0;',
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
+        assert.strictEqual(funcs.length, 1, 'Expected exactly 1 function symbol');
+        assert.strictEqual(funcs[0].name, 'LLF');
+        assert.strictEqual(funcs[0].range.start.line, 0, 'Must start at the signature line');
+        assert.strictEqual(funcs[0].range.end.line, 4, 'Must end at the closing brace');
+        // Detail label collapses the multi-line params onto one line
+        assert.ok(!funcs[0].detail.includes('\n'), 'Detail must not contain newlines');
+    });
+
+    // -----------------------------------------------------------------------
     // Correct range for function following another
     // -----------------------------------------------------------------------
 
