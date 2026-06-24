@@ -40,6 +40,7 @@ const { ArrangeCharts, createStatusBar } = require('./chartLayout');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, IncludeDefinitionProvider, getObjItems, clearSymbolCache, getIncludeDir } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const compileStatusBar = require('./compileStatusBar');
+const { InputCodeLensProvider, buildSetContent } = require('./inputCodeLens');
 const unresolvedSymbolWatcher = require('./unresolvedSymbolWatcher');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged, CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
 const { decodeTextBuffer } = require('./textDecoding');
@@ -3108,6 +3109,26 @@ function activate(context) {
 
     // Status-bar item reflecting the last compile/syntax-check result.
     compileStatusBar.activate(context);
+
+    // CodeLens above each input block — group label + "Copy as .set".
+    const inputCodeLensEmitter = new vscode.EventEmitter();
+    context.subscriptions.push(inputCodeLensEmitter);
+    context.subscriptions.push(vscode.languages.registerCodeLensProvider(
+        [{ language: 'mql5' }, { language: 'mql4' }, { pattern: '**/*.{mq4,mq5,mqh}' }],
+        new InputCodeLensProvider(inputCodeLensEmitter.event)
+    ));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.copyInputsAsSet', async () => {
+        const doc = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
+        if (!doc || !/\.(mq4|mq5|mqh)$/i.test(doc.fileName)) return;
+        const content = buildSetContent(doc);
+        if (!content) {
+            vscode.window.showInformationMessage('No input parameters found in this file.');
+            return;
+        }
+        await vscode.env.clipboard.writeText(content);
+        const count = content.trim().split('\n').length;
+        vscode.window.showInformationMessage(`Copied ${count} input(s) as .set to clipboard.`);
+    }));
 
     // Register on-save unresolved-symbol watcher (decoration + Hint diagnostics + quick fix)
     unresolvedSymbolWatcher.activate(context, getIncludeDir);

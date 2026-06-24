@@ -461,6 +461,24 @@ function Hover_MQL() {
             }
 
             // =================================================================
+            // PRIORITY 1b: Predefined MQL5 event handler — signature + docs
+            // =================================================================
+            const evInfo = MQL_EVENT_HANDLER_INFO[word];
+            if (evInfo && MQL_EVENT_HANDLERS.has(word)) {
+                const contents = new vscode.MarkdownString();
+                contents.isTrusted = true;
+                contents.appendMarkdown(`**${word}** — MQL5 Event Handler (${evInfo.kind})`);
+                contents.appendMarkdown('\n\n');
+                contents.appendCodeblock(evInfo.signature, 'cpp');
+                contents.appendMarkdown('\n' + evInfo.desc);
+                const docsUrl = getMql5DocsUrl(word);
+                if (docsUrl) {
+                    contents.appendMarkdown(`\n\n[Online docs](${docsUrl})`);
+                }
+                return new vscode.Hover(contents, range);
+            }
+
+            // =================================================================
             // PRIORITY 2: Check MQL library items
             // =================================================================
             if (!(word in getObjItems())) return undefined;
@@ -985,6 +1003,85 @@ const MQL_EVENT_HANDLERS = new Set([
     'OnTesterDeinit',
     'OnTesterPass'
 ]);
+
+/**
+ * Canonical signatures + short descriptions for the predefined MQL5 event
+ * handlers. Powers the rich hover over user-defined handlers in source.
+ * Keys must match MQL_EVENT_HANDLERS exactly.
+ * https://www.mql5.com/en/docs/event_handlers
+ */
+const MQL_EVENT_HANDLER_INFO = {
+    OnStart: {
+        signature: 'void OnStart()',
+        kind: 'Script',
+        desc: 'Called once when a script starts executing. Has no parameters.'
+    },
+    OnInit: {
+        signature: 'int OnInit()',
+        kind: 'Initialization',
+        desc: 'Called after the EA/indicator is loaded and its inputs are set. Return `INIT_SUCCEEDED` (0), `INIT_FAILED` (1) to abort, or `INIT_PARAMETERS_INCORRECT` (2) to flag bad inputs.'
+    },
+    OnDeinit: {
+        signature: 'void OnDeinit(const int reason)',
+        kind: 'Deinitialization',
+        desc: 'Called before the EA/indicator is unloaded. `reason` is a `WRONG_VALUE`..`REASON_` code identifying why (chart closed, input change, recompile, etc.).'
+    },
+    OnTick: {
+        signature: 'void OnTick()',
+        kind: 'Market data',
+        desc: 'Fired for an EA on every new tick (quote change) of the symbol/chart it is attached to.'
+    },
+    OnCalculate: {
+        signature: 'int OnCalculate(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[])',
+        kind: 'Market data',
+        desc: 'Fired for a custom indicator whenever a new tick arrives. Return the number of rates calculated (`rates_total` once fully built) so MT5 can resume on the next call.'
+    },
+    OnTimer: {
+        signature: 'void OnTimer()',
+        kind: 'Timer',
+        desc: 'Periodic callback fired by the timer set with `EventSetTimer` (seconds) or `EventSetMillisecondTimer`.'
+    },
+    OnTrade: {
+        signature: 'void OnTrade()',
+        kind: 'Trading',
+        desc: 'Fired after the terminal order/position state changes. Use for lightweight reactions; for full transaction detail see `OnTradeTransaction`.'
+    },
+    OnTradeTransaction: {
+        signature: 'void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)',
+        kind: 'Trading',
+        desc: 'Receives detailed trade-transaction notifications (`trans`) together with the originating request/result. The authoritative event for tracking order/deal/position state changes.'
+    },
+    OnBookEvent: {
+        signature: 'void OnBookEvent(const string book_event)',
+        kind: 'Market data',
+        desc: 'Fired for Depth of Market (DOM) events for a symbol subscribed via `MarketBookAdd`. `book_event` is the symbol name.'
+    },
+    OnChartEvent: {
+        signature: 'void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)',
+        kind: 'GUI / Events',
+        desc: 'Handles chart-level events (object click, keypress, mouse, custom `EventChartCustom` messages). `id` is a `CHARTEVENT_` constant; the remaining params carry event-specific data.'
+    },
+    OnTester: {
+        signature: 'double OnTester()',
+        kind: 'Strategy tester',
+        desc: 'Called at the end of a single tester pass. Return a custom optimization criterion (double) used as the ranking value in genetic optimization.'
+    },
+    OnTesterInit: {
+        signature: 'int OnTesterInit(const string &parameters)',
+        kind: 'Strategy tester',
+        desc: 'Called once before a multi-currency/network optimization starts. `parameters` is the semicolon-separated optimization parameter list. Return `INIT_SUCCEEDED`/`INIT_FAILED`.'
+    },
+    OnTesterDeinit: {
+        signature: 'void OnTesterDeinit(const int reason)',
+        kind: 'Strategy tester',
+        desc: 'Called after an optimization completes, allowing post-processing of the accumulated results file.'
+    },
+    OnTesterPass: {
+        signature: 'void OnTesterPass()',
+        kind: 'Strategy tester',
+        desc: 'Fired as each optimization frame is computed, so you can read `FrameFilter`/`FrameNext` results incrementally during a network optimization.'
+    }
+};
 
 /**
  * Wrap a list of sibling symbols in a single collapsible group node.
