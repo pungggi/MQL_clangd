@@ -37,8 +37,9 @@ const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
 const { ArrangeCharts, createStatusBar } = require('./chartLayout');
-const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache, getIncludeDir } = require('./provider');
+const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, IncludeDefinitionProvider, getObjItems, clearSymbolCache, getIncludeDir } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
+const compileStatusBar = require('./compileStatusBar');
 const unresolvedSymbolWatcher = require('./unresolvedSymbolWatcher');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged, CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
 const { decodeTextBuffer } = require('./textDecoding');
@@ -704,9 +705,13 @@ async function compilePath(rt, pathToCompile, _context) {
             log = replaceLog(data, rt === COMPILE_MODE_CHECK, useWine ? winePrefix : '');
 
             // Publish MetaEditor diagnostics to the Problems panel
+            let errorCount = 0;
+            let warningCount = 0;
             if (log.diagnostics.length > 0) {
                 const diagnosticsMap = new Map();
                 for (const diag of log.diagnostics) {
+                    if (diag.severity === vscode.DiagnosticSeverity.Error) errorCount++;
+                    else warningCount++;
                     const uri = vscode.Uri.file(diag.file);
                     if (!diagnosticsMap.has(uri.toString())) {
                         diagnosticsMap.set(uri.toString(), []);
@@ -731,6 +736,14 @@ async function compilePath(rt, pathToCompile, _context) {
 
             const cpuArchTag = cpuArchActive ? ` [${cpuArchSetting.toUpperCase()}]` : '';
             outputChannel.appendLine(`[${time}] ${teq} ${targetLabel}${cpuArchTag} [${timeCompile}s]`);
+
+            // Reflect the result in the status bar (click → Problems panel).
+            compileStatusBar.update({
+                errorCount,
+                warningCount,
+                targetLabel,
+                check: rt === COMPILE_MODE_CHECK
+            });
 
             if (rt === COMPILE_MODE_SCRIPT && !log.error) {
                 if (useWine) {
@@ -3071,6 +3084,19 @@ function activate(context) {
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider('mql-output', DefinitionProvider()));
+    // Go to Definition / Ctrl-Click on `#include` lines opens the header.
+    // `getIncludeDir` requires an active document; pass a lazy accessor that
+    // resolves against the currently active editor's document.
+    const activeDocIncludeDir = () => {
+        const doc = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
+        return doc ? getIncludeDir(doc) : null;
+    };
+    context.subscriptions.push(
+        vscode.languages.registerDefinitionProvider(
+            [{ language: 'mql5' }, { language: 'mql4' }, { pattern: '**/*.{mq4,mq5,mqh}' }],
+            IncludeDefinitionProvider(activeDocIncludeDir)
+        )
+    );
     context.subscriptions.push(vscode.languages.registerHoverProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, Hover_MQL()));
     context.subscriptions.push(vscode.languages.registerColorProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, ColorProvider()));
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, ItemProvider()));
@@ -3079,6 +3105,9 @@ function activate(context) {
 
     // Register lightweight diagnostics (instant feedback without MetaEditor)
     registerLightweightDiagnostics(context);
+
+    // Status-bar item reflecting the last compile/syntax-check result.
+    compileStatusBar.activate(context);
 
     // Register on-save unresolved-symbol watcher (decoration + Hint diagnostics + quick fix)
     unresolvedSymbolWatcher.activate(context, getIncludeDir);

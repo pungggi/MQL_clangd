@@ -309,6 +309,69 @@ function Hover_log() {
     };
 }
 
+/**
+ * Definition provider for `#include` directives in MQL source files.
+ *
+ * On Go to Definition (or Ctrl/Cmd-Click) over an `#include` line, resolves
+ * the referenced header and returns its location so the header opens.
+ * Resolution rules mirror the MetaEditor preprocessor:
+ *   - `#include <Foo/Bar.mqh>`  → resolved against the configured Include dir.
+ *   - `#include "Bar.mqh"`      → resolved against the current document's dir
+ *                                  first, then the Include dir as a fallback.
+ *
+ * Returns undefined when the path cannot be resolved, so VS Code falls back
+ * to the generic clangd definition provider.
+ *
+ * @param {() => string|null} getIncludeDirFn  Lazy accessor for the include dir
+ *                                             (avoids a circular require on
+ *                                             extension.js at module load).
+ */
+function IncludeDefinitionProvider(getIncludeDirFn) {
+    const resolve = (includePath, fromAngleBracket, document) => {
+        const candidates = [];
+        if (!fromAngleBracket) {
+            // Quoted include: relative to the current document first.
+            const docDir = pathModule.dirname(document.fileName);
+            candidates.push(pathModule.resolve(docDir, includePath));
+        }
+        const incDir = getIncludeDirFn();
+        if (incDir) {
+            candidates.push(pathModule.resolve(incDir, includePath));
+        }
+        for (const candidate of candidates) {
+            if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+                return candidate;
+            }
+        }
+        return null;
+    };
+
+    return {
+        provideDefinition(document, position) {
+            const lineText = document.lineAt(position.line).text;
+            const match = lineText.match(/^#include\s*([<"])([^>"]+)[>"]/);
+            if (!match) return undefined;
+
+            const fromAngleBracket = match[1] === '<';
+            const includePath = match[2];
+
+            // Only respond when the cursor is over the path portion of the line.
+            const pathMatch = lineText.indexOf(includePath);
+            if (position.character < pathMatch || position.character > pathMatch + includePath.length) {
+                return undefined;
+            }
+
+            const resolved = resolve(includePath, fromAngleBracket, document);
+            if (!resolved) return undefined;
+
+            return new vscode.Location(
+                vscode.Uri.file(resolved),
+                new vscode.Position(0, 0)
+            );
+        }
+    };
+}
+
 function DefinitionProvider() {
     return {
         provideDefinition(document, position) {
@@ -1084,10 +1147,16 @@ function MQLDocumentSymbolProvider() {
                 const pos = document.positionAt(match.index);
                 const line = document.lineAt(pos.line);
                 const includePath = match[1];
+                // Label shows only the basename (e.g. LiveLog.mqh) to keep the
+                // Outline narrow and reduce horizontal scrolling; the full
+                // include path is preserved in the detail so it's still visible
+                // on hover/peek.
+                const baseName = pathModule.basename(includePath);
+                const detail = includePath !== baseName ? includePath : '';
 
                 const symbol = new vscode.DocumentSymbol(
-                    `#include <${includePath}>`,
-                    '',
+                    baseName,
+                    detail,
                     vscode.SymbolKind.Module,
                     line.range,
                     line.range
@@ -1363,6 +1432,7 @@ function MQLDocumentSymbolProvider() {
 module.exports = {
     Hover_log,
     DefinitionProvider,
+    IncludeDefinitionProvider,
     Hover_MQL,
     ItemProvider,
     HelpProvider,

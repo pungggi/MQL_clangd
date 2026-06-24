@@ -4,6 +4,11 @@
 
 ### Features
 
+- **UI improvements — Includes & compile status**: 
+  - **Shorter `#include` Outline labels**: Include entries now show only the basename (e.g. `LiveLog.mqh`) instead of the full `#include <…>` line, cutting horizontal scrolling in the Outline tree. The full include path is preserved in the item detail (visible on hover/peek).
+  - **`#include` Go to Definition**: Ctrl/Cmd-Click (or Go to Definition) on an `#include` path now opens the referenced header. Angle-bracket includes (`<Foo/Bar.mqh>`) resolve against the configured Include directory; quoted includes (`"Bar.mqh"`) resolve relative to the current file first, then the Include directory. Unresolvable paths fall through to clangd.
+  - **Compile-result status bar**: A new status-bar item reports the last compile/syntax-check outcome — error count, warning count, target label and MQL version — with an icon and color (red errors, amber warnings, green clean). Click it to focus the Problems panel.
+
 - **Grouped Outline tree**: The Outline (`Ctrl+Shift+O`), Breadcrumbs, and Go to Symbol now collapse the flat preprocessor and input clutter into named group nodes — **Properties**, **Includes**, **Imports**, **Macros**, **Inputs**, and **Event Handlers** — each showing its member count. A group appears only when it has members, and its range spans its children so Breadcrumbs and "reveal in outline" resolve to the group. The **Event Handlers** group collects the predefined MQL5 handlers (`OnInit`, `OnTick`, `OnDeinit`, `OnTimer`, `OnTrade`, `OnChartEvent`, `OnCalculate`, `OnStart`, `OnBookEvent`, `OnTester*`, …); ordinary functions — including user helpers that merely start with `On` — stay at the top level (functions are navigated most, so they remain one expand away). Enums and classes/structs also stay top-level; class methods nest under their class as before.
 
   Refinements:
