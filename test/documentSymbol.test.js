@@ -255,4 +255,63 @@ suite('MQLDocumentSymbolProvider', () => {
         const topLevelFuncs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
         assert.strictEqual(topLevelFuncs.length, 0);
     });
+
+    // -----------------------------------------------------------------------
+    // Grouping: preprocessor/input categories collapse into group nodes
+    // -----------------------------------------------------------------------
+
+    test('properties, includes, macros and inputs are wrapped in group nodes', () => {
+        const doc = makeDocument([
+            '#property copyright "A. Pungitore"',
+            '#property version   "1.30"',
+            '#include <LiveLog.mqh>',
+            '#include <Trade/Trade.mqh>',
+            '#define LOG_INFO 1',
+            'input int InpLookback = 288;',
+            'input double InpGap = 0.0;',
+            '',
+            'void OnInit() {',
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+
+        const groups = symbols.filter(s => s.kind === vscode.SymbolKind.Namespace);
+        const byName = Object.fromEntries(groups.map(g => [g.name, g]));
+
+        assert.ok(byName.Properties, 'Properties group must exist');
+        assert.strictEqual(byName.Properties.children.length, 2);
+
+        assert.ok(byName.Includes, 'Includes group must exist');
+        assert.strictEqual(byName.Includes.children.length, 2);
+
+        assert.ok(byName.Macros, 'Macros group must exist');
+        assert.strictEqual(byName.Macros.children.length, 1);
+
+        assert.ok(byName.Inputs, 'Inputs group must exist');
+        assert.strictEqual(byName.Inputs.children.length, 2);
+
+        // No #import here → no Imports group
+        assert.ok(!byName.Imports, 'Imports group must be omitted when empty');
+
+        // Group range must span its children (breadcrumbs / reveal-in-outline)
+        assert.strictEqual(byName.Includes.range.start.line, 2);
+        assert.strictEqual(byName.Includes.range.end.line, 3);
+
+        // Functions stay top-level (one expand to reach them)
+        const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
+        assert.strictEqual(funcs.length, 1);
+        assert.strictEqual(funcs[0].name, 'OnInit');
+    });
+
+    test('empty categories produce no group nodes', () => {
+        const doc = makeDocument([
+            'void OnInit() {',
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const groups = symbols.filter(s => s.kind === vscode.SymbolKind.Namespace);
+        assert.strictEqual(groups.length, 0, 'No preprocessor/inputs → no group nodes');
+    });
 });

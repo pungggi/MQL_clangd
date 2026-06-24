@@ -900,6 +900,40 @@ function stripMQLComments(text) {
 }
 
 /**
+ * Wrap a list of sibling symbols in a single collapsible group node.
+ * The group's range spans all children (first child start → last child end)
+ * so VS Code can map cursor position to the group for breadcrumbs and
+ * "reveal in outline". Returns null for an empty list so callers can skip
+ * empty categories with a simple .filter(Boolean).
+ *
+ * @param {string} name                Group label (e.g. "Includes").
+ * @param {vscode.DocumentSymbol[]} children  Sibling symbols, in file order.
+ * @returns {vscode.DocumentSymbol|null}
+ */
+function buildSymbolGroup(name, children) {
+    if (!children || children.length === 0) return null;
+
+    let startLine = children[0].range.start.line;
+    let endLine = children[0].range.end.line;
+    for (const child of children) {
+        if (child.range.start.line < startLine) startLine = child.range.start.line;
+        if (child.range.end.line > endLine) endLine = child.range.end.line;
+    }
+
+    const range = new vscode.Range(startLine, 0, endLine, 0);
+    const selectionRange = new vscode.Range(startLine, 0, startLine, 0);
+    const group = new vscode.DocumentSymbol(
+        name,
+        String(children.length),
+        vscode.SymbolKind.Namespace,
+        range,
+        selectionRange
+    );
+    group.children.push(...children);
+    return group;
+}
+
+/**
  * Provides document symbols for MQL files (Outline view, Breadcrumbs, Go to Symbol)
  * Shows: #property, #include, #define, input/sinput, functions, classes/structs
  */
@@ -922,9 +956,14 @@ function MQLDocumentSymbolProvider() {
             const classRanges = [];
 
             // =========================================================
-            // PREPROCESSOR SECTION - Group #property, #include, #define
+            // PREPROCESSOR + INPUTS - Collected into separate arrays so each
+            // category can be wrapped in its own collapsible group node below.
             // =========================================================
-            const preprocessorSymbols = [];
+            const propertySymbols = [];
+            const includeSymbols = [];
+            const defineSymbols = [];
+            const importSymbols = [];
+            const inputSymbols = [];
 
             // #property directives
             const propertyRegex = /^#property\s+(\w+)\s*(.*)/gm;
@@ -942,7 +981,7 @@ function MQLDocumentSymbolProvider() {
                     line.range,
                     line.range
                 );
-                preprocessorSymbols.push(symbol);
+                propertySymbols.push(symbol);
             }
 
             // #include directives
@@ -959,7 +998,7 @@ function MQLDocumentSymbolProvider() {
                     line.range,
                     line.range
                 );
-                preprocessorSymbols.push(symbol);
+                includeSymbols.push(symbol);
             }
 
             // #define macros
@@ -977,7 +1016,7 @@ function MQLDocumentSymbolProvider() {
                     line.range,
                     line.range
                 );
-                preprocessorSymbols.push(symbol);
+                defineSymbols.push(symbol);
             }
 
             // #import directives
@@ -994,14 +1033,7 @@ function MQLDocumentSymbolProvider() {
                     line.range,
                     line.range
                 );
-                preprocessorSymbols.push(symbol);
-            }
-
-            // Group preprocessor symbols if there are any
-            if (preprocessorSymbols.length > 0) {
-                // Sort by line number
-                preprocessorSymbols.sort((a, b) => a.range.start.line - b.range.start.line);
-                symbols.push(...preprocessorSymbols);
+                importSymbols.push(symbol);
             }
 
             // =========================================================
@@ -1023,7 +1055,7 @@ function MQLDocumentSymbolProvider() {
                     line.range,
                     line.range
                 );
-                symbols.push(symbol);
+                inputSymbols.push(symbol);
             }
 
             // =========================================================
@@ -1172,7 +1204,27 @@ function MQLDocumentSymbolProvider() {
                 }
             }
 
-            return symbols;
+            // =========================================================
+            // GROUPING - Wrap the flat preprocessor/input categories in
+            // collapsible group nodes so the Outline reads like a tree.
+            // Enums, classes and functions stay top-level (functions are
+            // navigated most, so we avoid an extra expand to reach them).
+            // A group is emitted only when it has members; its range spans
+            // its children so breadcrumbs and "reveal in outline" work.
+            // =========================================================
+            const groups = [
+                buildSymbolGroup('Properties', propertySymbols),
+                buildSymbolGroup('Includes', includeSymbols),
+                buildSymbolGroup('Imports', importSymbols),
+                buildSymbolGroup('Macros', defineSymbols),
+                buildSymbolGroup('Inputs', inputSymbols)
+            ].filter(Boolean);
+
+            // Order everything by file position so the tree matches source
+            // layout regardless of the Outline "Sort By" setting.
+            return [...groups, ...symbols].sort(
+                (a, b) => a.range.start.line - b.range.start.line
+            );
         }
     };
 }
