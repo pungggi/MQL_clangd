@@ -38,6 +38,8 @@ mocha.addFile(path.resolve(__dirname, 'documentSymbol.test.js'));
 mocha.addFile(path.resolve(__dirname, 'includeFeatures.test.js'));
 mocha.addFile(path.resolve(__dirname, 'inputCodeLens.test.js'));
 mocha.addFile(path.resolve(__dirname, 'liveLogFeatures.test.js'));
+mocha.addFile(path.resolve(__dirname, 'compileStatusBar.test.js'));
+mocha.addFile(path.resolve(__dirname, 'quickFixes.test.js'));
 
 // Run the tests
 mocha.run(failures => {

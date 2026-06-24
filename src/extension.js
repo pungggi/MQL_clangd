@@ -3519,5 +3519,6 @@ module.exports = {
     runConfiguredPostCompileTask,
     resolveHeaderCompilePlan,
     inferMqlDataDirFromPath,
+    MqlCodeActionProvider,
     bumpVersionsInFile: require('./versionBumper').bumpVersionsInFile
 };

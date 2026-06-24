@@ -2,9 +2,15 @@
 const path = require('path');
 
 class Range {
-    constructor(startLine, startChar, endLine, endChar) {
-        this.start = { line: startLine, character: startChar };
-        this.end = { line: endLine, character: endChar };
+    constructor(a, b, c, d) {
+        // Accept both Range(line, char, line, char) and Range(Position, Position)
+        if (a && typeof a === 'object' && 'line' in a) {
+            this.start = { line: a.line, character: a.character };
+            this.end = { line: b.line, character: b.character };
+        } else {
+            this.start = { line: a, character: b };
+            this.end = { line: c, character: d };
+        }
     }
 }
 
@@ -111,6 +117,34 @@ class DocumentSymbol {
     }
 }
 
+/**
+ * Records WorkspaceEdit operations so tests can assert what would be applied.
+ * Each entry: { op: 'insert'|'replace'|'delete', uri, range?, newText? }
+ */
+class WorkspaceEdit {
+    constructor() {
+        this._ops = [];
+    }
+    insert(uri, pos, newText) { this._ops.push({ op: 'insert', uri, range: pos, newText }); }
+    replace(uri, range, newText) { this._ops.push({ op: 'replace', uri, range, newText }); }
+    delete(uri, range) { this._ops.push({ op: 'delete', uri, range }); }
+    get size() { return this._ops.length; }
+    entries() {
+        const map = new Map();
+        for (const o of this._ops) {
+            if (!map.has(o.uri)) map.set(o.uri, []);
+            map.get(o.uri).push([o.range, o.newText === undefined ? null : o.newText]);
+        }
+        return [...map];
+    }
+}
+
+class ThemeColor {
+    constructor(id) { this.id = id; }
+}
+
+const StatusBarAlignment = { Left: 1, Right: 2 };
+
 module.exports = {
     Range,
     Position,
@@ -125,6 +159,9 @@ module.exports = {
     EventEmitter,
     SymbolKind,
     DocumentSymbol,
+    WorkspaceEdit,
+    ThemeColor,
+    StatusBarAlignment,
     env: {
         language: 'en'
     },
@@ -139,7 +176,18 @@ module.exports = {
             show: () => { },
             clear: () => { }
         }),
-        withProgress: (options, task) => task({ report: () => { } })
+        withProgress: (options, task) => task({ report: () => { } }),
+        // Minimal status-bar item mock capturing the last text/state.
+        createStatusBarItem: (alignment, priority) => ({
+            alignment, priority,
+            text: '', tooltip: '', name: '', command: '',
+            backgroundColor: undefined,
+            _shown: false,
+            show() { this._shown = true; },
+            hide() { this._shown = false; },
+            dispose() { this._shown = false; }
+        }),
+        activeTextEditor: null
     },
     workspace: {
         // Allow tests to override getConfiguration behavior
