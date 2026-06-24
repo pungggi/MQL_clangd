@@ -14,3 +14,7 @@
 {"ts":1782209059444,"kind":"slash","value":"/multimodal-proxy","weight":1}
 {"ts":1782209068512,"kind":"slash","value":"/mu","weight":1}
 {"ts":1782209194893,"kind":"slash","value":"/ne","weight":1}
+{"ts":1782294704840,"kind":"ngram","n":3,"tokens":["how","to","test"],"weight":1}
+{"ts":1782294704840,"kind":"ngram","n":3,"tokens":["to","test","all"],"weight":1}
+{"ts":1782294704840,"kind":"ngram","n":3,"tokens":["test","all","of"],"weight":1}
+{"ts":1782294704840,"kind":"ngram","n":3,"tokens":["all","of","these"],"weight":1}

@@ -135,3 +135,12 @@
 {"ts":1782209193948,"requestId":"rmqqhc6aa-76","mode":"profile-slash","result":"produced","providers":[{"provider":"profile-slash","latencyMs":0,"result":"produced"}],"winner":"profile-slash","completionLength":3,"shown":true,"acceptance":"dismissed","displayDurationMs":1034}
 {"ts":1782209194083,"requestId":"rmqqhc730-77","mode":"profile-slash","result":"produced","providers":[{"provider":"profile-slash","latencyMs":0,"result":"produced"}],"winner":"profile-slash","completionLength":2,"shown":true,"acceptance":"dismissed","displayDurationMs":135,"shortHoverDismiss":true}
 {"ts":1782209194893,"requestId":"rmqqhc76r-78","mode":"profile-slash","result":"produced","providers":[{"provider":"profile-slash","latencyMs":0,"result":"produced"}],"winner":"profile-slash","completionLength":1,"shown":true,"acceptance":"dismissed","displayDurationMs":810}
+{"ts":1782294701423,"requestId":"rmqrw8wzm-45","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":109,"result":"aborted"}],"shown":false}
+{"ts":1782294702153,"requestId":"rmqrw8xli-46","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":51,"result":"aborted"}],"shown":false}
+{"ts":1782294702480,"requestId":"rmqrw8xvl-47","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":15,"result":"aborted"}],"shown":false}
+{"ts":1782294703066,"requestId":"rmqrw8y2x-48","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":336,"result":"aborted"}],"shown":false}
+{"ts":1782294703313,"requestId":"rmqrw8ygx-49","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":80,"result":"aborted"}],"shown":false}
+{"ts":1782294703474,"requestId":"rmqrw8ynh-50","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":5,"result":"aborted"}],"shown":false}
+{"ts":1782294703718,"requestId":"rmqrw8ys8-51","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":78,"result":"aborted"}],"shown":false}
+{"ts":1782294704528,"requestId":"rmqrw8zak-52","mode":"llm","result":"aborted","providers":[{"provider":"ghost-router:chat","latencyMs":228,"result":"aborted"}],"shown":false}
+{"ts":1782294705043,"requestId":"rmqrw8zlh-53","mode":"llm","result":"rejected","providers":[{"provider":"ghost-router:chat","latencyMs":350,"result":"rejected","rejectionReason":"stale-text"}],"rejectionReason":"stale-text","shown":false}
