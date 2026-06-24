@@ -35,6 +35,13 @@ function makeDocument(text) {
 
 const provider = MQLDocumentSymbolProvider();
 
+// Predefined MQL5 event-handler names used to assert grouping behavior.
+const MQL_HANDLER_NAMES = new Set([
+    'OnStart', 'OnInit', 'OnDeinit', 'OnTick', 'OnCalculate', 'OnTimer',
+    'OnTrade', 'OnTradeTransaction', 'OnBookEvent', 'OnChartEvent',
+    'OnTester', 'OnTesterInit', 'OnTesterDeinit', 'OnTesterPass'
+]);
+
 suite('MQLDocumentSymbolProvider', () => {
 
     // -----------------------------------------------------------------------
@@ -219,7 +226,9 @@ suite('MQLDocumentSymbolProvider', () => {
         ].join('\n'));
 
         const symbols = provider.provideDocumentSymbols(doc);
-        const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
+        // OnInit/OnDeinit are predefined handlers → nested under the group.
+        const group = symbols.find(s => s.name === 'Event Handlers');
+        const funcs = group.children;
         assert.strictEqual(funcs.length, 2);
         assert.strictEqual(funcs[0].name, 'OnInit');
         assert.strictEqual(funcs[0].range.start.line, 0);
@@ -254,5 +263,223 @@ suite('MQLDocumentSymbolProvider', () => {
         // MyMethod must NOT appear at top level
         const topLevelFuncs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
         assert.strictEqual(topLevelFuncs.length, 0);
+    });
+
+    // -----------------------------------------------------------------------
+    // Grouping: preprocessor/input categories collapse into group nodes
+    // -----------------------------------------------------------------------
+
+    test('properties, includes, macros and inputs are wrapped in group nodes', () => {
+        const doc = makeDocument([
+            '#property copyright "A. Pungitore"',
+            '#property version   "1.30"',
+            '#include <LiveLog.mqh>',
+            '#include <Trade/Trade.mqh>',
+            '#define LOG_INFO 1',
+            'input int InpLookback = 288;',
+            'input double InpGap = 0.0;',
+            '',
+            'void Helper() {',
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+
+        const groups = symbols.filter(s => s.kind === vscode.SymbolKind.Namespace);
+        const byName = Object.fromEntries(groups.map(g => [g.name, g]));
+
+        assert.ok(byName.Properties, 'Properties group must exist');
+        assert.strictEqual(byName.Properties.children.length, 2);
+
+        assert.ok(byName.Includes, 'Includes group must exist');
+        assert.strictEqual(byName.Includes.children.length, 2);
+
+        assert.ok(byName.Macros, 'Macros group must exist');
+        assert.strictEqual(byName.Macros.children.length, 1);
+
+        assert.ok(byName.Inputs, 'Inputs group must exist');
+        assert.strictEqual(byName.Inputs.children.length, 2);
+
+        // No #import here → no Imports group
+        assert.ok(!byName.Imports, 'Imports group must be omitted when empty');
+
+        // Group range must span its children (breadcrumbs / reveal-in-outline).
+        // End must reach the last child's actual end column, not column 0 —
+        // VS Code ranges are end-exclusive, so column 0 would drop the line.
+        assert.strictEqual(byName.Includes.range.start.line, 2);
+        assert.strictEqual(byName.Includes.range.end.line, 3);
+        const lastInclude = byName.Includes.children[byName.Includes.children.length - 1];
+        assert.strictEqual(byName.Includes.range.end.character, lastInclude.range.end.character);
+        assert.ok(byName.Includes.range.end.character > 0, 'Group end must span into the last line');
+
+        // Ordinary (non-handler) functions stay top-level (one expand to reach them)
+        const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
+        assert.strictEqual(funcs.length, 1);
+        assert.strictEqual(funcs[0].name, 'Helper');
+    });
+
+    test('MQL5 event handlers group under "Event Handlers"; other On* helpers stay top-level', () => {
+        const doc = makeDocument([
+            'int OnInit() {',
+            '   return 0;',
+            '}',
+            '',
+            'void OnTick() {',
+            '}',
+            '',
+            'void OnDeinit(const int reason) {',
+            '}',
+            '',
+            'void OnboardUser() {',   // not a predefined handler
+            '}',
+            '',
+            'double Helper() {',
+            '   return 0.0;',
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+
+        const group = symbols.find(s => s.kind === vscode.SymbolKind.Namespace && s.name === 'Event Handlers');
+        assert.ok(group, 'Event Handlers group must exist');
+        const handlerNames = group.children.map(c => c.name).sort();
+        assert.deepStrictEqual(handlerNames, ['OnDeinit', 'OnInit', 'OnTick']);
+        assert.strictEqual(group.detail, '3');
+
+        // OnboardUser and Helper are NOT predefined handlers → top-level functions
+        const topLevelFuncs = symbols.filter(s => s.kind === vscode.SymbolKind.Function).map(s => s.name).sort();
+        assert.deepStrictEqual(topLevelFuncs, ['Helper', 'OnboardUser']);
+
+        // Predefined handlers must NOT also appear at top level
+        assert.ok(!symbols.some(s => s.kind === vscode.SymbolKind.Function && MQL_HANDLER_NAMES.has(s.name)));
+    });
+
+    test('empty categories produce no group nodes', () => {
+        const doc = makeDocument([
+            'void Helper() {',   // ordinary function, no preprocessor/inputs/handlers
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const groups = symbols.filter(s => s.kind === vscode.SymbolKind.Namespace);
+        assert.strictEqual(groups.length, 0, 'No preprocessor/inputs/handlers → no group nodes');
+    });
+
+    // -----------------------------------------------------------------------
+    // Inputs sub-grouped by `input group "..."` sections (mirrors MT5 dialog)
+    // -----------------------------------------------------------------------
+
+    test('inputs are nested under their `input group` sections', () => {
+        const doc = makeDocument([
+            'input int InpMagic = 12345;',          // before any section → ungrouped
+            'input group "Trading"',
+            'input double InpLots = 0.1;',
+            'input int InpSL = 100;',
+            'input group "Session"',
+            'input int InpStartHour = 8;',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const inputs = symbols.find(s => s.kind === vscode.SymbolKind.Namespace && s.name === 'Inputs');
+        assert.ok(inputs, 'Inputs group must exist');
+        // Detail shows the TOTAL input count, not the number of direct children
+        assert.strictEqual(inputs.detail, '4');
+
+        // Direct children: ungrouped input, then the two section nodes (file order)
+        assert.strictEqual(inputs.children[0].name, 'InpMagic');
+        assert.strictEqual(inputs.children[0].kind, vscode.SymbolKind.Field);
+
+        const sections = inputs.children.filter(c => c.kind === vscode.SymbolKind.Namespace);
+        assert.deepStrictEqual(sections.map(s => s.name), ['Trading', 'Session']);
+        assert.deepStrictEqual(sections[0].children.map(c => c.name), ['InpLots', 'InpSL']);
+        assert.strictEqual(sections[0].detail, '2');
+        assert.deepStrictEqual(sections[1].children.map(c => c.name), ['InpStartHour']);
+    });
+
+    test('inputs without any `input group` stay a flat list under Inputs', () => {
+        const doc = makeDocument([
+            'input int InpA = 1;',
+            'input int InpB = 2;',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const inputs = symbols.find(s => s.kind === vscode.SymbolKind.Namespace && s.name === 'Inputs');
+        assert.ok(inputs);
+        assert.strictEqual(inputs.children.length, 2);
+        assert.ok(inputs.children.every(c => c.kind === vscode.SymbolKind.Field));
+    });
+
+    // -----------------------------------------------------------------------
+    // Macros: function-like #define split into a separate group
+    // -----------------------------------------------------------------------
+
+    test('function-like macros split into "Macro Functions"; constants stay in "Macros"', () => {
+        const doc = makeDocument([
+            '#define LOG_INFO 1',
+            '#define PI 3.14159',
+            '#define MAX(a,b) ((a)>(b)?(a):(b))',
+            '#define SQUARE(x) ((x)*(x))',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const macros = symbols.find(s => s.kind === vscode.SymbolKind.Namespace && s.name === 'Macros');
+        const macroFns = symbols.find(s => s.kind === vscode.SymbolKind.Namespace && s.name === 'Macro Functions');
+
+        assert.ok(macros, 'Macros group must exist');
+        assert.deepStrictEqual(macros.children.map(c => c.name), ['LOG_INFO', 'PI']);
+
+        assert.ok(macroFns, 'Macro Functions group must exist');
+        assert.deepStrictEqual(macroFns.children.map(c => c.name), ['MAX(a,b)', 'SQUARE(x)']);
+        assert.ok(macroFns.children.every(c => c.kind === vscode.SymbolKind.Function));
+    });
+
+    test('object-like macro with a parenthesised value is NOT treated as function-like', () => {
+        const doc = makeDocument([
+            '#define WRAPPED (1 + 2)',   // space before ( → object-like constant
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const macros = symbols.find(s => s.kind === vscode.SymbolKind.Namespace && s.name === 'Macros');
+        assert.ok(macros);
+        assert.deepStrictEqual(macros.children.map(c => c.name), ['WRAPPED']);
+        assert.ok(!symbols.some(s => s.name === 'Macro Functions'));
+    });
+
+    // -----------------------------------------------------------------------
+    // Alphabetical sort toggle (mql_tools.Outline.SortGroupChildren)
+    // -----------------------------------------------------------------------
+
+    test('SortGroupChildren=true sorts group children by name', () => {
+        const doc = makeDocument([
+            '#include <Zebra.mqh>',
+            '#include <Alpha.mqh>',
+            '#include <Mango.mqh>',
+        ].join('\n'));
+
+        vscode.workspace._configMock = { get: (key) => key === 'Outline.SortGroupChildren' };
+        try {
+            const symbols = provider.provideDocumentSymbols(doc);
+            const includes = symbols.find(s => s.name === 'Includes');
+            assert.deepStrictEqual(
+                includes.children.map(c => c.name),
+                ['#include <Alpha.mqh>', '#include <Mango.mqh>', '#include <Zebra.mqh>']
+            );
+        } finally {
+            vscode.workspace._configMock = null;
+        }
+    });
+
+    test('SortGroupChildren default (off) keeps source order', () => {
+        const doc = makeDocument([
+            '#include <Zebra.mqh>',
+            '#include <Alpha.mqh>',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+        const includes = symbols.find(s => s.name === 'Includes');
+        assert.deepStrictEqual(
+            includes.children.map(c => c.name),
+            ['#include <Zebra.mqh>', '#include <Alpha.mqh>']
+        );
     });
 });
