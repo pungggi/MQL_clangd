@@ -25,6 +25,39 @@ const { execFile } = require('child_process');
 const STATUS_SETTING = 'mql_tools.ChartLayout.ShowStatusBarButton';
 let statusItem = null;
 
+// The MT5 timeframe vocabulary. Kept in sync with $TF_BARE in
+// scripts/mt5-arrange-charts.ps1 — when the worker sees that EVERY area cell
+// is one of these, it switches to timeframe-match mode. A typo in a cell
+// (e.g. "N1" for "M1", or "30" for "M30") silently breaks that detection and
+// the layout falls back to order-fill, so we flag likely typos client-side.
+const TIMEFRAMES = new Set([
+    'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M10', 'M12', 'M15', 'M20', 'M30',
+    'H1', 'H2', 'H3', 'H4', 'H6', 'H8', 'H12', 'D1', 'W1', 'MN1',
+]);
+
+// A cell "looks like" a timeframe typo when it is NOT a known timeframe but
+// has a timeframe shape: optional letters then digits (e.g. "30", "N1", "M7",
+// "H5", "MN2"). Single letters ("A"/"B"/"C" span names), ".", and free text are
+// left alone — only suspects that would silently disable timeframe-match mode
+// are reported.
+const TF_TYPO_RE = /^[A-Za-z]*\d+$/;
+function findTimeframeTypos(areas) {
+    if (!areas) return [];
+    const seen = new Set();
+    const suspects = [];
+    for (const row of areas) {
+        for (let cell of String(row).trim().split(/\s+/)) {
+            cell = cell.trim();
+            if (cell === '' || cell === '.' || seen.has(cell)) continue;
+            if (!TIMEFRAMES.has(cell) && TF_TYPO_RE.test(cell)) {
+                seen.add(cell);
+                suspects.push(cell);
+            }
+        }
+    }
+    return suspects;
+}
+
 // Fallbacks used when the user has not configured any presets.
 const DEFAULT_PRESETS = [
     { name: 'wall', docked: { monitor: 1, rows: 2, cols: 3 }, gap: 0 },
@@ -66,7 +99,16 @@ function normalizePreset(p) {
     if (!docked) return null;
     const floating = normalizeGrid(p.floating); // optional
     const gap = Math.max(0, Math.trunc(Number(p.gap)) || 0);
-    return { name: p.name.trim(), docked, floating, gap };
+    // Warn (don't reject) about timeframe-shaped cells that aren't real
+    // timeframes — they silently knock the layout out of timeframe-match mode.
+    const typos = Array.from(new Set([
+        ...findTimeframeTypos(docked.areas),
+        ...findTimeframeTypos(floating && floating.areas),
+    ]));
+    const warning = typos.length
+        ? `unknown timeframe cell${typos.length > 1 ? 's' : ''}: ${typos.join(', ')} — will fall back to order-fill`
+        : null;
+    return { name: p.name.trim(), docked, floating, gap, warning };
 }
 
 // CLI args for one grid group. `grid` is null when a floating group is absent
@@ -117,6 +159,7 @@ function gridLabel(g) {
 function describe(preset) {
     let s = `docked ${gridLabel(preset.docked)} on mon ${preset.docked.monitor}`;
     if (preset.floating) s += `  •  floating ${gridLabel(preset.floating)} on mon ${preset.floating.monitor}`;
+    if (preset.warning) s += `  ⚠ ${preset.warning}`;
     return s;
 }
 
@@ -133,10 +176,22 @@ async function ArrangeCharts(context) {
     }
 
     const pick = await vscode.window.showQuickPick(
-        presets.map(p => ({ label: p.name, detail: describe(p), preset: p })),
+        presets.map(p => ({
+            label: p.warning ? `$(warning) ${p.name}` : p.name,
+            detail: describe(p),
+            preset: p,
+        })),
         { placeHolder: 'Select a chart layout preset' }
     );
     if (!pick) return;
+
+    // Timeframe-shaped typos don't fail the run, but they silently drop the
+    // layout into order-fill mode — tell the user before we tile.
+    if (pick.preset.warning) {
+        vscode.window.showWarningMessage(
+            `Preset "${pick.preset.name}": ${pick.preset.warning}. Tiling anyway.`
+        );
+    }
 
     const scriptPath = path.join(context.extensionPath, 'scripts', 'mt5-arrange-charts.ps1');
     try {
@@ -179,4 +234,10 @@ function createStatusBar(context) {
     applyStatusVisibility();
 }
 
-module.exports = { ArrangeCharts, createStatusBar, DEFAULT_PRESETS };
+module.exports = {
+    ArrangeCharts,
+    createStatusBar,
+    DEFAULT_PRESETS,
+    TIMEFRAMES,
+    findTimeframeTypos,
+};

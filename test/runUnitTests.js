@@ -40,6 +40,7 @@ mocha.addFile(path.resolve(__dirname, 'inputCodeLens.test.js'));
 mocha.addFile(path.resolve(__dirname, 'liveLogFeatures.test.js'));
 mocha.addFile(path.resolve(__dirname, 'compileStatusBar.test.js'));
 mocha.addFile(path.resolve(__dirname, 'quickFixes.test.js'));
+mocha.addFile(path.resolve(__dirname, 'chartLayout.test.js'));
 
 // Run the tests
 mocha.run(failures => {
