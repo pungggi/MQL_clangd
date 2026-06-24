@@ -142,7 +142,9 @@ async function ArrangeCharts(context) {
     try {
         const result = await runArrangeScript(scriptPath, pick.preset);
         updateStatusLabel(pick.preset.name);
-        vscode.window.showInformationMessage(result.replace(/^OK\s*/, 'Charts arranged — '));
+        // Transient success notification: shows in the status bar and auto-
+        // dismisses after 4s instead of lingering as a dismissable toast.
+        vscode.window.setStatusBarMessage(result.replace(/^OK\s*/, 'Charts arranged — '), 4000);
     } catch (e) {
         vscode.window.showErrorMessage(`Arrange MT5 Charts failed: ${e.message}`);
     }
