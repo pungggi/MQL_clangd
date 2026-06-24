@@ -35,6 +35,13 @@ function makeDocument(text) {
 
 const provider = MQLDocumentSymbolProvider();
 
+// Predefined MQL5 event-handler names used to assert grouping behavior.
+const MQL_HANDLER_NAMES = new Set([
+    'OnStart', 'OnInit', 'OnDeinit', 'OnTick', 'OnCalculate', 'OnTimer',
+    'OnTrade', 'OnTradeTransaction', 'OnBookEvent', 'OnChartEvent',
+    'OnTester', 'OnTesterInit', 'OnTesterDeinit', 'OnTesterPass'
+]);
+
 suite('MQLDocumentSymbolProvider', () => {
 
     // -----------------------------------------------------------------------
@@ -219,7 +226,9 @@ suite('MQLDocumentSymbolProvider', () => {
         ].join('\n'));
 
         const symbols = provider.provideDocumentSymbols(doc);
-        const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
+        // OnInit/OnDeinit are predefined handlers → nested under the group.
+        const group = symbols.find(s => s.name === 'Event Handlers');
+        const funcs = group.children;
         assert.strictEqual(funcs.length, 2);
         assert.strictEqual(funcs[0].name, 'OnInit');
         assert.strictEqual(funcs[0].range.start.line, 0);
@@ -270,7 +279,7 @@ suite('MQLDocumentSymbolProvider', () => {
             'input int InpLookback = 288;',
             'input double InpGap = 0.0;',
             '',
-            'void OnInit() {',
+            'void Helper() {',
             '}',
         ].join('\n'));
 
@@ -303,20 +312,56 @@ suite('MQLDocumentSymbolProvider', () => {
         assert.strictEqual(byName.Includes.range.end.character, lastInclude.range.end.character);
         assert.ok(byName.Includes.range.end.character > 0, 'Group end must span into the last line');
 
-        // Functions stay top-level (one expand to reach them)
+        // Ordinary (non-handler) functions stay top-level (one expand to reach them)
         const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
         assert.strictEqual(funcs.length, 1);
-        assert.strictEqual(funcs[0].name, 'OnInit');
+        assert.strictEqual(funcs[0].name, 'Helper');
+    });
+
+    test('MQL5 event handlers group under "Event Handlers"; other On* helpers stay top-level', () => {
+        const doc = makeDocument([
+            'int OnInit() {',
+            '   return 0;',
+            '}',
+            '',
+            'void OnTick() {',
+            '}',
+            '',
+            'void OnDeinit(const int reason) {',
+            '}',
+            '',
+            'void OnboardUser() {',   // not a predefined handler
+            '}',
+            '',
+            'double Helper() {',
+            '   return 0.0;',
+            '}',
+        ].join('\n'));
+
+        const symbols = provider.provideDocumentSymbols(doc);
+
+        const group = symbols.find(s => s.kind === vscode.SymbolKind.Namespace && s.name === 'Event Handlers');
+        assert.ok(group, 'Event Handlers group must exist');
+        const handlerNames = group.children.map(c => c.name).sort();
+        assert.deepStrictEqual(handlerNames, ['OnDeinit', 'OnInit', 'OnTick']);
+        assert.strictEqual(group.detail, '3');
+
+        // OnboardUser and Helper are NOT predefined handlers → top-level functions
+        const topLevelFuncs = symbols.filter(s => s.kind === vscode.SymbolKind.Function).map(s => s.name).sort();
+        assert.deepStrictEqual(topLevelFuncs, ['Helper', 'OnboardUser']);
+
+        // Predefined handlers must NOT also appear at top level
+        assert.ok(!symbols.some(s => s.kind === vscode.SymbolKind.Function && MQL_HANDLER_NAMES.has(s.name)));
     });
 
     test('empty categories produce no group nodes', () => {
         const doc = makeDocument([
-            'void OnInit() {',
+            'void Helper() {',   // ordinary function, no preprocessor/inputs/handlers
             '}',
         ].join('\n'));
 
         const symbols = provider.provideDocumentSymbols(doc);
         const groups = symbols.filter(s => s.kind === vscode.SymbolKind.Namespace);
-        assert.strictEqual(groups.length, 0, 'No preprocessor/inputs → no group nodes');
+        assert.strictEqual(groups.length, 0, 'No preprocessor/inputs/handlers → no group nodes');
     });
 });

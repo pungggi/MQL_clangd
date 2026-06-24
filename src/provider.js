@@ -900,6 +900,30 @@ function stripMQLComments(text) {
 }
 
 /**
+ * The predefined MQL5 event-handler functions. Top-level functions whose name
+ * is in this set are collected under an "Event Handlers" Outline group; any
+ * other On*-prefixed function (e.g. a user helper like OnboardUser) stays a
+ * normal top-level function.
+ * https://www.mql5.com/en/docs/event_handlers
+ */
+const MQL_EVENT_HANDLERS = new Set([
+    'OnStart',
+    'OnInit',
+    'OnDeinit',
+    'OnTick',
+    'OnCalculate',
+    'OnTimer',
+    'OnTrade',
+    'OnTradeTransaction',
+    'OnBookEvent',
+    'OnChartEvent',
+    'OnTester',
+    'OnTesterInit',
+    'OnTesterDeinit',
+    'OnTesterPass'
+]);
+
+/**
  * Wrap a list of sibling symbols in a single collapsible group node.
  * The group's range spans all children (first child start → last child end)
  * so VS Code can map cursor position to the group for breadcrumbs and
@@ -973,6 +997,7 @@ function MQLDocumentSymbolProvider() {
             const defineSymbols = [];
             const importSymbols = [];
             const inputSymbols = [];
+            const eventSymbols = [];
 
             // #property directives
             const propertyRegex = /^#property\s+(\w+)\s*(.*)/gm;
@@ -1208,16 +1233,20 @@ function MQLDocumentSymbolProvider() {
                     // Add as child of class
                     funcSymbol.kind = vscode.SymbolKind.Method;
                     parentClass.symbol.children.push(funcSymbol);
+                } else if (MQL_EVENT_HANDLERS.has(funcName)) {
+                    // Predefined MQL5 event handler → "Event Handlers" group
+                    eventSymbols.push(funcSymbol);
                 } else {
                     symbols.push(funcSymbol);
                 }
             }
 
             // =========================================================
-            // GROUPING - Wrap the flat preprocessor/input categories in
-            // collapsible group nodes so the Outline reads like a tree.
-            // Enums, classes and functions stay top-level (functions are
-            // navigated most, so we avoid an extra expand to reach them).
+            // GROUPING - Wrap the flat preprocessor/input categories, plus
+            // the predefined MQL5 event handlers, in collapsible group nodes
+            // so the Outline reads like a tree. Enums, classes and ordinary
+            // (non-handler) functions stay top-level — functions are
+            // navigated most, so we avoid an extra expand to reach them.
             // A group is emitted only when it has members; its range spans
             // its children so breadcrumbs and "reveal in outline" work.
             // =========================================================
@@ -1226,7 +1255,8 @@ function MQLDocumentSymbolProvider() {
                 buildSymbolGroup('Includes', includeSymbols),
                 buildSymbolGroup('Imports', importSymbols),
                 buildSymbolGroup('Macros', defineSymbols),
-                buildSymbolGroup('Inputs', inputSymbols)
+                buildSymbolGroup('Inputs', inputSymbols),
+                buildSymbolGroup('Event Handlers', eventSymbols)
             ].filter(Boolean);
 
             // Order everything by file position so the tree matches source
