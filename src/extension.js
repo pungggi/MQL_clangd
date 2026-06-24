@@ -1477,6 +1477,20 @@ class MqlCodeActionProvider {
                 actions.push(...conversionActions);
             }
 
+            // Phase 5: General "implicit conversion from 'A' to 'B'" (clangd -Wconversion / MetaEditor).
+            // Broader than MQL181: covers int→double, double→int, etc. Offer an explicit cast.
+            if (!errorCode || (errorCode !== 'MQL181')) {
+                const castActions = this._createExplicitCastActions(document, diagnostic);
+                actions.push(...castActions);
+            }
+
+            // Phase 6: Unused variable / declaration (clangd -Wunused-*, MetaEditor).
+            // Offer to comment out the declaration line.
+            {
+                const unusedActions = this._createUnusedVariableActions(document, diagnostic);
+                actions.push(...unusedActions);
+            }
+
         }
 
         return actions;
@@ -2537,6 +2551,112 @@ class MqlCodeActionProvider {
         } else if (valueToWrap.includes('.')) {
             doubleAction.isPreferred = true;
         }
+
+        return actions;
+    }
+
+    /**
+     * Phase 5: Wrap an "implicit conversion from 'A' to 'B'" site in an
+     * explicit cast. Covers the clangd -Wconversion / MetaEditor warnings that
+     * the narrower MQL181 (number→string) handler does not — e.g.
+     * int→double, double→int, int→bool.
+     */
+    _createExplicitCastActions(document, diagnostic) {
+        const actions = [];
+        const msg = diagnostic.message || '';
+
+        // "implicit conversion from 'int' to 'double'"  (clangd/MetaEditor)
+        const conv = msg.match(/implicit conversion(?:\s+\w+)?\s+from\s+'?(\w+)'?\s+to\s+'?(\w+)'?/i);
+        if (!conv) return actions;
+
+        const fromType = conv[1];
+        const toType = conv[2];
+
+        // No cast needed when the types are the same (defensive) or when the
+        // target is already 'string' (handled by the ToString handler).
+        if (!toType || toType.toLowerCase() === 'string' || fromType === toType) return actions;
+
+        const range = diagnostic.range;
+        let targetRange = range;
+
+        // clangd often reports a 1-char range at the conversion start; expand to
+        // the surrounding identifier/expression so the cast wraps the real operand.
+        if (range.end.character - range.start.character <= 1) {
+            const wordRange = document.getWordRangeAtPosition(range.start, /[\w.]+/);
+            if (wordRange) targetRange = wordRange;
+        }
+
+        const valueToWrap = document.getText(targetRange);
+        if (!valueToWrap || /^\(.*\)$/.test(valueToWrap.trim())) return actions; // already cast
+
+        const action = new vscode.CodeAction(
+            `MQL: Wrap with explicit (${toType}) cast`,
+            vscode.CodeActionKind.QuickFix
+        );
+        action.edit = new vscode.WorkspaceEdit();
+        action.edit.replace(
+            document.uri,
+            targetRange,
+            `(${toType})${/^[A-Za-z_]/.test(valueToWrap) ? ' ' : ''}${valueToWrap}`
+        );
+        action.diagnostics = [diagnostic];
+        actions.push(action);
+
+        return actions;
+    }
+
+    /**
+     * Phase 6: Quick fixes for unused variables / declarations (clangd
+     * -Wunused-variable, MetaEditor "variable 'X' not used"). Offers to comment
+     * out the declaration line, and to remove it.
+     */
+    _createUnusedVariableActions(document, diagnostic) {
+        const actions = [];
+        const msg = (diagnostic.message || '').toLowerCase();
+
+        const isUnused = msg.includes('unused variable') ||
+            msg.includes('unused declaration') ||
+            msg.includes('declared but not used') ||
+            msg.includes("is not used") ||
+            msg.includes("not used") && msg.includes('variable');
+        if (!isUnused) return actions;
+
+        const line = diagnostic.range.start.line;
+        const lineObj = document.lineAt(line);
+        const lineText = lineObj.text;
+        if (!lineText.trim() || lineText.trim().startsWith('//')) return actions;
+
+        const indent = this._getIndent(document, line);
+
+        // Fix 1: comment out the declaration (preserves it for easy revert).
+        const commentAction = new vscode.CodeAction(
+            'MQL: Comment out unused declaration',
+            vscode.CodeActionKind.QuickFix
+        );
+        commentAction.edit = new vscode.WorkspaceEdit();
+        commentAction.edit.replace(
+            document.uri,
+            lineObj.range,
+            `${indent}// ${lineText.trimStart()}`
+        );
+        commentAction.diagnostics = [diagnostic];
+        actions.push(commentAction);
+
+        // Fix 2: remove the whole line (cleaner, for confident removals).
+        const removeAction = new vscode.CodeAction(
+            'MQL: Remove unused declaration',
+            vscode.CodeActionKind.QuickFix
+        );
+        removeAction.edit = new vscode.WorkspaceEdit();
+        removeAction.edit.delete(
+            document.uri,
+            new vscode.Range(
+                new vscode.Position(line, 0),
+                new vscode.Position(line + 1, 0)
+            )
+        );
+        removeAction.diagnostics = [diagnostic];
+        actions.push(removeAction);
 
         return actions;
     }
