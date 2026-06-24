@@ -663,6 +663,16 @@
                 "category": "MQL"
             },
             {
+                "command": "mql_tools.filterLogLevel",
+                "title": "Filter Live Log by Level",
+                "category": "MQL"
+            },
+            {
+                "command": "mql_tools.copyInputsAsSet",
+                "title": "Copy Inputs as .set File",
+                "category": "MQL"
+            },
+            {
                 "command": "mql_tools.installLiveLog",
                 "title": "Install LiveLog Library",
                 "category": "MQL"

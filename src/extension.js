@@ -41,6 +41,7 @@ const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, Co
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const compileStatusBar = require('./compileStatusBar');
 const { InputCodeLensProvider, buildSetContent } = require('./inputCodeLens');
+const { LiveLogLinkProvider, setWinePrefix: setLiveLogWinePrefix } = require('./liveLogLinks');
 const unresolvedSymbolWatcher = require('./unresolvedSymbolWatcher');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged, CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
 const { decodeTextBuffer } = require('./textDecoding');
@@ -3205,6 +3206,37 @@ function activate(context) {
 
     context.subscriptions.push(vscode.languages.registerHoverProvider('mql-output', Hover_log()));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider('mql-output', DefinitionProvider()));
+    // LiveLog tail: turn `{File:Function:Line}` tags into clickable source links.
+    context.subscriptions.push(
+        vscode.languages.registerDocumentLinkProvider('mql-output', new LiveLogLinkProvider())
+    );
+    // Keep the link provider's Wine prefix in sync with the active config so
+    // `__FILE__` Windows paths resolve correctly under Wine.
+    const refreshLiveLogWine = () => {
+        const cfg = vscode.workspace.getConfiguration('mql_tools');
+        setLiveLogWinePrefix(isWineEnabled(cfg) ? getWinePrefix(cfg) : '');
+    };
+    refreshLiveLogWine();
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('mql_tools.Wine')) refreshLiveLogWine();
+    }));
+    // Level filtering for the LiveLog tail view (INFO/DEBUG/WARN/ERROR/TRADE).
+    const LEVELS = ['INFO', 'DEBUG', 'WARN', 'ERROR', 'TRADE'];
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.filterLogLevel', async () => {
+        const current = new Set(logTailer.getLevelFilter());
+        const items = LEVELS.map(l => ({
+            label: l,
+            picked: current.size === 0 ? false : current.has(l),
+            description: current.size === 0 ? '(all visible)' : (current.has(l) ? 'visible' : 'hidden')
+        }));
+        const picked = await vscode.window.showQuickPick(items, {
+            canPickMany: true,
+            placeHolder: 'Select log levels to show (clear all = show everything)',
+            title: 'MQL Log: Filter by Level'
+        });
+        if (picked === undefined) return; // cancelled
+        logTailer.setLevelFilter(picked.map(i => i.label));
+    }));
     // Go to Definition / Ctrl-Click on `#include` lines opens the header.
     // `getIncludeDir` requires an active document; pass a lazy accessor that
     // resolves against the currently active editor's document.

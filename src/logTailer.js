@@ -23,6 +23,15 @@ class MqlLogTailer {
         this.mode = 'livelog'; // 'standard', 'livelog' or 'common' - default to livelog for real-time updates
         this.basePath = null; // Base MQL folder path
         this.isChecking = false; // Guard against concurrent checkForNewContent() calls
+
+        // --- Level filtering (by LOG_INFO / LOG_DEBUG / ...) ---
+        // `levelFilter === null`  → all lines visible (default).
+        // Otherwise a Set of uppercase level names (INFO/DEBUG/WARN/ERROR/TRADE)
+        // that are shown; everything else is suppressed in the output channel.
+        this.levelFilter = null;
+        this.lineBuffer = [];          // every received line, in order (capped)
+        this.pendingPartial = '';      // incomplete trailing chunk awaiting a '\n'
+        this.MAX_BUFFER = 20000;
     }
 
     /**
@@ -232,6 +241,8 @@ class MqlLogTailer {
 
         // Set initial size and start tailing before any file operations
         this.lastSize = 0;
+        this.lineBuffer = [];
+        this.pendingPartial = '';
         this.isTailing = true;
 
         // In livelog mode, set up watcher first, then clear the file
@@ -709,7 +720,7 @@ class MqlLogTailer {
             const cleanContent = content.replace(/\uFEFF/g, '');
 
             if (cleanContent) {
-                this.outputChannel.append(cleanContent);
+                this._ingestLines(cleanContent);
             }
 
             this.lastSize = newSize;
@@ -722,6 +733,76 @@ class MqlLogTailer {
                 try { fs.closeSync(fd); } catch { /* ignore close errors */ }
             }
         }
+    }
+
+    /**
+     * Buffer incoming raw text (handling partial trailing lines), keep a capped
+     * history, and append only lines passing the active level filter to the
+     * output channel. Lines without a recognizable level always pass.
+     */
+    _ingestLines(rawChunk) {
+        if (!this.outputChannel) return;
+
+        // Reassemble with any partial line carried over from the last read.
+        const combined = this.pendingPartial + rawChunk;
+        const parts = combined.split('\n');
+        this.pendingPartial = parts.pop(); // last element is the partial tail (may be '')
+
+        const visible = [];
+        for (const line of parts) {
+            this.lineBuffer.push(line);
+            if (this._linePassesFilter(line)) visible.push(line);
+        }
+        // Cap the history so a long session cannot grow without bound.
+        if (this.lineBuffer.length > this.MAX_BUFFER) {
+            this.lineBuffer.splice(0, this.lineBuffer.length - this.MAX_BUFFER);
+        }
+
+        if (visible.length) {
+            this.outputChannel.append(visible.join('\n') + '\n');
+        }
+    }
+
+    /**
+     * Extract the log level from a line and test it against the active filter.
+     * Recognizes the LiveLog `[LEVEL]` prefix and the MT5 Tester
+     * `LEVEL {…}` form. Lines with no level always pass.
+     */
+    _lineLevel(line) {
+        // [LEVEL] {File:Func:Line}: ...   (LiveLog)
+        let m = line.match(/\[(INFO|DEBUG|TRADE|ERROR|WARN)\]/i);
+        if (m) return m[1].toUpperCase();
+        // ... [EAName] LEVEL {...} ...    (MT5 Tester)
+        m = line.match(/\]\s+(INFO|DEBUG|TRADE|ERROR|WARN)\b/i);
+        if (m) return m[1].toUpperCase();
+        return null;
+    }
+
+    _linePassesFilter(line) {
+        if (!this.levelFilter || this.levelFilter.size === 0) return true;
+        const lvl = this._lineLevel(line);
+        if (!lvl) return true; // non-log informational lines always show
+        return this.levelFilter.has(lvl);
+    }
+
+    /**
+     * Set the visible level set and re-render the buffered history filtered.
+     * Pass `null` (or an empty array) to clear the filter.
+     * @param {string[]|null} levels
+     */
+    setLevelFilter(levels) {
+        this.levelFilter = (!levels || levels.length === 0)
+            ? null
+            : new Set(levels.map(l => String(l).toUpperCase()));
+        if (!this.outputChannel) return;
+        this.outputChannel.clear();
+        const visible = this.lineBuffer.filter(l => this._linePassesFilter(l));
+        if (visible.length) this.outputChannel.append(visible.join('\n') + '\n');
+    }
+
+    /** @returns {string[]} The current filter levels, or [] when unfiltered. */
+    getLevelFilter() {
+        return this.levelFilter ? [...this.levelFilter] : [];
     }
 }
 
