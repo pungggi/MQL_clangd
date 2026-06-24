@@ -9,7 +9,7 @@
   Refinements:
   - **Inputs nested by `input group` sections**: When the source uses `input group "Name"` directives, inputs are nested under one sub-node per section — mirroring the section separators shown in the MT5 inputs/optimization dialog. Inputs declared before the first section sit directly under **Inputs**; the group total still counts every input. Files without section directives keep a flat input list.
   - **Function-like macros split out**: `#define` constants stay in **Macros**; function-like macros (`#define MAX(a,b) …`, where `(` immediately follows the name) move to a separate **Macro Functions** group and show their parameter list. An object-like macro with a parenthesised value (`#define X (1+2)`) is correctly left as a constant.
-  - **Alphabetical child sort (opt-in)**: New `mql_tools.Outline.SortGroupChildren` (default `false`) sorts each group's children by name — handy for long Includes/Inputs lists. Off keeps source order. Takes effect only under the Outline view's default *Sort By: Position* mode (VS Code's own *Sort By: Name/Type* overrides it).
+  - **Alphabetical child sort (opt-in)**: New `mql_tools.Outline.SortGroupChildren` (default `false`) sorts each group's children by name — handy for long Includes/Inputs lists. Off keeps source order. Takes effect only under the Outline view's default _Sort By: Position_ mode (VS Code's own _Sort By: Name/Type_ overrides it).
 
 ## 1.1.62
 
@@ -54,6 +54,7 @@
 
 - **Backtest launch behavior settings**: Two new tri-state settings control the `[Tester]` section of the generated `tester.ini`. `mql_tools.Backtest.VisualMode` (`true`/`false`/`null`, default `null`) forces `Visual=1`/`Visual=0` for visual chart testing; `mql_tools.Backtest.KeepTerminalOpen` (default `null`) writes `ShutdownTerminal=0` so MT5 stays open after the run (`false` writes `ShutdownTerminal=1`). With the `null` default the EA's INI value is left untouched. Keys are replaced case-insensitively when present, or injected directly under `[Tester]` when absent. Applies to both native Windows and Wine launch paths. Note: a terminal left open can block the next launch, since MT5 allows one instance per data folder.
 - **Configurable backtest monitor timeout**: New setting `mql_tools.Backtest.MonitorTimeoutMinutes` (default `10`, clamped to a 1-minute floor) replaces the hard-coded 10-minute monitoring limit. The timeout warning now reports the configured duration and points to the setting. Only the VS Code progress notification stops at timeout — the MT5 test keeps running. Increase for visual-mode or multi-year runs.
+  fefeinfe
 
 ## 1.1.54
 
