@@ -8,3 +8,9 @@
 {"ts":1780578777070,"kind":"slash","value":"/re","weight":1}
 {"ts":1780579880637,"kind":"slash","value":"/r","weight":1}
 {"ts":1780579883989,"kind":"slash","value":"/new","weight":1}
+{"ts":1782208972800,"kind":"slash","value":"/mul","weight":1}
+{"ts":1782209038475,"kind":"slash","value":"/multimodal-proxy","weight":1}
+{"ts":1782209038475,"kind":"ngram","n":3,"tokens":["multimodal-proxy","consent","yes"],"weight":1}
+{"ts":1782209059444,"kind":"slash","value":"/multimodal-proxy","weight":1}
+{"ts":1782209068512,"kind":"slash","value":"/mu","weight":1}
+{"ts":1782209194893,"kind":"slash","value":"/ne","weight":1}
