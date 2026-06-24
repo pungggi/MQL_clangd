@@ -915,12 +915,21 @@ function buildSymbolGroup(name, children) {
 
     let startLine = children[0].range.start.line;
     let endLine = children[0].range.end.line;
+    let endChar = children[0].range.end.character;
     for (const child of children) {
         if (child.range.start.line < startLine) startLine = child.range.start.line;
-        if (child.range.end.line > endLine) endLine = child.range.end.line;
+        const eLine = child.range.end.line;
+        const eChar = child.range.end.character;
+        // VS Code ranges are end-exclusive, so the group end must reach the
+        // last child's actual end column — ending at column 0 would drop that
+        // line and break breadcrumbs / reveal-in-outline for the final child.
+        if (eLine > endLine || (eLine === endLine && eChar > endChar)) {
+            endLine = eLine;
+            endChar = eChar;
+        }
     }
 
-    const range = new vscode.Range(startLine, 0, endLine, 0);
+    const range = new vscode.Range(startLine, 0, endLine, endChar);
     const selectionRange = new vscode.Range(startLine, 0, startLine, 0);
     const group = new vscode.DocumentSymbol(
         name,

@@ -294,9 +294,14 @@ suite('MQLDocumentSymbolProvider', () => {
         // No #import here → no Imports group
         assert.ok(!byName.Imports, 'Imports group must be omitted when empty');
 
-        // Group range must span its children (breadcrumbs / reveal-in-outline)
+        // Group range must span its children (breadcrumbs / reveal-in-outline).
+        // End must reach the last child's actual end column, not column 0 —
+        // VS Code ranges are end-exclusive, so column 0 would drop the line.
         assert.strictEqual(byName.Includes.range.start.line, 2);
         assert.strictEqual(byName.Includes.range.end.line, 3);
+        const lastInclude = byName.Includes.children[byName.Includes.children.length - 1];
+        assert.strictEqual(byName.Includes.range.end.character, lastInclude.range.end.character);
+        assert.ok(byName.Includes.range.end.character > 0, 'Group end must span into the last line');
 
         // Functions stay top-level (one expand to reach them)
         const funcs = symbols.filter(s => s.kind === vscode.SymbolKind.Function);
