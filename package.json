@@ -262,6 +262,11 @@
                     "default": true,
                     "description": "Enable lightweight live diagnostics for common MQL errors (no MetaEditor required). Provides instant feedback while typing."
                 },
+                "mql_tools.Outline.SortGroupChildren": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "Sort the children of Outline groups (Includes, Inputs, Macros, …) alphabetically by name. When off, they follow source order. **Note:** only takes effect under the Outline view's default *Sort By: Position* mode — VS Code's own *Sort By: Name/Type* setting overrides this."
+                },
                 "mql_tools.Wine.Enabled": {
                     "type": "boolean",
                     "default": false,

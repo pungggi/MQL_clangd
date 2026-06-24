@@ -932,9 +932,14 @@ const MQL_EVENT_HANDLERS = new Set([
  *
  * @param {string} name                Group label (e.g. "Includes").
  * @param {vscode.DocumentSymbol[]} children  Sibling symbols, in file order.
+ * @param {string} [detailOverride]     Detail label; defaults to the child count.
+ *                                      Pass an explicit value when the count
+ *                                      should reflect something other than the
+ *                                      number of direct children (e.g. the total
+ *                                      input count for a sectioned Inputs group).
  * @returns {vscode.DocumentSymbol|null}
  */
-function buildSymbolGroup(name, children) {
+function buildSymbolGroup(name, children, detailOverride) {
     if (!children || children.length === 0) return null;
 
     let startLine = children[0].range.start.line;
@@ -957,13 +962,66 @@ function buildSymbolGroup(name, children) {
     const selectionRange = new vscode.Range(startLine, 0, startLine, 0);
     const group = new vscode.DocumentSymbol(
         name,
-        String(children.length),
+        detailOverride !== undefined ? detailOverride : String(children.length),
         vscode.SymbolKind.Namespace,
         range,
         selectionRange
     );
     group.children.push(...children);
     return group;
+}
+
+/**
+ * Recursively sort a symbol's children (and their descendants) by name, in
+ * place. Backs the optional `mql_tools.Outline.SortGroupChildren` setting.
+ * Note: VS Code's own Outline "Sort By" mode takes precedence; this only
+ * affects the order under the default "Position" sort.
+ */
+function sortSymbolTreeByName(symbol) {
+    if (!symbol.children || symbol.children.length === 0) return;
+    symbol.children.sort((a, b) => a.name.localeCompare(b.name));
+    for (const child of symbol.children) sortSymbolTreeByName(child);
+}
+
+/**
+ * Build the "Inputs" Outline group. When the source uses `input group "..."`
+ * section directives, inputs are nested under one sub-node per section
+ * (mirroring the MT5 inputs dialog); inputs declared before the first section
+ * sit directly under "Inputs". Without any section directive the inputs are a
+ * flat list. The group detail always shows the total input count.
+ *
+ * @param {vscode.DocumentSymbol[]} inputSymbols      Input field symbols, file order.
+ * @param {{name:string,line:number}[]} sections      `input group` directives, file order.
+ * @returns {vscode.DocumentSymbol|null}
+ */
+function buildInputsGroup(inputSymbols, sections) {
+    if (inputSymbols.length === 0) return null;
+    if (!sections || sections.length === 0) {
+        return buildSymbolGroup('Inputs', inputSymbols);
+    }
+
+    const ordered = [...sections].sort((a, b) => a.line - b.line);
+    const buckets = ordered.map(s => ({ name: s.name, line: s.line, items: [] }));
+    const ungrouped = [];
+
+    for (const sym of inputSymbols) {
+        const ln = sym.range.start.line;
+        // Assign each input to the most recent preceding section directive.
+        let target = null;
+        for (const b of buckets) {
+            if (b.line < ln) target = b; else break;
+        }
+        (target ? target.items : ungrouped).push(sym);
+    }
+
+    const children = [...ungrouped];
+    for (const b of buckets) {
+        const node = buildSymbolGroup(b.name, b.items);
+        if (node) children.push(node); // skip empty sections
+    }
+    if (children.length === 0) return null;
+
+    return buildSymbolGroup('Inputs', children, String(inputSymbols.length));
 }
 
 /**
@@ -994,9 +1052,11 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             const propertySymbols = [];
             const includeSymbols = [];
-            const defineSymbols = [];
+            const defineSymbols = [];          // object-like #define constants
+            const defineFunctionSymbols = [];  // function-like #define X(a,b) macros
             const importSymbols = [];
             const inputSymbols = [];
+            const inputSections = [];          // `input group "..."` section directives
             const eventSymbols = [];
 
             // #property directives
@@ -1035,22 +1095,33 @@ function MQLDocumentSymbolProvider() {
                 includeSymbols.push(symbol);
             }
 
-            // #define macros
-            const defineRegex = /^#define\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+(.*))?/gm;
+            // #define macros — a `(` immediately after the name (no space)
+            // marks a function-like macro; those go to a separate group.
+            const defineRegex = /^#define[ \t]+([a-zA-Z_][a-zA-Z0-9_]*)(\([^)]*\))?(?:[ \t]+(.*))?/gm;
             while ((match = defineRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
                 const line = document.lineAt(pos.line);
                 const defineName = match[1];
-                const defineValue = match[2] ? match[2].trim() : '';
+                const macroParams = match[2] || ''; // "(a,b)" for function-like macros
+                const defineValue = match[3] ? match[3].trim() : '';
 
-                const symbol = new vscode.DocumentSymbol(
-                    defineName,
-                    defineValue,
-                    vscode.SymbolKind.Constant,
-                    line.range,
-                    line.range
-                );
-                defineSymbols.push(symbol);
+                if (macroParams) {
+                    defineFunctionSymbols.push(new vscode.DocumentSymbol(
+                        `${defineName}${macroParams}`,
+                        defineValue,
+                        vscode.SymbolKind.Function,
+                        line.range,
+                        line.range
+                    ));
+                } else {
+                    defineSymbols.push(new vscode.DocumentSymbol(
+                        defineName,
+                        defineValue,
+                        vscode.SymbolKind.Constant,
+                        line.range,
+                        line.range
+                    ));
+                }
             }
 
             // #import directives
@@ -1073,6 +1144,16 @@ function MQLDocumentSymbolProvider() {
             // =========================================================
             // INPUT PARAMETERS - Critical for EA/Indicator configuration
             // =========================================================
+            // `input group "..."` section directives — used to nest inputs by
+            // section, mirroring the MT5 inputs dialog. The `group` keyword sits
+            // where a type would be, so the input-field regex below never
+            // matches these lines.
+            const inputGroupRegex = /^[ \t]*input[ \t]+group[ \t]+"([^"]*)"/gm;
+            while ((match = inputGroupRegex.exec(strippedText)) !== null) {
+                const pos = document.positionAt(match.index);
+                inputSections.push({ name: match[1] || '(unnamed)', line: pos.line });
+            }
+
             const inputRegex = new RegExp(`^[ \\t]*(input|sinput)[ \\t]+(${mqlTypes})[ \\t]+([a-zA-Z_][a-zA-Z0-9_]*)(?:[ \\t]*=[ \\t]*([^;\\n]+))?`, 'gm');
             while ((match = inputRegex.exec(strippedText)) !== null) {
                 const pos = document.positionAt(match.index);
@@ -1255,9 +1336,20 @@ function MQLDocumentSymbolProvider() {
                 buildSymbolGroup('Includes', includeSymbols),
                 buildSymbolGroup('Imports', importSymbols),
                 buildSymbolGroup('Macros', defineSymbols),
-                buildSymbolGroup('Inputs', inputSymbols),
+                buildSymbolGroup('Macro Functions', defineFunctionSymbols),
+                buildInputsGroup(inputSymbols, inputSections),
                 buildSymbolGroup('Event Handlers', eventSymbols)
             ].filter(Boolean);
+
+            // Optional: sort each group's children alphabetically. Effective
+            // only under VS Code's default "Position" Outline sort (its own
+            // "Sort By" mode otherwise wins).
+            const sortChildren = vscode.workspace
+                .getConfiguration('mql_tools')
+                .get('Outline.SortGroupChildren') === true;
+            if (sortChildren) {
+                for (const group of groups) sortSymbolTreeByName(group);
+            }
 
             // Order everything by file position so the tree matches source
             // layout regardless of the Outline "Sort By" setting.

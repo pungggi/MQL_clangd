@@ -6,14 +6,16 @@
 
 - **Grouped Outline tree**: The Outline (`Ctrl+Shift+O`), Breadcrumbs, and Go to Symbol now collapse the flat preprocessor and input clutter into named group nodes — **Properties**, **Includes**, **Imports**, **Macros**, **Inputs**, and **Event Handlers** — each showing its member count. A group appears only when it has members, and its range spans its children so Breadcrumbs and "reveal in outline" resolve to the group. The **Event Handlers** group collects the predefined MQL5 handlers (`OnInit`, `OnTick`, `OnDeinit`, `OnTimer`, `OnTrade`, `OnChartEvent`, `OnCalculate`, `OnStart`, `OnBookEvent`, `OnTester*`, …); ordinary functions — including user helpers that merely start with `On` — stay at the top level (functions are navigated most, so they remain one expand away). Enums and classes/structs also stay top-level; class methods nest under their class as before.
 
+  Refinements:
+  - **Inputs nested by `input group` sections**: When the source uses `input group "Name"` directives, inputs are nested under one sub-node per section — mirroring the section separators shown in the MT5 inputs/optimization dialog. Inputs declared before the first section sit directly under **Inputs**; the group total still counts every input. Files without section directives keep a flat input list.
+  - **Function-like macros split out**: `#define` constants stay in **Macros**; function-like macros (`#define MAX(a,b) …`, where `(` immediately follows the name) move to a separate **Macro Functions** group and show their parameter list. An object-like macro with a parenthesised value (`#define X (1+2)`) is correctly left as a constant.
+  - **Alphabetical child sort (opt-in)**: New `mql_tools.Outline.SortGroupChildren` (default `false`) sorts each group's children by name — handy for long Includes/Inputs lists. Off keeps source order. Takes effect only under the Outline view's default *Sort By: Position* mode (VS Code's own *Sort By: Name/Type* overrides it).
+
 ## 1.1.62
 
 ### Fixes
 
-- **Outline duplicates and broken Breadcrumbs** (#65): Every function appeared twice in the Outline (`Ctrl+Shift+O`) and clicking a function in Breadcrumbs jumped to the end of the _previous_ function. Two root causes:
-  - `^\s*` in the symbol regexes consumed newlines in multiline mode, so a blank line before a function caused `match.index` to point to the empty line rather than the function signature — the symbol's start line was off by one (Variant A).
-  - The regexes ran against raw document text, so a function signature written inside a `/* */` doc-comment produced a phantom symbol whose range started inside the comment, alongside the real symbol (Variant B).
-  - The enum `braceCount` started at `1` but the loop also counted the opening `{` on the enum line, causing double-counting and the enum range to extend far beyond its closing `};`.
+- **Outline duplicates and broken Breadcrumbs** (#65): Every function appeared twice in the Outline (`Ctrl+Shift+O`) and clicking a function in Breadcrumbs jumped to the end of the _previous_ function.
 
   Fixes: `stripMQLComments()` now blanks `//` and `/* */` content (preserving newlines) before all symbol regexes run; `\s` is replaced with `[ \t]` (horizontal whitespace only) in every leading `^\s*` and inter-token `\s+`/`\s*` to prevent the newline-jump bug; enum braceCount initialised correctly at `0`.
 
