@@ -15,6 +15,13 @@ class Position {
     }
 }
 
+class Location {
+    constructor(uri, range) {
+        this.uri = uri;
+        this.range = range;
+    }
+}
+
 class RelativePattern {
     constructor(base, pattern) {
         this.base = base;
@@ -107,6 +114,7 @@ class DocumentSymbol {
 module.exports = {
     Range,
     Position,
+    Location,
     RelativePattern,
     DiagnosticSeverity,
     Diagnostic,
@@ -154,8 +162,8 @@ module.exports = {
         }
     },
     Uri: {
-        file: (path) => ({ fsPath: path, path: path }),
-        parse: (path) => ({ fsPath: path, path: path }),
+        file: (p) => ({ fsPath: p, path: p, fragment: '', with(o) { return { fsPath: p, path: p, fragment: o.fragment || '' }; } }),
+        parse: (p) => ({ fsPath: p, path: p, fragment: '' }),
         joinPath: (base, ...segments) => {
             const joined = path.join(base.fsPath, ...segments);
             return { fsPath: joined, path: joined };
@@ -174,5 +182,8 @@ module.exports = {
     },
     extensions: {
         getExtension: () => null
+    },
+    DocumentLink: class {
+        constructor(range) { this.range = range; }
     }
 };

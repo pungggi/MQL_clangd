@@ -462,7 +462,7 @@ suite('MQLDocumentSymbolProvider', () => {
             const includes = symbols.find(s => s.name === 'Includes');
             assert.deepStrictEqual(
                 includes.children.map(c => c.name),
-                ['#include <Alpha.mqh>', '#include <Mango.mqh>', '#include <Zebra.mqh>']
+                ['Alpha.mqh', 'Mango.mqh', 'Zebra.mqh']
             );
         } finally {
             vscode.workspace._configMock = null;
@@ -479,7 +479,7 @@ suite('MQLDocumentSymbolProvider', () => {
         const includes = symbols.find(s => s.name === 'Includes');
         assert.deepStrictEqual(
             includes.children.map(c => c.name),
-            ['#include <Zebra.mqh>', '#include <Alpha.mqh>']
+            ['Zebra.mqh', 'Alpha.mqh']
         );
     });
 });
