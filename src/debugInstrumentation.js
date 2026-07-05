@@ -2362,7 +2362,13 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             // For normal lines, insert probe AFTER the target line — inserting
             // before would break multi-line statements whose final line ends
             // with ';' (the probe's `if` would land mid-expression).
-            injections.sort((a, b) => b.targetLine - a.targetLine);
+            // Process bottom-up by splice position so earlier splices never
+            // invalidate later (lower) coordinates. Tie-break by targetLine:
+            // when a probe inserted BEFORE a statement shares its splice index
+            // with the previous line's probe inserted AFTER it, the higher
+            // statement must be spliced first so the lower splice still
+            // operates on original coordinates.
+            injections.sort((a, b) => (b.insertLine - a.insertLine) || (b.targetLine - a.targetLine));
             for (const { targetLine, insertLine, macroLines, braceless } of injections) {
                 const indent = getIndent(node.lines[Math.min(insertLine, targetLine)]);
                 if (braceless) {
@@ -2406,9 +2412,17 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             if (includeLines > 0) {
                 fileOffsets.push({ originalLine: includeInsertAtOriginal, linesInserted: includeLines });
             }
-            for (const { insertLine, macroLines, braceless } of injections) {
-                const extra = braceless ? 2 : 0;  // { and }
-                fileOffsets.push({ originalLine: insertLine, linesInserted: macroLines.length + extra });
+            for (const { targetLine, insertLine, macroLines, braceless } of injections) {
+                if (braceless) {
+                    // '{' + macros go at insertLine; the '}' is spliced after the
+                    // wrapped statement, which for multi-line jump statements is
+                    // NOT adjacent — book it separately so lines in between map
+                    // back correctly.
+                    fileOffsets.push({ originalLine: insertLine, linesInserted: macroLines.length + 1 });
+                    fileOffsets.push({ originalLine: targetLine + 1, linesInserted: 1 });
+                } else {
+                    fileOffsets.push({ originalLine: insertLine, linesInserted: macroLines.length });
+                }
             }
             for (const fn of instrumentedFuncBounds) {
                 fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 });

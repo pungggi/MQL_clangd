@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { _test } = require('../src/debugInstrumentation');
+const { _test, instrumentedToOriginal } = require('../src/debugInstrumentation');
 const {
     MqlLineClassifier,
     isConditionSafe,
@@ -405,6 +405,45 @@ suite('debugInstrumentation', function () {
             assert.strictEqual(isBracelessBody(lines, 2), true);
             assert.strictEqual(findJumpStatementStart(lines, 3), 3);
             assert.strictEqual(isBracelessBody(lines, 3), false);
+        });
+    });
+
+    // =========================================================================
+    // instrumentedToOriginal — line mapping with insert-before offsets
+    // =========================================================================
+
+    suite('instrumentedToOriginal', function () {
+        test('probe inserted AFTER a line maps following lines back', function () {
+            // Original (1-based): 1 void F() {, 2 int x;, 3 Print(x);, 4 }
+            // 6 macro lines spliced at 0-based index 2 (after "int x;").
+            const offsets = [{ originalLine: 2, linesInserted: 6 }];
+            assert.strictEqual(instrumentedToOriginal(2, offsets), 2);   // int x;
+            assert.strictEqual(instrumentedToOriginal(9, offsets), 3);   // Print(x);
+            assert.strictEqual(instrumentedToOriginal(10, offsets), 4);  // }
+        });
+
+        test('probe inserted BEFORE a return maps the return line back', function () {
+            // Original (1-based): 1 bool F() {, 2 Print("a");, 3 return true;, 4 }
+            // 6 macro lines spliced at 0-based index 2 (before "return true;").
+            const offsets = [{ originalLine: 2, linesInserted: 6 }];
+            assert.strictEqual(instrumentedToOriginal(9, offsets), 3);   // return true;
+            assert.strictEqual(instrumentedToOriginal(10, offsets), 4);  // }
+        });
+
+        test('braceless wrap books "{"+probe and "}" as separate entries', function () {
+            // Original (1-based):
+            //   1 void F() {, 2 if (c), 3 return Foo(, 4   x);, 5 }
+            // Wrap: '{' + 6 macros at 0-based 2 (7 lines), '}' after 0-based 3.
+            const offsets = [
+                { originalLine: 2, linesInserted: 7 },
+                { originalLine: 4, linesInserted: 1 },
+            ];
+            // Instrumented: 1 void F() {, 2 if (c), 3 '{', 4-9 macros,
+            //               10 return Foo(, 11   x);, 12 '}', 13 }
+            assert.strictEqual(instrumentedToOriginal(2, offsets), 2);   // if (c)
+            assert.strictEqual(instrumentedToOriginal(10, offsets), 3);  // return Foo(
+            assert.strictEqual(instrumentedToOriginal(11, offsets), 4);  //   x);
+            assert.strictEqual(instrumentedToOriginal(13, offsets), 5);  // }
         });
     });
 
