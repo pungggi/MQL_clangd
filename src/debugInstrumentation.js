@@ -359,6 +359,71 @@ function isBracelessBody(lines, idx) {
 }
 
 /**
+ * If `lines[idx]` ends a jump statement (return / break / continue), find the
+ * 0-based index of the line that STARTS that statement.  Probes for jump
+ * statements must be injected BEFORE the statement: injecting after produces
+ * unreachable code and breaks the compiler's control-path analysis, causing
+ * MQL117 "not all control paths return a value" (issue #68).
+ *
+ * Handles multi-line returns (`return Foo(\n  a, b);`) by walking backwards
+ * to the statement start.  Lines like `} else return x;` or `case 1: return x;`
+ * are NOT treated as jump starts — inserting before them would detach the
+ * statement from its label/branch, and code after them stays reachable anyway.
+ *
+ * @param {string[]} lines  Source lines (0-based)
+ * @param {number}   idx    0-based index of the candidate injection line
+ * @returns {number|null}   0-based statement start index, or null if not a jump
+ */
+function findJumpStatementStart(lines, idx) {
+    const RE_JUMP_START = /^(?:return\b|break\s*;|continue\s*;)/;
+    const trimmed = lines[idx].trim();
+    if (!trimmed.endsWith(';')) return null;
+    if (RE_JUMP_START.test(trimmed)) return idx;
+
+    // The line might be the tail of a multi-line return — walk backwards
+    // to the statement start, stopping at any statement/block/label boundary.
+    for (let i = idx - 1; i >= 0; i--) {
+        const t = lines[i].trim();
+        if (t === '' || t.startsWith('//')) continue;
+        if (/[;{}:]$/.test(t) || t.startsWith('#')) return null;
+        if (/^return\b/.test(t)) return i;
+    }
+    return null;
+}
+
+/**
+ * True when the next meaningful line after `idx` begins a dependent clause —
+ * the `else` of an if/else or the `while` of a do-while.  Injecting a probe
+ * between a closing `}` and such a clause would detach the clause from its
+ * statement: the `else` would bind to the probe's own `if`, silently changing
+ * control flow and producing MQL117 errors (issue #68).
+ *
+ * @param {string[]} lines
+ * @param {number}   idx  0-based index of the candidate injection line
+ * @returns {boolean}
+ */
+function hasDependentClauseAfter(lines, idx) {
+    let inBlock = false;
+    for (let i = idx + 1; i < lines.length; i++) {
+        let t = lines[i].trim();
+        if (inBlock) {
+            const end = t.indexOf('*/');
+            if (end === -1) continue;
+            t = t.substring(end + 2).trim();
+            inBlock = false;
+        }
+        while (t.startsWith('/*')) {
+            const end = t.indexOf('*/', 2);
+            if (end === -1) { inBlock = true; t = ''; break; }
+            t = t.substring(end + 2).trim();
+        }
+        if (t === '' || t.startsWith('//')) continue;
+        return /^(else|while)\b/.test(t);
+    }
+    return false;
+}
+
+/**
  * Find the first line at or after `targetLine` (1-based) that ends a complete
  * statement (ends with `;` or `}`) and is not a comment/preprocessor.
  *
@@ -2249,6 +2314,23 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             for (const execLine of execLines) {
                 const bp = bpByInjLine.get(execLine);
                 const originalLine = execLine + 1; // 1-based
+
+                // Jump statements (return/break/continue) get the probe BEFORE
+                // the statement — inserting after would create unreachable code
+                // and MQL117 errors (issue #68).
+                const jumpStart = findJumpStatementStart(node.lines, execLine);
+                const anchorLine = jumpStart !== null ? jumpStart : execLine;
+                const braceless = isBracelessBody(node.lines, anchorLine);
+
+                // Never inject after a `}` followed by `else` / `while` — the
+                // probe would detach the clause from its if / do statement.
+                if (jumpStart === null && !braceless &&
+                    node.lines[execLine].trimEnd().endsWith('}') &&
+                    hasDependentClauseAfter(node.lines, execLine)) {
+                    if (bp) skippedArr.push(`${path.basename(node.filePath)}:${bp.line}`);
+                    continue;
+                }
+
                 const probeId = nextProbeId++;
 
                 let watchVars = [];
@@ -2262,8 +2344,8 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
 
                 const label = `bp_${sanitizedBase}_${originalLine}`;
                 const macroLines = buildProbeInjection(probeId, label, watchVars, condition, logMessage);
-                const braceless = isBracelessBody(node.lines, execLine);
-                injections.push({ targetLine: execLine, macroLines, braceless });
+                const insertLine = (jumpStart !== null || braceless) ? anchorLine : execLine + 1;
+                injections.push({ targetLine: execLine, insertLine, macroLines, braceless });
 
                 // Record probe mapping (actual line + BP line if different)
                 fileProbeMap.set(originalLine, probeId);
@@ -2274,18 +2356,20 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
 
             // Splice injections (reverse order to preserve indices).
             // For braceless control bodies, wrap in { } and insert probe BEFORE
-            // the target line to preserve control flow.
+            // the statement to preserve control flow.
+            // For jump statements (return/break/continue), insert probe BEFORE
+            // the statement start (insertLine) — after would be unreachable.
             // For normal lines, insert probe AFTER the target line — inserting
             // before would break multi-line statements whose final line ends
             // with ';' (the probe's `if` would land mid-expression).
             injections.sort((a, b) => b.targetLine - a.targetLine);
-            for (const { targetLine, macroLines, braceless } of injections) {
-                const indent = getIndent(node.lines[targetLine]);
+            for (const { targetLine, insertLine, macroLines, braceless } of injections) {
+                const indent = getIndent(node.lines[Math.min(insertLine, targetLine)]);
                 if (braceless) {
                     node.lines.splice(targetLine + 1, 0, `${indent}}`);
-                    node.lines.splice(targetLine, 0, `${indent}{`, ...macroLines);
+                    node.lines.splice(insertLine, 0, `${indent}{`, ...macroLines);
                 } else {
-                    node.lines.splice(targetLine + 1, 0, ...macroLines);
+                    node.lines.splice(insertLine, 0, ...macroLines);
                 }
             }
 
@@ -2322,10 +2406,9 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
             if (includeLines > 0) {
                 fileOffsets.push({ originalLine: includeInsertAtOriginal, linesInserted: includeLines });
             }
-            for (const { targetLine, macroLines, braceless } of injections) {
+            for (const { insertLine, macroLines, braceless } of injections) {
                 const extra = braceless ? 2 : 0;  // { and }
-                const insertAt = braceless ? targetLine : targetLine + 1;
-                fileOffsets.push({ originalLine: insertAt, linesInserted: macroLines.length + extra });
+                fileOffsets.push({ originalLine: insertLine, linesInserted: macroLines.length + extra });
             }
             for (const fn of instrumentedFuncBounds) {
                 fileOffsets.push({ originalLine: fn.bodyStart + 1, linesInserted: 1 });
@@ -2395,6 +2478,9 @@ module.exports = {
         isExpressionSafe,
         SAFE_READONLY_FUNCTIONS,
         findInjectionPoint,
+        findJumpStatementStart,
+        hasDependentClauseAfter,
+        isBracelessBody,
         parseWatchAnnotations,
         macroForType,
         parseLocalsInScope,

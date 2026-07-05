@@ -7,6 +7,9 @@ const {
     isExpressionSafe,
     SAFE_READONLY_FUNCTIONS,
     findInjectionPoint,
+    findJumpStatementStart,
+    hasDependentClauseAfter,
+    isBracelessBody,
     parseWatchAnnotations,
     macroForType,
     parseLocalsInScope,
@@ -280,6 +283,199 @@ suite('debugInstrumentation', function () {
                 '}',
             ];
             assert.strictEqual(findInjectionPoint(lines, 2), 2);
+        });
+    });
+
+    // =========================================================================
+    // findJumpStatementStart (issue #68 — probes must go BEFORE returns)
+    // =========================================================================
+
+    suite('findJumpStatementStart', function () {
+        test('detects single-line return with value', function () {
+            const lines = [
+                'bool Foo() {',
+                '  return true;',   // idx 1
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), 1);
+        });
+
+        test('detects bare return', function () {
+            const lines = [
+                'void Foo() {',
+                '  return;',        // idx 1
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), 1);
+        });
+
+        test('detects return with parenthesized expression', function () {
+            const lines = [
+                'int OnInit() {',
+                '  return(INIT_SUCCEEDED);', // idx 1
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), 1);
+        });
+
+        test('detects break and continue', function () {
+            const lines = [
+                'for (int i = 0; i < 10; i++) {',
+                '  break;',         // idx 1
+                '  continue;',      // idx 2
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), 1);
+            assert.strictEqual(findJumpStatementStart(lines, 2), 2);
+        });
+
+        test('detects multi-line return, returning the statement start', function () {
+            const lines = [
+                'double Foo() {',
+                '  int x = 1;',       // idx 1
+                '  return Compute(',  // idx 2 <- statement start
+                '    x, 2.0',         // idx 3
+                '  );',               // idx 4 <- injection candidate
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 4), 2);
+        });
+
+        test('does not treat ordinary statements as jumps', function () {
+            const lines = [
+                'void Foo() {',
+                '  int x = 5;',     // idx 1
+                '  Print(x);',      // idx 2
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), null);
+            assert.strictEqual(findJumpStatementStart(lines, 2), null);
+        });
+
+        test('does not match returnValue-like identifiers', function () {
+            const lines = [
+                'void Foo() {',
+                '  returnValue = 5;', // idx 1
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), null);
+        });
+
+        test('leaves "} else return x;" alone', function () {
+            const lines = [
+                'bool Foo() {',
+                '  if (a) { return true; } else return false;', // idx 1 — ends with ';' but starts with 'if'
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), null);
+        });
+
+        test('leaves "case 1: return x;" alone', function () {
+            const lines = [
+                'switch (x) {',
+                '  case 1: return true;', // idx 1
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 1), null);
+        });
+
+        test('multi-line array initializer tail is not a jump', function () {
+            const lines = [
+                'void Foo() {',
+                '  double arr[] = {',  // idx 1
+                '    1.0, 2.0,',       // idx 2
+                '  };',                // idx 3 — ends with ';' but starts an init block
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 3), null);
+        });
+
+        test('braceless return body: statement start still braceless-detected', function () {
+            // The instrumentation combines findJumpStatementStart with
+            // isBracelessBody(statementStart) so `if (c)\n  return x;` gets
+            // wrapped in braces with the probe before the return.
+            const lines = [
+                'bool Foo() {',
+                '  if (c)',          // idx 1
+                '    return true;',  // idx 2
+                '  return false;',   // idx 3
+                '}',
+            ];
+            assert.strictEqual(findJumpStatementStart(lines, 2), 2);
+            assert.strictEqual(isBracelessBody(lines, 2), true);
+            assert.strictEqual(findJumpStatementStart(lines, 3), 3);
+            assert.strictEqual(isBracelessBody(lines, 3), false);
+        });
+    });
+
+    // =========================================================================
+    // hasDependentClauseAfter (issue #68 — no probe between `}` and else/while)
+    // =========================================================================
+
+    suite('hasDependentClauseAfter', function () {
+        test('detects else after closing brace', function () {
+            const lines = [
+                '   if(x == 200)',
+                '   {',
+                '      return true;',
+                '   }',          // idx 3
+                '   else',
+                '   {',
+                '      return false;',
+                '   }',
+                '}',
+            ];
+            assert.strictEqual(hasDependentClauseAfter(lines, 3), true);
+        });
+
+        test('detects else if after closing brace', function () {
+            const lines = [
+                '   }',          // idx 0
+                '   else if (y) {',
+            ];
+            assert.strictEqual(hasDependentClauseAfter(lines, 0), true);
+        });
+
+        test('detects while of do-while after closing brace', function () {
+            const lines = [
+                '   do {',
+                '      i++;',
+                '   }',          // idx 2
+                '   while (i < 10);',
+            ];
+            assert.strictEqual(hasDependentClauseAfter(lines, 2), true);
+        });
+
+        test('skips blank and comment lines before the clause', function () {
+            const lines = [
+                '   }',          // idx 0
+                '',
+                '   // comment',
+                '   /* block */',
+                '   else',
+            ];
+            assert.strictEqual(hasDependentClauseAfter(lines, 0), true);
+        });
+
+        test('returns false for ordinary following statement', function () {
+            const lines = [
+                '   }',          // idx 0
+                '   Print("next");',
+            ];
+            assert.strictEqual(hasDependentClauseAfter(lines, 0), false);
+        });
+
+        test('returns false for identifiers starting with else/while', function () {
+            const lines = [
+                '   }',          // idx 0
+                '   elseBranchCount++;',
+            ];
+            assert.strictEqual(hasDependentClauseAfter(lines, 0), false);
+        });
+
+        test('returns false at end of file', function () {
+            const lines = ['   }'];
+            assert.strictEqual(hasDependentClauseAfter(lines, 0), false);
         });
     });
 
