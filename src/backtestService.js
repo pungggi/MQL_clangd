@@ -526,6 +526,22 @@ async function startBacktest(options) {
         config: effectiveConfig,
     });
 
+    // spawn() reports ENOENT/EACCES/EPERM through an async 'error' event rather
+    // than throwing. Without a listener Node raises an uncaught exception, which
+    // takes down the whole extension host (the executable can disappear between
+    // the existsSync() check above and the actual spawn).
+    child.on('error', (error) => {
+        runningTests.delete(ea.dir);
+        wineLog(`[Backtest] Failed to launch MT5 terminal: ${error.message}`);
+        if (typeof options.onError === 'function') {
+            try {
+                options.onError(error);
+            } catch {
+                // A failing notification must never break the launch path
+            }
+        }
+    });
+
     child.unref();
     wineLog(`[Backtest] Launch mode: windows | PID: ${child.pid}`);
     wineLog(`[Backtest] Terminal: ${terminalPath}`);

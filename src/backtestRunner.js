@@ -331,7 +331,14 @@ function resolveMonitorTimeoutMs(rawMinutes) {
 }
 
 async function executeBacktest(eaName, params, options) {
-    const startResult = await startBacktest({ eaName, params, ...options });
+    const startResult = await startBacktest({
+        eaName, params, ...options,
+        // Launch failures arrive asynchronously via the child 'error' event, so
+        // they cannot be returned as { started: false }. Surface them to the user
+        // instead of leaving the monitor waiting for a terminal that never started.
+        onError: (error) => vscode.window.showErrorMessage(
+            `Failed to launch MetaTrader for ${eaName}: ${error.message}`),
+    });
     if (!startResult.started) {
         showStartFailure(eaName, startResult);
         return false;

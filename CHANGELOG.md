@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Palette command that did nothing**: `MQL: Report noisy diagnostic` was contributed in `package.json` but never registered, so it failed with "command not found". It works now: put the cursor on a squiggle and either suppress the clangd flag in the workspace `.clangd` (`Diagnostics.Suppress`) or copy a ready-to-paste report for a GitHub issue. The opposite case, `Insert Watch Annotation` (registered but not contributed), is in the palette as well.
+- **Version migrations never ran**: `activate()` looked the extension up as `ngsoftware.mql-tools`, the id from before the rename. `getExtension()` returned `undefined`, so `currentVersion` was `undefined` and `previousVersion !== currentVersion` was never true. The id is now taken from the running extension, which re-enables the `.clangd` duplicate `-c` migration and the CPU architecture guard.
+- **Background checks no longer format or save every document**: check-on-save, auto-check and the startup check ran `FixFormatting()` + `saveAll` before compiling, so a background run rewrote the active buffer and saved every other dirty document (firing their save hooks). Format and saveAll now run only for user-invoked commands. Check-on-save and the startup check read the file that is already on disk, so they need no write at all; auto-check after typing saves the edited document itself, because MetaEditor only checks what is on disk.
+- **Extension host crash on a failed process launch**: `startBacktest()` and the `hh.exe` fallback in offline help spawned children without an `'error'` listener. A moved or blocked executable raised an uncaught exception instead of a message. Both now report the failure, show it in the UI and clean up the running-test entry.
+- **Missing translations**: Czech and Hungarian rendered the raw `%mql_tools.configuration.Portable4.description%` key in Settings. Added, and obsolete keys were removed from all 15 NLS files.
+
 ## 1.1.63
 
 ### Features

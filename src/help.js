@@ -269,6 +269,11 @@ function openOfflineHelp(version, keyword) {
         child.on('error', () => {
             // Fallback: just open the CHM file
             const fallbackChild = spawn('hh.exe', [chmFile], { detached: true, stdio: 'ignore' });
+            // spawn() failures are delivered as an 'error' event; without this
+            // listener the second, nested spawn could raise an uncaught exception.
+            fallbackChild.on('error', (err) => {
+                vscode.window.showErrorMessage(`Failed to open CHM file: ${err.message}`);
+            });
             fallbackChild.unref();
         });
         child.unref();

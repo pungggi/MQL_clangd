@@ -35,6 +35,7 @@ mocha.addFile(path.resolve(__dirname, 'utf8MirrorIntegration.test.js'));
 mocha.addFile(path.resolve(__dirname, 'lightweightDiagnostics.test.js'));
 mocha.addFile(path.resolve(__dirname, 'suite/versionBumper.test.js'));
 mocha.addFile(path.resolve(__dirname, 'documentSymbol.test.js'));
+mocha.addFile(path.resolve(__dirname, 'noisyDiagnostic.test.js'));
 
 // Run the tests
 mocha.run(failures => {

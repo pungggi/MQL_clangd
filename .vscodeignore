@@ -12,6 +12,8 @@ scripts/**
 # extensionPath/scripts, not bundled by webpack.
 !scripts/mt5-arrange-charts.ps1
 .agent/**
+# Agent harness state/scratch — dev-only, never read by the extension.
+.pi/**
 package-lock.json
 *.log
 # Exclude webpack config from package
