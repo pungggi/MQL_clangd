@@ -39,6 +39,7 @@ const { IconsInstallation } = require('./addIcon');
 const { ArrangeCharts, createStatusBar } = require('./chartLayout');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache, getIncludeDir } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
+const { sweepDbgBuildArtifacts } = require('./tempSweep');
 const unresolvedSymbolWatcher = require('./unresolvedSymbolWatcher');
 const { CreateProperties, generatePortableSwitch, resolvePathRelativeToWorkspace, haveIncludesChanged, CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
 const { decodeTextBuffer } = require('./textDecoding');
@@ -2645,6 +2646,19 @@ function activate(context) {
     // Initialize VS Code API-dependent variables (must be inside activate, not at module level)
     diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
     outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
+    context.subscriptions.push(diagnosticCollection, outputChannel);
+
+    // Sweep leftover *.mql_dbg_build.* artifacts from aborted debug sessions.
+    // Fire-and-forget: the sweep is best-effort and must never block or fail
+    // activation (see src/tempSweep.js).
+    sweepDbgBuildArtifacts((vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath))
+        .then(results => {
+            const removed = results.reduce((sum, r) => sum + r.removed.length, 0);
+            if (removed > 0) {
+                outputChannel.appendLine(`[Info] Removed ${removed} leftover debug-build artifact(s) from aborted debug sessions`);
+            }
+        })
+        .catch(() => { });
 
     // Show Startup Page PoC
     showStartupPage(context);
