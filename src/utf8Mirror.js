@@ -1,5 +1,7 @@
 'use strict';
 
+const mqlLogger = require('./logger');
+
 const fs = require('fs');
 const pathModule = require('path');
 const os = require('os');
@@ -116,11 +118,11 @@ async function transcodeOne(srcPath, dstPath, srcStat) {
 
 async function walkAndMirror(srcDir, dstDir, depth, ctx) {
     if (depth > MAX_DEPTH) {
-        console.warn(`MQL Tools: mirror depth limit (${MAX_DEPTH}) exceeded at ${srcDir}`);
+        mqlLogger.warn(`MQL Tools: mirror depth limit (${MAX_DEPTH}) exceeded at ${srcDir}`);
         return;
     }
     if (ctx.fileCount >= MAX_FILES) {
-        console.warn(`MQL Tools: mirror file limit (${MAX_FILES}) reached`);
+        mqlLogger.warn(`MQL Tools: mirror file limit (${MAX_FILES}) reached`);
         return;
     }
 
@@ -159,7 +161,7 @@ async function walkAndMirror(srcDir, dstDir, depth, ctx) {
                     await fs.promises.unlink(stalePath);
                 }
             } catch (err) {
-                console.warn(`MQL Tools: failed to prune stale mirror entry ${stalePath}: ${err && err.message}`);
+                mqlLogger.warn(`MQL Tools: failed to prune stale mirror entry ${stalePath}: ${err && err.message}`);
             } finally {
                 _ioSem.release();
             }
@@ -212,7 +214,7 @@ async function walkAndMirror(srcDir, dstDir, depth, ctx) {
             ctx.totalBytes += srcStat.size;
             await transcodeOne(srcPath, dstPath, srcStat);
         } catch (err) {
-            console.warn(`MQL Tools: failed to mirror ${srcPath}: ${err && err.message}`);
+            mqlLogger.warn(`MQL Tools: failed to mirror ${srcPath}: ${err && err.message}`);
         } finally {
             _ioSem.release();
         }
@@ -272,7 +274,7 @@ async function _performMirror(sourceIncludeDir, mirrorDir) {
         await fs.promises.writeFile(stampPath, '', { encoding: 'utf8', mode: 0o600 });
         return mirrorDir;
     } catch (err) {
-        console.warn(`MQL Tools: UTF-8 mirror unavailable for ${sourceIncludeDir}: ${err && err.message}`);
+        mqlLogger.warn(`MQL Tools: UTF-8 mirror unavailable for ${sourceIncludeDir}: ${err && err.message}`);
         return sourceIncludeDir;
     }
 }

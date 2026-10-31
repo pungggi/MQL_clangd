@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
@@ -276,7 +278,7 @@ class MqlDebugBridge {
             });
             fs.writeFileSync(configPath, parts.join(','), 'utf-8');
         } catch (err) {
-            console.warn('[MqlDebugBridge] Failed to write BP config:', err.message);
+            mqlLogger.warn('[MqlDebugBridge] Failed to write BP config:', err.message);
         }
     }
 
@@ -330,7 +332,7 @@ class MqlDebugBridge {
     _log(msg) {
         const ch = this._getOutputChannel();
         if (ch) ch.appendLine(`[MQL Debug] ${msg}`);
-        console.log(`[MqlDebugBridge] ${msg}`);
+        mqlLogger.info(`[MqlDebugBridge] ${msg}`);
     }
 
     _getOutputChannel() {
@@ -352,7 +354,7 @@ class MqlDebugBridge {
             const cmd = closeTerm ? 'STOP_AND_CLOSE\n' : 'STOP\n';
             fs.writeFileSync(cmdPath, cmd, 'utf-8');
         } catch (err) {
-            console.warn('[MqlDebugBridge] Failed to write stop command:', err.message);
+            mqlLogger.warn('[MqlDebugBridge] Failed to write stop command:', err.message);
         }
     }
 

@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const fs = require('fs');
 const path = require('path');
 
@@ -2116,7 +2118,7 @@ function instrumentWorkspace(entryPointPath, breakpointMap, mql5Root) {
         try {
             raw = fs.readFileSync(filePath);
         } catch (err) {
-            console.warn(`[debugInstrumentation] Failed to read file: ${filePath}`, err);
+            mqlLogger.warn(`[debugInstrumentation] Failed to read file: ${filePath}`, err);
             node.lines = []; // Ensure node.lines is an array to prevent downstream crashes
             return node;
         }

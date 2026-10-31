@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const url = require('url');
 const vscode = require('vscode');
 const childProcess = require('child_process');
@@ -2674,6 +2676,8 @@ function activate(context) {
     diagnosticCollection = vscode.languages.createDiagnosticCollection('mql');
     outputChannel = vscode.window.createOutputChannel('MQL', 'mql-output');
     context.subscriptions.push(diagnosticCollection, outputChannel);
+    // Route all module logging into the visible MQL output channel.
+    mqlLogger.initLogger(outputChannel);
 
     // Sweep leftover *.mql_dbg_build.* artifacts from aborted debug sessions.
     // Fire-and-forget: the sweep is best-effort and must never block or fail
@@ -2790,19 +2794,19 @@ function activate(context) {
                                 }
                                 if (patched !== content) {
                                     await fs.promises.writeFile(clangdPath, patched, 'utf8');
-                                    console.log('MQL Tools: Migrated .clangd — removed duplicate -c flag');
+                                    mqlLogger.info('MQL Tools: Migrated .clangd — removed duplicate -c flag');
                                 }
                             }
                         }
                     }
                 } catch (err) {
-                    console.error('MQL Tools: .clangd migration failed', err);
+                    mqlLogger.error('MQL Tools: .clangd migration failed', err);
                 }
 
                 context.globalState.update('mql-tools.version', currentVersion);
             }
         } catch (err) {
-            console.error('MQL Tools: migration check failed', err);
+            mqlLogger.error('MQL Tools: migration check failed', err);
         }
     };
     const migrationFolderSub = vscode.workspace.onDidChangeWorkspaceFolders(() => runMigrationCheck());
@@ -2909,7 +2913,7 @@ function activate(context) {
             const failed = results.filter(r => r.status === 'rejected');
 
             if (failed.length > 0) {
-                console.error('Failed to reset some compile targets:', failed);
+                mqlLogger.error('Failed to reset some compile targets:', failed);
                 vscode.window.showWarningMessage(`Reset complete with ${failed.length} errors. Check console for details.`);
             } else {
                 vscode.window.showInformationMessage('All compile target mappings reset');
@@ -3066,7 +3070,7 @@ function activate(context) {
         try {
             TradeReportDashboard.createOrShow(context, expertsDir);
         } catch (error) {
-            console.error('Failed to create or show Trade Report Dashboard:', error);
+            mqlLogger.error('Failed to create or show Trade Report Dashboard:', error);
             vscode.window.showErrorMessage(`Failed to open Trade Report Dashboard: ${error.message}`);
         }
     }));
@@ -3354,7 +3358,7 @@ function activate(context) {
                 const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.toString() === folderUriStr);
                 if (folder) {
                     markIndexDirty(folder);
-                    // console.log(`[MQL Index] Invalidated cache for ${folder.name} (debounced)`);
+                    // mqlLogger.info(`[MQL Index] Invalidated cache for ${folder.name} (debounced)`);
                 }
             }
             pendingDirtyFolders.clear();
@@ -3378,7 +3382,7 @@ function activate(context) {
             mqhStructuralTimer = setTimeout(() => {
                 mqhStructuralTimer = null;
                 regenerateProperties().catch(err => {
-                    console.error('MQL Tools: Failed to auto-regenerate after .mqh change', err);
+                    mqlLogger.error('MQL Tools: Failed to auto-regenerate after .mqh change', err);
                 });
             }, MQH_STRUCTURAL_DEBOUNCE_MS);
         }
@@ -3399,7 +3403,7 @@ function activate(context) {
             if (!changed) return;
             await regenerateProperties();
         } catch (err) {
-            console.error('MQL Tools: Failed to auto-regenerate compile_commands.json', err);
+            mqlLogger.error('MQL Tools: Failed to auto-regenerate compile_commands.json', err);
         }
     }));
 
@@ -3409,25 +3413,25 @@ function deactivate() {
     try {
         logTailer.dispose();
     } catch (error) {
-        console.error('Error during logTailer.dispose():', error);
+        mqlLogger.error('Error during logTailer.dispose():', error);
     }
 
     try {
         cancelBacktests();
     } catch (error) {
-        console.error('Error during cancelBacktests():', error);
+        mqlLogger.error('Error during cancelBacktests():', error);
     }
 
     try {
         debugBridge.stop();
     } catch (error) {
-        console.error('Error during debugBridge.stop():', error);
+        mqlLogger.error('Error during debugBridge.stop():', error);
     }
 
     try {
         debugBridge.dispose();
     } catch (error) {
-        console.error('Error during debugBridge.dispose():', error);
+        mqlLogger.error('Error during debugBridge.dispose():', error);
     }
 }
 

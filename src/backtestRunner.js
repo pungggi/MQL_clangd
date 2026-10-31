@@ -1,5 +1,7 @@
 'use strict';
 
+const mqlLogger = require('./logger');
+
 const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
@@ -172,7 +174,7 @@ async function resolveCandidateEAName(context, editor, resolveCompileTargets) {
         const target = targets && targets[0];
         return target ? path.basename(target, path.extname(target)) : null;
     } catch (err) {
-        console.error(`resolveCompileTargets failed for ${filePath}:`, err);
+        mqlLogger.error(`resolveCompileTargets failed for ${filePath}:`, err);
         return null;
     }
 }

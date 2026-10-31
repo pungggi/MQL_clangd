@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -263,14 +265,14 @@ async function OpenFileInMetaEditor(uri) {
 
             const pathResult = await toWineWindowsPath(uri.fsPath, wineBinary, winePrefix);
             if (!pathResult.success) {
-                console.error(`[Wine] Path conversion failed: ${pathResult.error}`);
+                mqlLogger.error(`[Wine] Path conversion failed: ${pathResult.error}`);
                 return vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName} (Wine path conversion failed)`);
             }
 
             // Convert MetaEditor path to Windows format first
             const metaResult = await toWineWindowsPath(MetaDir, wineBinary, winePrefix);
             if (!metaResult.success) {
-                console.error(`[Wine] MetaEditor path conversion failed: ${metaResult.error}`);
+                mqlLogger.error(`[Wine] MetaEditor path conversion failed: ${metaResult.error}`);
                 return vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName} (Wine path conversion failed for editor)`);
             }
             const metaEditorWinPath = metaResult.path;
@@ -284,7 +286,7 @@ async function OpenFileInMetaEditor(uri) {
             if (portableSwitch) args.push(portableSwitch);
             const proc = childProcess.spawn(MetaDir, args, { detached: true, stdio: 'ignore' });
             proc.on('error', (err) => {
-                console.error('MetaEditor launch error:', err);
+                mqlLogger.error('MetaEditor launch error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_in_me']} - ${fileName}`);
             });
             proc.unref();
@@ -436,11 +438,11 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
         try {
             iniPath = buildStartupIni(eaPath, mql5Root);
             if (!iniPath) {
-                console.warn('[OpenTradingTerminal] EA is not inside MQL5/Experts; skipping auto-attach.');
+                mqlLogger.warn('[OpenTradingTerminal] EA is not inside MQL5/Experts; skipping auto-attach.');
             }
         } catch (err) {
             // Log but don't abort — the terminal can still open without auto-attach
-            console.error('[OpenTradingTerminal] Failed to build startup INI:', err.message);
+            mqlLogger.error('[OpenTradingTerminal] Failed to build startup INI:', err.message);
         }
     }
 
@@ -455,7 +457,7 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
         try {
             iniContent = fs.readFileSync(iniPath, 'utf-8');
         } catch (err) {
-            console.warn(`[Auto-attach] Failed to read INI file at ${iniPath}:`, err);
+            mqlLogger.warn(`[Auto-attach] Failed to read INI file at ${iniPath}:`, err);
         }
         _oc.appendLine(`[Auto-attach] INI path: ${iniPath}`);
         _oc.appendLine(`[Auto-attach] INI content:\n${iniContent}`);
@@ -510,7 +512,7 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
                 if (iniResult.success) {
                     args.push(`/config:${iniResult.path}`);
                 } else {
-                    console.warn(`[OpenTradingTerminal] Wine conversion of INI path failed; skipping auto-attach. iniPath=${iniPath}, error=${iniResult.error || 'unknown'}`);
+                    mqlLogger.warn(`[OpenTradingTerminal] Wine conversion of INI path failed; skipping auto-attach. iniPath=${iniPath}, error=${iniResult.error || 'unknown'}`);
                 }
             }
 
@@ -523,7 +525,7 @@ async function OpenTradingTerminal(eaPath, mql5Root) {
             _oc.show(true);
             const proc = childProcess.spawn(TerminalDir, args, { detached: true, stdio: 'ignore' });
             proc.on('error', (err) => {
-                console.error('Terminal launch error:', err);
+                mqlLogger.error('Terminal launch error:', err);
                 vscode.window.showErrorMessage(`${lg['err_open_terminal']}`);
             });
             proc.unref();

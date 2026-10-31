@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
@@ -133,7 +135,7 @@ async function buildReverseIndex(workspaceFolder, include4Dir, include5Dir, maxF
                 }
             }
         } catch (err) {
-            console.error(`Error reading ${filePath}:`, err);
+            mqlLogger.error(`Error reading ${filePath}:`, err);
         }
     }
 
@@ -249,7 +251,7 @@ function getCompileTargets(headerUri, workspaceFolder, context) {
 
     if (Array.isArray(targets)) return targets;
     if (typeof targets === 'string') return [targets];
-    console.warn(`CompileTarget: unexpected type "${typeof targets}" for key "${normalizedKey}"`);
+    mqlLogger.warn(`CompileTarget: unexpected type "${typeof targets}" for key "${normalizedKey}"`);
     return null;
 }
 

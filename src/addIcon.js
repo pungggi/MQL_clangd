@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const fs = require('fs');
 const fsPromises = fs.promises;
@@ -82,7 +84,7 @@ async function add(dirName, fileExt, dirJsonName, JsonFileName, PartPath, NameDi
         try {
             obj = JSON.parse(data);
         } catch (err) {
-            console.error(`[MQL Tools] Failed to parse icon configuration JSON at ${jsonPath}: ${err.message}`);
+            mqlLogger.error(`[MQL Tools] Failed to parse icon configuration JSON at ${jsonPath}: ${err.message}`);
             continue; // Skip this file and continue with others
         }
 
@@ -121,7 +123,7 @@ async function add(dirName, fileExt, dirJsonName, JsonFileName, PartPath, NameDi
         try {
             json = JSON.stringify(obj, null, 4);
         } catch (err) {
-            console.error(`[MQL Tools] Failed to stringify icon configuration: ${err.message}`);
+            mqlLogger.error(`[MQL Tools] Failed to stringify icon configuration: ${err.message}`);
             continue; // Skip this file and continue with others
         }
         await fsPromises.writeFile(jsonPath, json, 'utf8');

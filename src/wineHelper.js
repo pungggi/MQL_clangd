@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
@@ -35,7 +37,7 @@ function showOutputChannel(preserveFocus = true) {
  * @param {string} message 
  */
 function log(message) {
-    console.log(message);
+    mqlLogger.info(message);
     if (outputChannel) {
         outputChannel.appendLine(message);
     }
@@ -46,7 +48,7 @@ function log(message) {
  * @param {string} message 
  */
 function logWarning(message) {
-    console.warn(message);
+    mqlLogger.warn(message);
     if (outputChannel) {
         outputChannel.appendLine(`[Warning] ${message}`);
     }
@@ -57,7 +59,7 @@ function logWarning(message) {
  * @param {string} message 
  */
 function logError(message) {
-    console.error(message);
+    mqlLogger.error(message);
     if (outputChannel) {
         outputChannel.appendLine(`[Error] ${message}`);
     }
