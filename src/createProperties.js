@@ -1241,7 +1241,7 @@ async function CreateProperties(force = false) {
             let existingDb = null;
             try {
                 existingDb = await fs.promises.readFile(dbPath, 'utf8');
-            } catch (readErr) {
+            } catch {
                 existingDb = null;
             }
             // Only write when the content differs. Rewriting an identical
@@ -1372,7 +1372,7 @@ InlayHints:
         let existingClangdConfig = null;
         try {
             existingClangdConfig = await fs.promises.readFile(clangdConfigPath, 'utf8');
-        } catch (readErr) {
+        } catch {
             existingClangdConfig = null;
         }
         if (existingClangdConfig !== clangdConfig) {

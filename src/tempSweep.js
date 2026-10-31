@@ -32,7 +32,7 @@ async function collectDbgBuildArtifacts(rootDir, { skipDirs = DEFAULT_SKIP_DIRS 
         let entries;
         try {
             entries = await fs.promises.readdir(dir, { withFileTypes: true });
-        } catch (err) {
+        } catch {
             return;
         }
         for (const entry of entries) {

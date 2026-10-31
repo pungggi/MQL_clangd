@@ -2697,6 +2697,9 @@ function activate(context) {
     // Clear symbol cache when a document is closed
     context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((document) => {
         clearSymbolCache(document.uri.toString());
+        // Drop any pending auto-check version tracking for closed documents.
+        // Without this the map grows for every checked-then-closed document.
+        autoCheckDocVersions.delete(document.uri.toString());
     }));
 
     // Resolve the package manifest from the running extension instead of hardcoding
@@ -2755,43 +2758,56 @@ function activate(context) {
         });
     }
 
-    // Wait for environment to stabilize before migration check
-    sleep(2000).then(async () => {
-        if (previousVersion !== currentVersion) {
-            if (currentVersion === '1.0.0' || currentVersion === '1.0.1' || currentVersion === '1.0.2') {
-                regenerateProperties().catch((err) => {
-                    outputChannel.appendLine(`[Error] Migration CreateProperties failed: ${err.message}`);
-                });
-            }
+    // Migration check: run once the workspace has settled. Fires on the first
+    // workspace-folder change or after a 2 s cap, whichever comes first, and
+    // cleans up both triggers afterwards (the old fixed sleep(2000) always
+    // blocked the full two seconds and left no dispose path).
+    let migrationCheckDone = false;
+    const runMigrationCheck = async () => {
+        if (migrationCheckDone) return;
+        migrationCheckDone = true;
+        try {
+            if (previousVersion !== currentVersion) {
+                if (currentVersion === '1.0.0' || currentVersion === '1.0.1' || currentVersion === '1.0.2') {
+                    regenerateProperties().catch((err) => {
+                        outputChannel.appendLine(`[Error] Migration CreateProperties failed: ${err.message}`);
+                    });
+                }
 
-            // v1.1.35+: Remove duplicate -c from .clangd CompileFlags.Add.
-            // The flag is already in compile_commands.json entries and caused
-            // double -c with -x c++-header for inferred header commands.
-            try {
-                for (const wf of (vscode.workspace.workspaceFolders || [])) {
-                    const clangdPath = pathModule.join(wf.uri.fsPath, '.clangd');
-                    if (fs.existsSync(clangdPath)) {
-                        const content = await fs.promises.readFile(clangdPath, 'utf8');
-                        if (content.includes('    - -c\n')) {
-                            let patched = content.replace(/^ {4}# Compile only[^\n]*\n {4}- -c\n/m, '');
-                            if (patched === content) {
-                                // Comment was missing or edited — remove bare flag line
-                                patched = content.replace(/^ {4}- -c\n/m, '');
-                            }
-                            if (patched !== content) {
-                                await fs.promises.writeFile(clangdPath, patched, 'utf8');
-                                console.log('MQL Tools: Migrated .clangd — removed duplicate -c flag');
+                // v1.1.35+: Remove duplicate -c from .clangd CompileFlags.Add.
+                // The flag is already in compile_commands.json entries and caused
+                // double -c with -x c++-header for inferred header commands.
+                try {
+                    for (const wf of (vscode.workspace.workspaceFolders || [])) {
+                        const clangdPath = pathModule.join(wf.uri.fsPath, '.clangd');
+                        if (fs.existsSync(clangdPath)) {
+                            const content = await fs.promises.readFile(clangdPath, 'utf8');
+                            if (content.includes('    - -c\n')) {
+                                let patched = content.replace(/^ {4}# Compile only[^\n]*\n {4}- -c\n/m, '');
+                                if (patched === content) {
+                                    // Comment was missing or edited — remove bare flag line
+                                    patched = content.replace(/^ {4}- -c\n/m, '');
+                                }
+                                if (patched !== content) {
+                                    await fs.promises.writeFile(clangdPath, patched, 'utf8');
+                                    console.log('MQL Tools: Migrated .clangd — removed duplicate -c flag');
+                                }
                             }
                         }
                     }
+                } catch (err) {
+                    console.error('MQL Tools: .clangd migration failed', err);
                 }
-            } catch (err) {
-                console.error('MQL Tools: .clangd migration failed', err);
-            }
 
-            context.globalState.update('mql-tools.version', currentVersion);
+                context.globalState.update('mql-tools.version', currentVersion);
+            }
+        } catch (err) {
+            console.error('MQL Tools: migration check failed', err);
         }
-    });
+    };
+    const migrationFolderSub = vscode.workspace.onDidChangeWorkspaceFolders(() => runMigrationCheck());
+    const migrationTimer = setTimeout(() => runMigrationCheck(), 2000);
+    context.subscriptions.push(migrationFolderSub, { dispose: () => clearTimeout(migrationTimer) });
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.showStartupPage', () => showStartupPage(context, true)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.checkFile', () => Compile(COMPILE_MODE_CHECK, context)));
@@ -3146,7 +3162,20 @@ function activate(context) {
     context.subscriptions.push(vscode.languages.registerColorProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, ColorProvider()));
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, ItemProvider()));
     context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, MQLDocumentSymbolProvider()));
-    sleep(1000).then(() => { context.subscriptions.push(vscode.languages.registerSignatureHelpProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, HelpProvider(), '(', ',')); });
+    // Signature help provider is registered immediately, but HelpProvider()
+    // is constructed lazily on first use: building it scans the MQL standard
+    // library docs, and the old sleep(1000)-deferred registration both delayed
+    // activation and left signature help unavailable for the first second.
+    let signatureHelpInstance = null;
+    const lazySignatureHelpProvider = {
+        provideSignatureHelp(document, position, token, contextArg) {
+            if (!signatureHelpInstance) {
+                signatureHelpInstance = HelpProvider();
+            }
+            return signatureHelpInstance.provideSignatureHelp(document, position, token, contextArg);
+        }
+    };
+    context.subscriptions.push(vscode.languages.registerSignatureHelpProvider({ pattern: '**/*.{mq4,mq5,mqh}' }, lazySignatureHelpProvider, '(', ','));
 
     // Register lightweight diagnostics (instant feedback without MetaEditor)
     registerLightweightDiagnostics(context);
@@ -3254,23 +3283,47 @@ function activate(context) {
         }
     }));
 
-    // Auto-compile once when workspace finishes loading (regardless of configuration)
-    sleep(3000).then(async () => {
+    // Auto-compile once when the workspace finishes loading. Fires when an MQL
+    // document first becomes active (immediate) or at a 3 s cap for the case
+    // where an MQL editor is already restored, whichever comes first. Both
+    // triggers are disposed after the single run; the old fixed sleep(3000)
+    // always waited three seconds and left its timer undisposed.
+    let startupCheckDone = false;
+    const attemptStartupCheck = async () => {
         if (isAutoCheckRunning) return;
 
         const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            const ext = pathModule.extname(editor.document.fileName).toLowerCase();
-            if (['.mq4', '.mq5', '.mqh'].includes(ext)) {
-                isAutoCheckRunning = true;
-                try {
-                    await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check on startup
-                } finally {
-                    isAutoCheckRunning = false;
-                }
-            }
+        if (!editor) return;
+        const ext = pathModule.extname(editor.document.fileName).toLowerCase();
+        if (!['.mq4', '.mq5', '.mqh'].includes(ext)) return;
+
+        isAutoCheckRunning = true;
+        try {
+            await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check on startup
+        } finally {
+            isAutoCheckRunning = false;
         }
+    };
+    const finishStartupCheck = () => {
+        startupCheckDone = true;
+        startupFolderSub.dispose();
+        if (startupCheckTimer) clearTimeout(startupCheckTimer);
+    };
+    const startupFolderSub = vscode.window.onDidChangeActiveTextEditor(async () => {
+        if (startupCheckDone) return;
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) return;
+        const ext = pathModule.extname(editor.document.fileName).toLowerCase();
+        if (!['.mq4', '.mq5', '.mqh'].includes(ext)) return;
+        finishStartupCheck();
+        await attemptStartupCheck();
     });
+    const startupCheckTimer = setTimeout(async () => {
+        if (startupCheckDone) return;
+        finishStartupCheck();
+        await attemptStartupCheck();
+    }, 3000);
+    context.subscriptions.push(startupFolderSub, { dispose: () => clearTimeout(startupCheckTimer) });
 
     // Watch for file changes to invalidate reverse index cache
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{mq4,mq5,mqh}');
