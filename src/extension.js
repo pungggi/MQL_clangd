@@ -218,6 +218,24 @@ function findClosestMatches(word, maxDist = 2, maxResults = 3) {
 // CLANGD DIAGNOSTICS REFRESH
 // =============================================================================
 
+// Set when CreateProperties rewrote compile_commands.json or .clangd. The next
+// finished compile then restarts clangd once (see refreshClangdDiagnostics) and
+// clears the flag. A plain compile changes none of clangd's inputs.
+let clangdNeedsRestart = false;
+
+/**
+ * Run CreateProperties and track whether clangd inputs changed.
+ * All CreateProperties call sites go through this wrapper so the flag is
+ * reliable no matter which path regenerated the database.
+ */
+async function regenerateProperties(force = false) {
+    const status = await CreateProperties(force);
+    if (status && status.changed) {
+        clangdNeedsRestart = true;
+    }
+    return status;
+}
+
 /**
  * Refresh clangd diagnostics after compilation.
  *
@@ -225,6 +243,10 @@ function findClosestMatches(word, maxDist = 2, maxResults = 3) {
  * updated compile_commands.json. Then it "touches" open MQL documents to
  * trigger clangd to re-analyze them. After that, it restores the MQL
  * diagnostics that were set by the MetaEditor compiler.
+ *
+ * Only called when clangd's inputs actually changed (clangdNeedsRestart):
+ * restarting clangd and synthesizing space insert/delete edits in every
+ * visible editor after each compile disturbed typing for no benefit.
  */
 async function refreshClangdDiagnostics() {
     try {
@@ -1107,9 +1129,14 @@ async function Compile(rt, context, options = {}) {
         }
     );
 
-    // Refresh clangd diagnostics after compilation
-    // This ensures the Problems panel reflects the actual compilation result
-    await refreshClangdDiagnostics();
+    // Restart clangd only when compile_commands.json or .clangd changed during
+    // this run. A plain compile does not touch clangd inputs; restarting the
+    // server and touching every visible editor after each compile broke user
+    // typing and undo state for no benefit.
+    if (clangdNeedsRestart) {
+        clangdNeedsRestart = false;
+        await refreshClangdDiagnostics();
+    }
     // Only steal focus for explicit user-invoked runs, not background checks.
     if (shouldFocusProblemsPanel(hasErrors, options)) {
         await vscode.commands.executeCommand('workbench.panel.markers.view.focus');
@@ -2732,7 +2759,7 @@ function activate(context) {
     sleep(2000).then(async () => {
         if (previousVersion !== currentVersion) {
             if (currentVersion === '1.0.0' || currentVersion === '1.0.1' || currentVersion === '1.0.2') {
-                CreateProperties().catch((err) => {
+                regenerateProperties().catch((err) => {
                     outputChannel.appendLine(`[Error] Migration CreateProperties failed: ${err.message}`);
                 });
             }
@@ -2874,12 +2901,15 @@ function activate(context) {
         }
     }));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.configurations', async () => {
-        await CreateProperties();
+        await regenerateProperties();
         try {
             await vscode.commands.executeCommand('clangd.restart');
         } catch (error) {
             // clangd extension may not be installed - silently ignore
         }
+        // The command already restarted clangd: don't restart again on the
+        // next finished compile.
+        clangdNeedsRestart = false;
     }));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Addicon', () => IconsInstallation()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.Showfiles', () => ShowFiles('**/*.ex4', '**/*.ex5')));
@@ -3294,7 +3324,7 @@ function activate(context) {
             if (mqhStructuralTimer) clearTimeout(mqhStructuralTimer);
             mqhStructuralTimer = setTimeout(() => {
                 mqhStructuralTimer = null;
-                CreateProperties().catch(err => {
+                regenerateProperties().catch(err => {
                     console.error('MQL Tools: Failed to auto-regenerate after .mqh change', err);
                 });
             }, MQH_STRUCTURAL_DEBOUNCE_MS);
@@ -3314,7 +3344,7 @@ function activate(context) {
         try {
             const changed = await haveIncludesChanged(document.fileName);
             if (!changed) return;
-            await CreateProperties();
+            await regenerateProperties();
         } catch (err) {
             console.error('MQL Tools: Failed to auto-regenerate compile_commands.json', err);
         }

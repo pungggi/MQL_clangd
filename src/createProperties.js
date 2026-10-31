@@ -1088,6 +1088,11 @@ async function CreateProperties(force = false) {
         return;
     }
 
+    // True when any clangd-relevant artifact (compile_commands.json, .clangd)
+    // actually changed on disk. Callers use this to decide whether the clangd
+    // language server needs a restart to pick up the new inputs.
+    let changed = false;
+
     const config = vscode.workspace.getConfiguration();
     const configMql = vscode.workspace.getConfiguration('mql_tools');
 
@@ -1232,7 +1237,19 @@ async function CreateProperties(force = false) {
 
         if (compileCommands.length > 0) {
             const dbPath = pathModule.join(workspacepath, 'compile_commands.json');
-            await fs.promises.writeFile(dbPath, JSON.stringify(compileCommands, null, 4), 'utf8');
+            const dbContent = JSON.stringify(compileCommands, null, 4);
+            let existingDb = null;
+            try {
+                existingDb = await fs.promises.readFile(dbPath, 'utf8');
+            } catch (readErr) {
+                existingDb = null;
+            }
+            // Only write when the content differs. Rewriting an identical
+            // database makes clangd reload its compilation database for nothing.
+            if (existingDb !== dbContent) {
+                await fs.promises.writeFile(dbPath, dbContent, 'utf8');
+                changed = true;
+            }
 
             // Cleanup conflicting files
             const legacyFlags = pathModule.join(workspacepath, 'compile_flags.txt');
@@ -1352,7 +1369,16 @@ InlayHints:
   ParameterNames: Yes
   DeducedTypes: Yes
 `;
-        await fs.promises.writeFile(clangdConfigPath, clangdConfig, 'utf8');
+        let existingClangdConfig = null;
+        try {
+            existingClangdConfig = await fs.promises.readFile(clangdConfigPath, 'utf8');
+        } catch (readErr) {
+            existingClangdConfig = null;
+        }
+        if (existingClangdConfig !== clangdConfig) {
+            await fs.promises.writeFile(clangdConfigPath, clangdConfig, 'utf8');
+            changed = true;
+        }
     } catch (err) {
         console.error('MQL Tools: Failed to generate .clangd', err);
     }
@@ -1425,6 +1451,8 @@ SortIncludes: Never
     } catch (err) {
         console.error('MQL Tools: Failed to generate .clang-format', err);
     }
+
+    return { changed };
 }
 
 /**
