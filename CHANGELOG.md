@@ -10,6 +10,17 @@
 - **Extension host crash on a failed process launch**: `startBacktest()` and the `hh.exe` fallback in offline help spawned children without an `'error'` listener. A moved or blocked executable raised an uncaught exception instead of a message. `startBacktest()` now reports the failure, shows it and cleans up its running-test entry; the help fallback reports the launch failure the same way.
 - **Zombie backtest monitor after a failed launch**: when the MT5 terminal failed to start asynchronously, the monitor kept polling for a terminal that never existed until its 10 minute timeout, and a retry during that window ran against that stale monitor. The monitor is cancelled as soon as the launch failure arrives.
 - **Missing translations**: Czech and Hungarian rendered the raw `%mql_tools.configuration.Portable4.description%` key in Settings. Added, and obsolete keys were removed from all 15 NLS files.
+- **Leftover debug-build files**: aborted debug sessions left `*.mql_dbg_build.*` sources and binaries in the workspace. They are swept once at activation (best-effort, never blocks startup) and are gitignored now.
+- **clangd restarted after every compile**: each compile ended with a `clangd.restart`, a 1 second wait and a synthetic space insert/delete in every visible MQL editor. That disturbed typing and undo state, and a plain compile never changes `compile_commands.json` or `.clangd`. The restart now happens only when those inputs actually changed (and identical files are no longer rewritten).
+- **Startup checks blocked on fixed timers**: the migration check, the startup auto-check and signature help registration waited fixed 2-3 second timers that were never cleaned up. They now fire on real events (workspace change, first active MQL editor) with a cap, dispose their triggers, and signature help works immediately.
+- **Settings that could launch programs in untrusted workspaces**: `untrustedWorkspaces` now declares `restrictedConfigurations` for every executable/path setting (MetaEditor and Terminal dirs, include dirs, Wine binary, backtest paths, node path).
+- **Small leaks**: the `mql_tools.context` write removed (the setting does not exist, so the update was a silent no-op); `autoCheckDocVersions` entries are dropped when documents close; the MetaEditor and lightweight diagnostic collections plus the output channel are disposed on shutdown.
+
+### Internal
+
+- **CreateProperties runs are serialized**: the startup migration, the configurations command, the `.mqh` watcher and the include-change handler could run it concurrently and race on `compile_commands.json`, `.clangd` and workspace settings.
+- **Logging goes to the MQL output channel**: all 79 `console.*` calls in `src/` now route through `src/logger.js`; warnings and errors stay mirrored to the devtools console.
+- **extension.js split**: the 1160-line code action provider moved to `src/codeActionProvider.js`, shrinking `extension.js` from 3450 to 2290 lines.
 
 ## 1.1.63
 
