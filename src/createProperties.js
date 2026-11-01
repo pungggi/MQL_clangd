@@ -1,4 +1,23 @@
 'use strict';
+
+const mqlLogger = require('./logger');
+
+/**
+ * Build a serializer for async work. Tasks handed to the returned function
+ * start only after every previous task finished (success or failure). Used to
+ * keep concurrent CreateProperties runs from racing on compile_commands.json,
+ * .clangd and workspace settings. Pure helper, exported for unit tests.
+ */
+function createSerialQueue() {
+    let tail = Promise.resolve();
+    return function enqueue(task) {
+        const run = tail.then(task);
+        // Keep the chain alive when a task rejects. The caller still observes
+        // the rejection through the promise returned from enqueue().
+        tail = run.then(() => undefined, () => undefined);
+        return run;
+    };
+}
 const vscode = require('vscode');
 const fs = require('fs');
 const pathModule = require('path');
@@ -643,7 +662,7 @@ async function generateAutoForwardsHeader(entryPath, workspacePath) {
         }
         return outPath;
     } catch (err) {
-        console.error(`MQL Tools: Failed to generate auto-forwards for ${entryPath}`, err);
+        mqlLogger.error(`MQL Tools: Failed to generate auto-forwards for ${entryPath}`, err);
         return null;
     }
 }
@@ -1001,7 +1020,7 @@ async function safeConfigUpdate(section, value, target, silent = false) {
 
     if (!isRegistered) {
         if (!silent) {
-            console.info(`MQL Tools: Optional setting "${section}" not available (extension may not be installed)`);
+            mqlLogger.info(`MQL Tools: Optional setting "${section}" not available (extension may not be installed)`);
         }
         return;
     }
@@ -1010,7 +1029,7 @@ async function safeConfigUpdate(section, value, target, silent = false) {
         await config.update(section, value, target);
     } catch (e) {
         if (!silent) {
-            console.error(`MQL Tools: Failed to update "${section}": ${e.message}`);
+            mqlLogger.error(`MQL Tools: Failed to update "${section}": ${e.message}`);
         }
     }
 }
@@ -1054,7 +1073,7 @@ async function parseClangdSuppressions(clangdFilePath) {
         if (err.code === 'ENOENT') {
             return [];
         }
-        console.error('MQL Tools: Failed to parse .clangd suppressions', err);
+        mqlLogger.error('MQL Tools: Failed to parse .clangd suppressions', err);
         return [];
     }
 }
@@ -1083,18 +1102,26 @@ function mergeClangdSuppressions(newSuppressions, existingSuppressions) {
  * Main function to generate/update workspace properties for clangd.
  * @param {boolean} [force=false] - If true, force overwrite of existing config files
  */
-async function CreateProperties(force = false) {
+async function runCreatePropertiesOnce(force = false, folderOverride = null) {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-        return;
+        return { changed: false };
     }
+
+    // True when any clangd-relevant artifact (compile_commands.json, .clangd)
+    // actually changed on disk. Callers use this to decide whether the clangd
+    // language server needs a restart to pick up the new inputs.
+    let changed = false;
 
     const config = vscode.workspace.getConfiguration();
     const configMql = vscode.workspace.getConfiguration('mql_tools');
 
-    const editor = vscode.window.activeTextEditor;
-    const workspaceFolder = (editor && vscode.workspace.getWorkspaceFolder(editor.document.uri))
-        ? vscode.workspace.getWorkspaceFolder(editor.document.uri)
-        : vscode.workspace.workspaceFolders[0];
+    // Use the folder captured when CreateProperties() was called; only fall
+    // back to the live active editor when no override was supplied.
+    const editor = folderOverride ? null : vscode.window.activeTextEditor;
+    const workspaceFolder = folderOverride
+        || ((editor && vscode.workspace.getWorkspaceFolder(editor.document.uri))
+            ? vscode.workspace.getWorkspaceFolder(editor.document.uri)
+            : vscode.workspace.workspaceFolders[0]);
 
     const workspacepath = workspaceFolder.uri.fsPath;
     const workspaceName = workspaceFolder.name;
@@ -1109,7 +1136,7 @@ async function CreateProperties(force = false) {
     try {
         targetFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, '**/*.{mq4,mq5}'));
     } catch (err) {
-        console.error('MQL Tools: Failed to scan workspace files', err);
+        mqlLogger.error('MQL Tools: Failed to scan workspace files', err);
     }
 
     const workspaceVersion = detectWorkspaceMqlVersion(targetFiles, workspacepath, workspaceName);
@@ -1155,7 +1182,7 @@ async function CreateProperties(force = false) {
             try {
                 return await ensureUtf8Mirror(resolved);
             } catch (err) {
-                console.warn(`MQL Tools: UTF-8 mirror failed for ${resolved}: ${err && err.message}`);
+                mqlLogger.warn(`MQL Tools: UTF-8 mirror failed for ${resolved}: ${err && err.message}`);
                 return resolved;
             }
         }
@@ -1232,7 +1259,19 @@ async function CreateProperties(force = false) {
 
         if (compileCommands.length > 0) {
             const dbPath = pathModule.join(workspacepath, 'compile_commands.json');
-            await fs.promises.writeFile(dbPath, JSON.stringify(compileCommands, null, 4), 'utf8');
+            const dbContent = JSON.stringify(compileCommands, null, 4);
+            let existingDb = null;
+            try {
+                existingDb = await fs.promises.readFile(dbPath, 'utf8');
+            } catch {
+                existingDb = null;
+            }
+            // Only write when the content differs. Rewriting an identical
+            // database makes clangd reload its compilation database for nothing.
+            if (existingDb !== dbContent) {
+                await fs.promises.writeFile(dbPath, dbContent, 'utf8');
+                changed = true;
+            }
 
             // Cleanup conflicting files
             const legacyFlags = pathModule.join(workspacepath, 'compile_flags.txt');
@@ -1258,11 +1297,13 @@ async function CreateProperties(force = false) {
             }
         }
     } catch (err) {
-        console.error('MQL Tools: Failed to generate compile_commands.json', err);
+        mqlLogger.error('MQL Tools: Failed to generate compile_commands.json', err);
     }
 
     const associations = { '*.mqh': 'cpp', '*.mq4': 'cpp', '*.mq5': 'cpp' };
-    await safeConfigUpdate('mql_tools.context', true, vscode.ConfigurationTarget.Workspace);
+    // NOTE: The former safeConfigUpdate('mql_tools.context', true, ...) write was
+    // removed: that setting is not contributed in package.json, nothing reads it,
+    // and the update call was a silent no-op behind the isRegistered guard.
     await safeConfigUpdate('files.associations', associations, vscode.ConfigurationTarget.Workspace);
 
     // --- Generate .clangd file for direct diagnostic suppression ---
@@ -1290,8 +1331,12 @@ async function CreateProperties(force = false) {
                             'workbench.action.openSettings',
                             'mql_tools.Clangd.PreserveSuppressions'
                         );
-                        // Don't modify the file when user chooses to configure
-                        return;
+                        // Don't modify the file when user chooses to configure.
+                        // compile_commands.json may already have been rewritten
+                        // above, so report that instead of a bare undefined —
+                        // regenerateProperties() relies on `changed` to decide
+                        // whether clangd needs a restart.
+                        return { changed };
                     }
                     shouldPreserve = choice === 'Merge Suppressions';
                 }
@@ -1350,9 +1395,18 @@ InlayHints:
   ParameterNames: Yes
   DeducedTypes: Yes
 `;
-        await fs.promises.writeFile(clangdConfigPath, clangdConfig, 'utf8');
+        let existingClangdConfig = null;
+        try {
+            existingClangdConfig = await fs.promises.readFile(clangdConfigPath, 'utf8');
+        } catch {
+            existingClangdConfig = null;
+        }
+        if (existingClangdConfig !== clangdConfig) {
+            await fs.promises.writeFile(clangdConfigPath, clangdConfig, 'utf8');
+            changed = true;
+        }
     } catch (err) {
-        console.error('MQL Tools: Failed to generate .clangd', err);
+        mqlLogger.error('MQL Tools: Failed to generate .clangd', err);
     }
 
     // --- Generate .clang-format file for MQL-friendly formatting ---
@@ -1407,22 +1461,24 @@ SortIncludes: Never
             // Only overwrite if the file contains our marker or force flag is set
             if (existingConfig.includes(clangFormatMarker) || force) {
                 await fs.promises.writeFile(clangFormatPath, clangFormatConfig, 'utf8');
-                console.log('MQL Tools: .clang-format file updated');
+                mqlLogger.info('MQL Tools: .clang-format file updated');
             } else {
-                console.log('MQL Tools: Preserving existing user .clang-format configuration');
+                mqlLogger.info('MQL Tools: Preserving existing user .clang-format configuration');
             }
         } catch (accessErr) {
             // File doesn't exist, create it
             if (accessErr.code === 'ENOENT') {
                 await fs.promises.writeFile(clangFormatPath, clangFormatConfig, 'utf8');
-                console.log('MQL Tools: .clang-format file created');
+                mqlLogger.info('MQL Tools: .clang-format file created');
             } else {
                 throw accessErr;
             }
         }
     } catch (err) {
-        console.error('MQL Tools: Failed to generate .clang-format', err);
+        mqlLogger.error('MQL Tools: Failed to generate .clang-format', err);
     }
+
+    return { changed };
 }
 
 /**
@@ -1480,8 +1536,27 @@ function Cpp_prop(incDir) {
     safeConfigUpdate('C_Cpp.intelliSenseEngine', 'Disabled', vscode.ConfigurationTarget.Workspace, true);
 }
 
+// Serialize CreateProperties: the startup migration, the configurations
+// command, the .mqh structural watcher and the include-change save handler can
+// all trigger a run, and concurrent runs raced on compile_commands.json,
+// .clangd and workspace settings. Queued runs execute strictly one after
+// another; every caller still gets its own result/rejection.
+const enqueueCreateProperties = createSerialQueue();
+function CreateProperties(force = false) {
+    // Snapshot the target workspace folder NOW, at call time. Runs can wait in
+    // the queue behind an earlier run; reading the active editor at dequeue
+    // time would regenerate whichever folder happens to be active then
+    // instead of the one the caller meant.
+    const callerEditor = vscode.window.activeTextEditor;
+    const callerFolder = (callerEditor && vscode.workspace.getWorkspaceFolder(callerEditor.document.uri))
+        || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0])
+        || null;
+    return enqueueCreateProperties(() => runCreatePropertiesOnce(force, callerFolder));
+}
+
 module.exports = {
     CreateProperties,
+    createSerialQueue,
     Cpp_prop,
     normalizePath,
     expandWorkspaceVariables,

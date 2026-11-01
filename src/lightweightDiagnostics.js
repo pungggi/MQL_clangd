@@ -301,6 +301,17 @@ function registerLightweightDiagnostics(context) {
             clearDiagnostics(document);
         })
     );
+    // Dispose the diagnostic collection on extension shutdown. Reset the cached
+    // instance too, so a re-activation creates a fresh collection instead of
+    // writing into a disposed one.
+    context.subscriptions.push({
+        dispose: () => {
+            if (_lightweightDiagnostics) {
+                _lightweightDiagnostics.dispose();
+                _lightweightDiagnostics = null;
+            }
+        }
+    });
     vscode.workspace.textDocuments.forEach((document) => {
         const ext = document.fileName.toLowerCase();
         if (ext.endsWith('.mq4') || ext.endsWith('.mq5') || ext.endsWith('.mqh')) {

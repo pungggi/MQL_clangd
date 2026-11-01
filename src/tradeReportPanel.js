@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
@@ -53,7 +55,7 @@ class TradeReportPanel {
         this._buildSourceMapPromise = this._buildSourceMap();
         this._buildSourceMapPromise
             .then(() => this._ensureSnapshot(parsedData))
-            .catch(err => { console.error('Failed to initialize source map or snapshot', err); });
+            .catch(err => { mqlLogger.error('Failed to initialize source map or snapshot', err); });
         this._panel.webview.html = this._getHtml(parsedData);
 
         this._panel.webview.onDidReceiveMessage(async msg => {
@@ -76,7 +78,7 @@ class TradeReportPanel {
                     try {
                         const fresh = parseLogFile(this._logFilePath);
                         this._ensureSnapshot(fresh).catch(err => {
-                            console.error('Failed to create source snapshot', err);
+                            mqlLogger.error('Failed to create source snapshot', err);
                         });
                         this._panel.webview.postMessage({
                             type: 'fullUpdate',
@@ -115,7 +117,7 @@ class TradeReportPanel {
         }
         await this._buildSourceMapPromise;
         this._ensureSnapshot(parsedData).catch(err => {
-            console.error('Failed to create source snapshot', err);
+            mqlLogger.error('Failed to create source snapshot', err);
         });
         this._panel.webview.postMessage({
             type: 'fullUpdate',
@@ -143,7 +145,7 @@ class TradeReportPanel {
                 }
             }
         } catch (e) {
-            console.error('Failed to build MQL source map', e);
+            mqlLogger.error('Failed to build MQL source map', e);
         }
     }
 
@@ -265,7 +267,7 @@ class TradeReportPanel {
                 try { await fs.promises.rmdir(snapDir); } catch { /* ignore */ }
             }
         } catch (e) {
-            console.error('Failed to create source snapshot', e);
+            mqlLogger.error('Failed to create source snapshot', e);
         }
     }
 

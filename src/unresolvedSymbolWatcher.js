@@ -1,5 +1,7 @@
 'use strict';
 
+const mqlLogger = require('./logger');
+
 /**
  * On-save scan that surfaces call-sites the clangd index cannot resolve.
  * Emits a visible wavy underline (TextEditorDecoration) plus a Hint-severity
@@ -341,7 +343,7 @@ function scheduleScan(doc, getIncludeDir) {
     inFlight.set(key, token);
 
     runScan(doc, token, getIncludeDir).catch((err) => {
-        console.error('MQL unresolved scan failed:', err);
+        mqlLogger.error('MQL unresolved scan failed:', err);
     });
 }
 

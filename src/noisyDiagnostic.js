@@ -28,6 +28,8 @@ const SEVERITY_NAMES = ['error', 'warning', 'information', 'hint'];
 
 const SUPPRESS_ITEM_RE = /^([ \t]*)-[ \t]+(\S.*)$/;
 
+const BOM = '\uFEFF';
+
 /**
  * Returns the clangd diagnostic code (the value clangd's `Diagnostics.Suppress`
  * accepts, e.g. `unknown_type` or `-Wunused-result`), or an empty string.
@@ -159,13 +161,25 @@ function normalizeSuppression(value) {
  * Handles: existing block list, single-line and multiline flow lists
  * (`Suppress: [a, b]`), scalar values (`Suppress: flag`), a `Diagnostics:`
  * block without `Suppress:`, a file without `Diagnostics:`, and an empty/new
- * file. Existing indentation and line endings are preserved.
+ * file. Existing indentation, line endings and a leading UTF-8 BOM are
+ * preserved.
  *
  * @param {string} clangdText - current `.clangd` content ('' when missing)
  * @param {string} flag - diagnostic code to suppress
  * @returns {{text: string, added: boolean, alreadyPresent: boolean}}
  */
 function insertSuppression(clangdText, flag) {
+    // Windows editors often write .clangd with a UTF-8 BOM; Node's utf8 read
+    // keeps it as \uFEFF at the start of the text. It would break the
+    // column-0 `Diagnostics:` match inside and could produce a second,
+    // duplicate block, so strip it here and re-attach it on the way out.
+    const hasBom = typeof clangdText === 'string' && clangdText.charCodeAt(0) === 0xFEFF;
+    const stripped = hasBom ? clangdText.slice(1) : clangdText;
+    const result = insertSuppressionInner(stripped, flag);
+    return hasBom ? { ...result, text: BOM + result.text } : result;
+}
+
+function insertSuppressionInner(clangdText, flag) {
     const original = typeof clangdText === 'string' ? clangdText : '';
     const wanted = normalizeSuppression(flag);
     if (!wanted) return { text: original, added: false, alreadyPresent: false };

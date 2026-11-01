@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const fs = require('fs');
 const path = require('path');
 
@@ -50,7 +52,7 @@ class MqlDebugLogReader {
 
     _log(msg) {
         if (this.onLog) this.onLog(msg);
-        console.log(`[MqlDebugLogReader] ${msg}`);
+        mqlLogger.info(`[MqlDebugLogReader] ${msg}`);
     }
 
     /** Start watching the debug log file. Clears the file first for a clean session. */
@@ -280,7 +282,7 @@ class MqlDebugLogReader {
 
     _emitError(err) {
         if (this.onError) this.onError(err);
-        else console.error('MqlDebugLogReader error:', err);
+        else mqlLogger.error('MqlDebugLogReader error:', err);
     }
 }
 

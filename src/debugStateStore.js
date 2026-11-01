@@ -1,5 +1,7 @@
 'use strict';
 
+const mqlLogger = require('./logger');
+
 const MAX_HITS        = 200;
 const MAX_CALL_FRAMES = 50;
 
@@ -171,7 +173,7 @@ class DebugStateStore {
                 break;
             }
             default:
-                console.warn(`[DebugStateStore] Unrecognized event type: ${event.type}`, event);
+                mqlLogger.warn(`[DebugStateStore] Unrecognized event type: ${event.type}`, event);
                 break;
         }
     }
@@ -236,7 +238,7 @@ class DebugStateStore {
             try {
                 l(this);
             } catch (err) {
-                console.warn('MqlDebugStore listener error:', err);
+                mqlLogger.warn('MqlDebugStore listener error:', err);
             }
         }
     }

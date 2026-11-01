@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
@@ -72,7 +74,7 @@ class TradeReportDashboard {
         try {
             eas = discoverEAs(expertsDir);
         } catch (e) {
-            console.error(`discoverEAs failed for expertsDir: ${expertsDir}`, e);
+            mqlLogger.error(`discoverEAs failed for expertsDir: ${expertsDir}`, e);
             eas = [];
         }
         // Quick-parse summary for each EA's runs (latest 10 per EA for speed)
@@ -84,7 +86,7 @@ class TradeReportDashboard {
                     const s = parseLogSummary(run.path);
                     data = { ...run, ...s };
                 } catch (e) {
-                    console.error(`parseLogSummary failed for EA: ${ea.name}, run.path: ${run.path}`, e);
+                    mqlLogger.error(`parseLogSummary failed for EA: ${ea.name}, run.path: ${run.path}`, e);
                     data = { ...run, tradeCount: 0, netPnl: 0, winRate: 0, symbol: '?', from: '?', to: '?' };
                 }
                 // Check if a source snapshot exists for this run

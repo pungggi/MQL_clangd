@@ -36,6 +36,8 @@ mocha.addFile(path.resolve(__dirname, 'lightweightDiagnostics.test.js'));
 mocha.addFile(path.resolve(__dirname, 'suite/versionBumper.test.js'));
 mocha.addFile(path.resolve(__dirname, 'documentSymbol.test.js'));
 mocha.addFile(path.resolve(__dirname, 'noisyDiagnostic.test.js'));
+mocha.addFile(path.resolve(__dirname, 'tempSweep.test.js'));
+mocha.addFile(path.resolve(__dirname, 'createPropertiesQueue.test.js'));
 
 // Run the tests
 mocha.run(failures => {

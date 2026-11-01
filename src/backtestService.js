@@ -501,6 +501,7 @@ async function startBacktest(options) {
             ea, mql5Root, mql5TesterIni, terminalPath, params,
             wineBinary, winePrefix, wineEnv, portableMode,
             logDir, latestAtStart, startTime,
+            onError: options.onError,
         });
     }
 
@@ -564,7 +565,7 @@ async function startBacktest(options) {
 async function startBacktestWine(ctx) {
     const { ea, mql5TesterIni, terminalPath, params,
         wineBinary, winePrefix, wineEnv, portableMode,
-        logDir, latestAtStart, startTime } = ctx;
+        logDir, latestAtStart, startTime, onError } = ctx;
 
     // Validate terminal path format (must be Unix, not Windows)
     const pathCheck = validateWinePath(terminalPath);
@@ -597,7 +598,22 @@ async function startBacktestWine(ctx) {
 
     let result;
     try {
-        result = await execWineBatch(termResult.path, args, wineBinary, winePrefix, wineEnv);
+        result = await execWineBatch(termResult.path, args, wineBinary, winePrefix, wineEnv, {
+            // Async spawn failures (wine binary missing, EACCES) arrive through
+            // the launcher's 'error' event. Mirror the native Windows path:
+            // drop the running-test entry and forward to the caller so the
+            // monitor is cancelled instead of polling for 10 minutes.
+            onError: (error) => {
+                runningTests.delete(ea.dir);
+                if (typeof onError === 'function') {
+                    try {
+                        onError(error);
+                    } catch {
+                        // A failing notification must never break the launch path
+                    }
+                }
+            },
+        });
     } catch (error) {
         return { started: false, code: 'LAUNCH_FAILED', message: `Failed to launch MT5 via Wine: ${error.message}` };
     }

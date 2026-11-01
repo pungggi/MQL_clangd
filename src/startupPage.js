@@ -1,3 +1,5 @@
+const mqlLogger = require('./logger');
+
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
@@ -53,7 +55,7 @@ function readTabPartial(extensionPath, tabName) {
     try {
         return fs.readFileSync(tabPath, 'utf8');
     } catch (err) {
-        console.error(`[MQL Tools] Failed to read tab partial "${tabPath}": ${err.message}`);
+        mqlLogger.error(`[MQL Tools] Failed to read tab partial "${tabPath}": ${err.message}`);
         return `<!-- tab-${tabName} unavailable -->`;
     }
 }
@@ -70,7 +72,7 @@ function getWebviewContent(version, extensionPath) {
             .replace(/\{\{version\}\}/g, version)
             .replace(/\{\{nonce\}\}/g, nonce);
     } catch (err) {
-        console.error(`[MQL Tools] Failed to read startup page from "${htmlPath}": ${err.message}`);
+        mqlLogger.error(`[MQL Tools] Failed to read startup page from "${htmlPath}": ${err.message}`);
         return `<!DOCTYPE html><html><body><p>MQL Tools v${version} — startup page unavailable.</p></body></html>`;
     }
 }

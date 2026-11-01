@@ -10,3 +10,5 @@ nul
 .mql-auto-forwards/
 # Agent harness state, scratch tools and dev telemetry (metrics.jsonl etc.)
 .pi/
+# Debug-build artifacts from aborted debug sessions
+*.mql_dbg_build.*

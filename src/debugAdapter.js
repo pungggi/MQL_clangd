@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const { EventEmitter } = require('events');
 const fs = require('fs');
@@ -348,7 +350,7 @@ class MqlDebugAdapter extends EventEmitter {
                     try {
                         id = this._bridge.resolveProbeId(filePath, line);
                     } catch (err) {
-                        console.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
+                        mqlLogger.error(`[MqlDebugAdapter] Bridge error resolving probe id for ${filePath}:${line}`, err);
                         continue;
                     }
                     if (id === undefined) continue;
@@ -369,7 +371,7 @@ class MqlDebugAdapter extends EventEmitter {
             }
             this._bridge.writeBreakpointConfig(entries);
         } catch (err) {
-            console.error('[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:', err);
+            mqlLogger.error('[MqlDebugAdapter] Fatal bridge error in _writeBreakpointConfig:', err);
         }
     }
 
@@ -582,7 +584,7 @@ class MqlDebugAdapter extends EventEmitter {
         try {
             fs.writeFileSync(cmdPath, 'CONTINUE\n', 'utf-8');
         } catch (err) {
-            console.warn('[MqlDebugAdapter] Failed to write continue command:', err.message);
+            mqlLogger.warn('[MqlDebugAdapter] Failed to write continue command:', err.message);
         }
     }
 
@@ -651,7 +653,7 @@ class MqlDebugAdapter extends EventEmitter {
             try {
                 if (fs.existsSync(resolved)) return resolved;
             } catch (err) {
-                console.debug(`[MqlDebugAdapter] Source resolution failed for "${resolved}": ${err.message}`);
+                mqlLogger.debug(`[MqlDebugAdapter] Source resolution failed for "${resolved}": ${err.message}`);
             }
         }
 
@@ -690,7 +692,7 @@ class MqlDebugAdapter extends EventEmitter {
         }
         if (baseMatch) {
             if (baseMatchCount > 1) {
-                console.warn(`[MqlDebugAdapter] Ambiguous line map: ${baseMatchCount} files match basename "${normBase}". Using first match.`);
+                mqlLogger.warn(`[MqlDebugAdapter] Ambiguous line map: ${baseMatchCount} files match basename "${normBase}". Using first match.`);
             }
             return instrumentedToOriginal(instrumentedLine, baseMatch);
         }

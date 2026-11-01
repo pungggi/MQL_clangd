@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
@@ -607,12 +609,12 @@ class MqlLogTailer {
             });
 
             this.watcher.on('error', (err) => {
-                console.error('MQL Tailer watcher error:', err);
+                mqlLogger.error('MQL Tailer watcher error:', err);
                 // Watcher died, poll will recreate it
                 this.watcher = null;
             });
         } catch (err) {
-            console.error('Failed to create file watcher:', err);
+            mqlLogger.error('Failed to create file watcher:', err);
         }
     }
 
@@ -636,7 +638,7 @@ class MqlLogTailer {
             }
         } catch (err) {
             if (err.code !== 'ENOENT') {
-                console.error('MQL Tailer content check error:', err);
+                mqlLogger.error('MQL Tailer content check error:', err);
             }
         } finally {
             this.isChecking = false;
@@ -676,7 +678,7 @@ class MqlLogTailer {
             // Also check for content in case watcher missed something
             await this.checkForNewContent();
         } catch (err) {
-            console.error('MQL Tailer poll error:', err);
+            mqlLogger.error('MQL Tailer poll error:', err);
         }
 
         // Slower poll interval since watcher handles real-time updates
@@ -715,7 +717,7 @@ class MqlLogTailer {
             this.lastSize = newSize;
         } catch (err) {
             if (err.code !== 'ENOENT') {
-                console.error('MQL Tailer read error:', err);
+                mqlLogger.error('MQL Tailer read error:', err);
             }
         } finally {
             if (fd !== undefined) {

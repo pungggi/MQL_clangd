@@ -1,4 +1,6 @@
 'use strict';
+
+const mqlLogger = require('./logger');
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
@@ -47,7 +49,7 @@ function loadMql5DocsMap() {
             mql5DocsMap = {};
         }
     } catch (err) {
-        console.error('Failed to load MQL5 docs map:', err);
+        mqlLogger.error('Failed to load MQL5 docs map:', err);
         mql5DocsMap = {};
     }
     return mql5DocsMap;
