@@ -28,7 +28,7 @@ async function run() {
     // Drop any src module that already loaded before this hook (the extension
     // host can pull it in during activation), so the tests re-require it under
     // the mock instead of ending up with a mixed real/mock environment.
-    const srcRoot = path.join(__dirname, '..', 'src') + path.sep;
+    const srcRoot = path.join(__dirname, '..', '..', 'src') + path.sep;
     for (const key of Object.keys(require.cache)) {
         if (key.startsWith(srcRoot)) {
             delete require.cache[key];

@@ -156,7 +156,8 @@ function normalizeSuppression(value) {
  * Inserts one flag into the `Diagnostics.Suppress` list of a `.clangd` file
  * without touching anything else in the document.
  *
- * Handles: existing block list, flow list (`Suppress: [a, b]`), a `Diagnostics:`
+ * Handles: existing block list, single-line and multiline flow lists
+ * (`Suppress: [a, b]`), scalar values (`Suppress: flag`), a `Diagnostics:`
  * block without `Suppress:`, a file without `Diagnostics:`, and an empty/new
  * file. Existing indentation and line endings are preserved.
  *
@@ -190,55 +191,99 @@ function insertSuppression(clangdText, flag) {
         }
     }
 
+    // Indentation used by the existing children of `Diagnostics:` (first
+    // non-blank line wins). New keys inside the block match it so the document
+    // stays valid YAML whether the file uses two or four space indentation.
+    let childIndent = '  ';
+    for (let i = diagnosticsIdx + 1; i < blockEnd; i++) {
+        if (lines[i].trim() === '') continue;
+        childIndent = /^([ \t]*)/.exec(lines[i])[1] || '  ';
+        break;
+    }
+
     // 2. Find `Suppress:` inside that block.
     for (let i = diagnosticsIdx + 1; i < blockEnd; i++) {
         const suppressMatch = /^([ \t]*)Suppress:[ \t]*(.*)$/.exec(lines[i]);
         if (!suppressMatch) continue;
 
         const keyIndent = suppressMatch[1];
+        const itemIndent = keyIndent + '  ';
         const inlineValue = suppressMatch[2].trim();
 
         // 2a. Flow style list: `Suppress: [a, b]` → rewrite as a block list.
+        // A flow list may span multiple lines (`[` without `]` on the key
+        // line): collect the continuation lines up to the closing bracket so
+        // their entries end up inside the rewritten block instead of staying
+        // behind it as duplicated garbage.
         if (inlineValue.startsWith('[')) {
-            const existing = inlineValue
+            let flowText = inlineValue;
+            let consumed = i;
+            if (!inlineValue.includes(']')) {
+                for (let j = i + 1; j < blockEnd; j++) {
+                    flowText += ' ' + lines[j].trim();
+                    consumed = j;
+                    if (lines[j].includes(']')) break;
+                }
+            }
+            let inner = flowText;
+            const closing = inner.indexOf(']');
+            if (closing !== -1) inner = inner.slice(0, closing);
+            const existing = inner
                 .replace(/^\[/, '')
-                .replace(/\]\s*(?:#.*)?$/, '')
                 .split(',')
-                .map((value) => normalizeSuppression(value))
+                .map((part) => normalizeSuppression(part.trim().replace(/^-+[ \t]+/, '')))
                 .filter(Boolean);
             if (existing.includes(wanted)) {
                 return { text: original, added: false, alreadyPresent: true };
             }
-            const itemIndent = keyIndent + '  ';
             const rewritten = [
                 `${keyIndent}Suppress:`,
                 ...[...existing, wanted].map((value) => `${itemIndent}- ${value}`),
+            ];
+            lines.splice(i, consumed - i + 1, ...rewritten);
+            return { text: lines.join(eol), added: true, alreadyPresent: false };
+        }
+
+        // 2b. Scalar value (`Suppress: pp_file_not_found`): appending a `- item`
+        // below a scalar would fold into one broken value, so convert the
+        // scalar into a block list first and keep it as the first entry.
+        if (inlineValue) {
+            const scalar = normalizeSuppression(inlineValue);
+            if (!scalar || scalar === wanted) {
+                return { text: original, added: false, alreadyPresent: true };
+            }
+            const rewritten = [
+                `${keyIndent}Suppress:`,
+                `${itemIndent}- ${scalar}`,
+                `${itemIndent}- ${wanted}`,
             ];
             lines.splice(i, 1, ...rewritten);
             return { text: lines.join(eol), added: true, alreadyPresent: false };
         }
 
-        // 2b. Block style list: collect the items that follow.
+        // 2c. Block style list: collect the items that follow.
         let lastItemIdx = -1;
-        let itemIndent = keyIndent + '  ';
+        let listItemIndent = itemIndent;
         const existing = [];
         for (let j = i + 1; j < blockEnd; j++) {
             if (lines[j].trim() === '') continue; // blank line inside the list
             const itemMatch = SUPPRESS_ITEM_RE.exec(lines[j]);
             if (!itemMatch) break;
             lastItemIdx = j;
-            itemIndent = itemMatch[1];
+            listItemIndent = itemMatch[1];
             existing.push(normalizeSuppression(itemMatch[2]));
         }
         if (existing.includes(wanted)) {
             return { text: original, added: false, alreadyPresent: true };
         }
-        lines.splice(lastItemIdx === -1 ? i + 1 : lastItemIdx + 1, 0, `${itemIndent}- ${wanted}`);
+        lines.splice(lastItemIdx === -1 ? i + 1 : lastItemIdx + 1, 0, `${listItemIndent}- ${wanted}`);
         return { text: lines.join(eol), added: true, alreadyPresent: false };
     }
 
-    // 3. `Diagnostics:` without `Suppress:` — add the list right after it.
-    lines.splice(diagnosticsIdx + 1, 0, '  Suppress:', `    - ${wanted}`);
+    // 3. `Diagnostics:` without `Suppress:` — add the list right after it,
+    // using the block's existing child indentation (a hardcoded two-space
+    // indent would break files whose children use four spaces).
+    lines.splice(diagnosticsIdx + 1, 0, `${childIndent}Suppress:`, `${childIndent}  - ${wanted}`);
     return { text: lines.join(eol), added: true, alreadyPresent: false };
 }
 

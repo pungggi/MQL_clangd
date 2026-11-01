@@ -205,6 +205,76 @@ suite('noisyDiagnostic — insertSuppression', () => {
         assert.strictEqual(result.added, false);
         assert.strictEqual(result.text, GENERATED_CLANGD);
     });
+
+    test('rewrites a multiline flow list without leaving leftovers', () => {
+        const content = [
+            'Diagnostics:',
+            '  Suppress: [',
+            '    pp_file_not_found,',
+            '    lexing_error',
+            '  ]',
+            '',
+            'CompileFlags:',
+            '  Add: [-c]',
+        ].join('\n');
+        const result = insertSuppression(content, 'unknown_type');
+        assert.strictEqual(result.added, true);
+        assert.strictEqual(result.text, [
+            'Diagnostics:',
+            '  Suppress:',
+            '    - pp_file_not_found',
+            '    - lexing_error',
+            '    - unknown_type',
+            '',
+            'CompileFlags:',
+            '  Add: [-c]',
+        ].join('\n'));
+    });
+
+    test('detects an existing entry in a multiline flow list', () => {
+        const content = 'Diagnostics:\n  Suppress: [\n    pp_file_not_found\n  ]\n';
+        const result = insertSuppression(content, 'pp_file_not_found');
+        assert.strictEqual(result.alreadyPresent, true);
+        assert.strictEqual(result.text, content);
+    });
+
+    test('converts a scalar Suppress value into a block list', () => {
+        const content = 'Diagnostics:\n  Suppress: pp_file_not_found\n\nHover:\n  ShowAKA: No\n';
+        const result = insertSuppression(content, 'lexing_error');
+        assert.strictEqual(result.added, true);
+        assert.strictEqual(result.text, [
+            'Diagnostics:',
+            '  Suppress:',
+            '    - pp_file_not_found',
+            '    - lexing_error',
+            '',
+            'Hover:',
+            '  ShowAKA: No',
+            '',
+        ].join('\n'));
+    });
+
+    test('reports alreadyPresent when the scalar equals the flag', () => {
+        const content = 'Diagnostics:\n  Suppress: lexing_error\n';
+        const result = insertSuppression(content, 'lexing_error');
+        assert.strictEqual(result.alreadyPresent, true);
+        assert.strictEqual(result.text, content);
+    });
+
+    test('matches the existing child indentation of the Diagnostics block', () => {
+        const content = 'Diagnostics:\n    ClangTidy:\n      Remove:\n        - modernize-*\n';
+        const result = insertSuppression(content, 'unknown_type');
+        assert.strictEqual(result.added, true);
+        assert.strictEqual(result.text, [
+            'Diagnostics:',
+            '    Suppress:',
+            '      - unknown_type',
+            '    ClangTidy:',
+            '      Remove:',
+            '        - modernize-*',
+            '',
+        ].join('\n'));
+    });
 });
 
 suite('noisyDiagnostic — buildReportText', () => {

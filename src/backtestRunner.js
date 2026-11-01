@@ -331,13 +331,19 @@ function resolveMonitorTimeoutMs(rawMinutes) {
 }
 
 async function executeBacktest(eaName, params, options) {
+    // Launch failures arrive asynchronously via the child 'error' event, so
+    // they cannot be returned as { started: false }. Surface them to the user
+    // and cancel the monitor below immediately: without that it would poll
+    // for a terminal that never started until its timeout, and a retry during
+    // that window would run against a zombie monitor.
+    const launchFailureToken = { isCancellationRequested: false };
     const startResult = await startBacktest({
         eaName, params, ...options,
-        // Launch failures arrive asynchronously via the child 'error' event, so
-        // they cannot be returned as { started: false }. Surface them to the user
-        // instead of leaving the monitor waiting for a terminal that never started.
-        onError: (error) => vscode.window.showErrorMessage(
-            `Failed to launch MetaTrader for ${eaName}: ${error.message}`),
+        onError: (error) => {
+            launchFailureToken.isCancellationRequested = true;
+            vscode.window.showErrorMessage(
+                `Failed to launch MetaTrader for ${eaName}: ${error.message}`);
+        },
     });
     if (!startResult.started) {
         showStartFailure(eaName, startResult);
@@ -359,6 +365,7 @@ async function executeBacktest(eaName, params, options) {
             diagnostics,
             startupGraceMs,
             monitorTimeoutMs,
+            failureToken: launchFailureToken,
         }),
     );
 }
@@ -409,6 +416,7 @@ async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions
         diagnostics = null,
         startupGraceMs = DEFAULT_STARTUP_GRACE_SECONDS * 1000,
         monitorTimeoutMs = DEFAULT_MONITOR_TIMEOUT_MINUTES * 60 * 1000,
+        failureToken = null,
     } = monitorOptions;
     const startTime = Date.now();
     progress.report({ message: 'Starting...' });
@@ -417,7 +425,8 @@ async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions
     const baselineMtimeMs = logDir ? (findLatestTesterLog(logDir)?.mtimeMs ?? 0) : 0;
     let watchdogShown = false;
 
-    while (!token.isCancellationRequested) {
+    const launchFailed = () => Boolean(failureToken && failureToken.isCancellationRequested);
+    while (!token.isCancellationRequested && !launchFailed()) {
         const elapsed = Date.now() - startTime;
         if (elapsed > monitorTimeoutMs) {
             const timeoutMin = Math.round(monitorTimeoutMs / 60000);
@@ -429,7 +438,7 @@ async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions
         }
 
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
-        if (token.isCancellationRequested) break;
+        if (token.isCancellationRequested || launchFailed()) break;
 
         const status = getBacktestStatus(mql5Root, eaName);
         if (!status.running) {
@@ -452,6 +461,12 @@ async function monitorBacktest(mql5Root, eaName, progress, token, monitorOptions
         }
 
         progress.report({ message: `Running... (${secs}s)` });
+    }
+
+    // A failed launch has no process to cancel: report and leave quietly
+    // (the error message was already shown by the launch error handler).
+    if (launchFailed()) {
+        return false;
     }
 
     const cancelled = cancelBacktest(mql5Root, eaName);

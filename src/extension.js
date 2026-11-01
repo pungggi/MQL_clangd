@@ -958,7 +958,7 @@ async function Compile(rt, context, options = {}) {
     // unrelated formatters and save hooks on files the command never touched.
     // Check-on-save and the startup check read the file that is already on disk,
     // so their diagnostics stay accurate without any write; only auto-check after
-    // typing has to save the one document it is checking (see saveActive below).
+    // typing has to save the document it is checking (see saveDocumentUri below).
     if (!options.background) {
         await FixFormatting();
         // Save after formatting. Guard against re-entrant CheckOnSave triggers.
@@ -968,15 +968,18 @@ async function Compile(rt, context, options = {}) {
         } finally {
             internalSaveDepth = Math.max(0, internalSaveDepth - 1);
         }
-    } else if (options.saveActive) {
+    } else if (options.saveDocumentUri) {
         // Auto-check after typing: MetaEditor only reads files, so the edited
-        // document has to be saved to be checked. Save that one document and
-        // nothing else, and never reformat from a background run.
-        const activeDocument = vscode.window.activeTextEditor?.document;
-        if (activeDocument && activeDocument.isDirty) {
+        // document has to be saved to be checked. Save exactly that document —
+        // identified by URI at change time, not whatever is active when the
+        // debounce fires (the user may have switched files meanwhile) — and
+        // never reformat from a background run.
+        const editedDocument = vscode.workspace.textDocuments
+            .find((document) => document.uri.toString() === options.saveDocumentUri);
+        if (editedDocument && editedDocument.isDirty) {
             internalSaveDepth++;
             try {
-                await activeDocument.save();
+                await editedDocument.save();
             } finally {
                 internalSaveDepth = Math.max(0, internalSaveDepth - 1);
             }
@@ -3150,18 +3153,19 @@ function activate(context) {
         if (isAutoCheckRunning) return;
 
         const delay = config.AutoCheck.Delay || 3000;
+        const editedUri = docUri; // the document the user typed in
         autoCheckTimer = setTimeout(async () => {
             isAutoCheckRunning = true;
-            const activeDoc = vscode.window.activeTextEditor?.document;
-            const checkingUri = activeDoc?.uri.toString();
 
             try {
-                await Compile(COMPILE_MODE_CHECK, context, { background: true, saveActive: true }); // Syntax check (no compilation)
+                await Compile(COMPILE_MODE_CHECK, context, { background: true, saveDocumentUri: editedUri }); // Syntax check (no compilation)
             } finally {
                 // Record the final document version after our edits complete
                 // This prevents re-triggering from FixFormatting or save changes
-                if (checkingUri && vscode.window.activeTextEditor?.document.uri.toString() === checkingUri) {
-                    autoCheckDocVersions.set(checkingUri, vscode.window.activeTextEditor.document.version);
+                const editedDoc = vscode.workspace.textDocuments
+                    .find((document) => document.uri.toString() === editedUri);
+                if (editedDoc) {
+                    autoCheckDocVersions.set(editedUri, editedDoc.version);
                 }
                 isAutoCheckRunning = false;
             }
