@@ -1102,9 +1102,9 @@ function mergeClangdSuppressions(newSuppressions, existingSuppressions) {
  * Main function to generate/update workspace properties for clangd.
  * @param {boolean} [force=false] - If true, force overwrite of existing config files
  */
-async function runCreatePropertiesOnce(force = false) {
+async function runCreatePropertiesOnce(force = false, folderOverride = null) {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-        return;
+        return { changed: false };
     }
 
     // True when any clangd-relevant artifact (compile_commands.json, .clangd)
@@ -1115,10 +1115,13 @@ async function runCreatePropertiesOnce(force = false) {
     const config = vscode.workspace.getConfiguration();
     const configMql = vscode.workspace.getConfiguration('mql_tools');
 
-    const editor = vscode.window.activeTextEditor;
-    const workspaceFolder = (editor && vscode.workspace.getWorkspaceFolder(editor.document.uri))
-        ? vscode.workspace.getWorkspaceFolder(editor.document.uri)
-        : vscode.workspace.workspaceFolders[0];
+    // Use the folder captured when CreateProperties() was called; only fall
+    // back to the live active editor when no override was supplied.
+    const editor = folderOverride ? null : vscode.window.activeTextEditor;
+    const workspaceFolder = folderOverride
+        || ((editor && vscode.workspace.getWorkspaceFolder(editor.document.uri))
+            ? vscode.workspace.getWorkspaceFolder(editor.document.uri)
+            : vscode.workspace.workspaceFolders[0]);
 
     const workspacepath = workspaceFolder.uri.fsPath;
     const workspaceName = workspaceFolder.name;
@@ -1328,8 +1331,12 @@ async function runCreatePropertiesOnce(force = false) {
                             'workbench.action.openSettings',
                             'mql_tools.Clangd.PreserveSuppressions'
                         );
-                        // Don't modify the file when user chooses to configure
-                        return;
+                        // Don't modify the file when user chooses to configure.
+                        // compile_commands.json may already have been rewritten
+                        // above, so report that instead of a bare undefined —
+                        // regenerateProperties() relies on `changed` to decide
+                        // whether clangd needs a restart.
+                        return { changed };
                     }
                     shouldPreserve = choice === 'Merge Suppressions';
                 }
@@ -1536,7 +1543,15 @@ function Cpp_prop(incDir) {
 // another; every caller still gets its own result/rejection.
 const enqueueCreateProperties = createSerialQueue();
 function CreateProperties(force = false) {
-    return enqueueCreateProperties(() => runCreatePropertiesOnce(force));
+    // Snapshot the target workspace folder NOW, at call time. Runs can wait in
+    // the queue behind an earlier run; reading the active editor at dequeue
+    // time would regenerate whichever folder happens to be active then
+    // instead of the one the caller meant.
+    const callerEditor = vscode.window.activeTextEditor;
+    const callerFolder = (callerEditor && vscode.workspace.getWorkspaceFolder(callerEditor.document.uri))
+        || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0])
+        || null;
+    return enqueueCreateProperties(() => runCreatePropertiesOnce(force, callerFolder));
 }
 
 module.exports = {

@@ -225,6 +225,9 @@ function findClosestMatches(word, maxDist = 2, maxResults = 3) {
 // clears the flag. A plain compile changes none of clangd's inputs.
 let clangdNeedsRestart = false;
 
+// In-flight activation sweep of leftover debug-build artifacts (see activate).
+let dbgBuildSweepPromise = null;
+
 /**
  * Run CreateProperties and track whether clangd inputs changed.
  * All CreateProperties call sites go through this wrapper so the flag is
@@ -1520,8 +1523,11 @@ function activate(context) {
 
     // Sweep leftover *.mql_dbg_build.* artifacts from aborted debug sessions.
     // Fire-and-forget: the sweep is best-effort and must never block or fail
-    // activation (see src/tempSweep.js).
-    sweepDbgBuildArtifacts((vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath))
+    // activation (see src/tempSweep.js). The promise is kept so a debug launch
+    // can wait for the walk to finish before it starts writing its own
+    // *.mql_dbg_build.* artifacts (otherwise the sweep could delete the files
+    // of the very session that just started).
+    dbgBuildSweepPromise = sweepDbgBuildArtifacts((vscode.workspace.workspaceFolders || []).map(folder => folder.uri.fsPath))
         .then(results => {
             const removed = results.reduce((sum, r) => sum + r.removed.length, 0);
             if (removed > 0) {
@@ -1942,6 +1948,12 @@ function activate(context) {
     );
 
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.startDebugging', async () => {
+        // Never race the activation sweep: it walks the workspace removing
+        // leftover *.mql_dbg_build.* files, and this command is about to write
+        // the very same artifacts for a new debug session.
+        if (dbgBuildSweepPromise) {
+            await dbgBuildSweepPromise;
+        }
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
             vscode.window.showErrorMessage('MQL Debug: Open an MQL source file first.');
