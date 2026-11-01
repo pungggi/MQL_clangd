@@ -21,6 +21,7 @@
 - **CreateProperties runs are serialized**: the startup migration, the configurations command, the `.mqh` watcher and the include-change handler could run it concurrently and race on `compile_commands.json`, `.clangd` and workspace settings.
 - **Logging goes to the MQL output channel**: all 79 `console.*` calls in `src/` now route through `src/logger.js`; warnings and errors stay mirrored to the devtools console.
 - **extension.js split**: the 1160-line code action provider moved to `src/codeActionProvider.js`, shrinking `extension.js` from 3450 to 2290 lines.
+- **Packaging hygiene**: the agent scratch directory `.pi/` (including 35 KB of dev telemetry that had been tracked in git) is untracked, gitignored, and excluded from lint and from the published VSIX. Every released package so far shipped those files; future packages will not.
 
 ## 1.1.63
 
