@@ -981,6 +981,12 @@ function resolveHeaderCompilePlan({ targets, magicPath, isBackground = false }, 
 }
 
 async function Compile(rt, context, options = {}) {
+    // Document the auto-check targets: the one the user edited, captured by
+    // URI when the change event fired (null for every other entry point).
+    const editedDocument = options.saveDocumentUri
+        ? vscode.workspace.textDocuments.find((document) => document.uri.toString() === options.saveDocumentUri)
+        : null;
+
     // Background runs never format and never call saveAll. Auto-formatting and
     // saving every open dirty document from a background syntax check fired
     // unrelated formatters and save hooks on files the command never touched.
@@ -1002,8 +1008,6 @@ async function Compile(rt, context, options = {}) {
         // identified by URI at change time, not whatever is active when the
         // debounce fires (the user may have switched files meanwhile) — and
         // never reformat from a background run.
-        const editedDocument = vscode.workspace.textDocuments
-            .find((document) => document.uri.toString() === options.saveDocumentUri);
         if (editedDocument && editedDocument.isDirty) {
             internalSaveDepth++;
             try {
@@ -1014,10 +1018,13 @@ async function Compile(rt, context, options = {}) {
         }
     }
 
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
+    // Resolve the document to check. Auto-check targets the document the user
+    // edited (see editedDocument above). If it was closed before the debounce
+    // fired there is nothing left to check. Every other entry point compiles
+    // the active editor's document.
+    const document = options.saveDocumentUri ? editedDocument : vscode.window.activeTextEditor?.document;
+    if (!document) return;
 
-    const document = editor.document;
     const extension = pathModule.extname(document.fileName).toLowerCase();
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
 
@@ -2087,6 +2094,11 @@ function activate(context) {
 
             try {
                 await Compile(COMPILE_MODE_CHECK, context, { background: true, saveDocumentUri: editedUri }); // Syntax check (no compilation)
+            } catch (err) {
+                // A rejected Compile must not surface as an unhandled rejection
+                // from a timer callback; the compile path has already reported
+                // what it could.
+                mqlLogger.error('MQL Tools: auto-check failed', err);
             } finally {
                 // Record the final document version after our edits complete
                 // This prevents re-triggering from FixFormatting or save changes
@@ -2155,6 +2167,8 @@ function activate(context) {
         isAutoCheckRunning = true;
         try {
             await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check on startup
+        } catch (err) {
+            mqlLogger.error('MQL Tools: startup check failed', err);
         } finally {
             isAutoCheckRunning = false;
         }

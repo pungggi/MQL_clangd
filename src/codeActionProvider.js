@@ -1,5 +1,6 @@
 'use strict';
 
+const vscode = require('vscode');
 const { CLANGD_BASE_SUPPRESSIONS } = require('./createProperties');
 
 // Code Action provider for MQL errors - offers quick fixes

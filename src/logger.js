@@ -46,7 +46,12 @@ function formatArg(arg) {
 function write(level, args) {
     const message = `${PREFIX[level] || ''} ${args.map(formatArg).join(' ')}`.trim();
     if (outputChannel) {
-        outputChannel.appendLine(message);
+        try {
+            outputChannel.appendLine(message);
+        } catch {
+            // The channel can already be disposed when late async callbacks
+            // log during shutdown; losing one line beats taking the host down.
+        }
         if (level === 'error') {
             console.error(message);
         } else if (level === 'warn') {

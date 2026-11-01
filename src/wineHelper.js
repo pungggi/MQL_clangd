@@ -33,36 +33,31 @@ function showOutputChannel(preserveFocus = true) {
 }
 
 /**
- * Logs a message to the output channel (if available) and console.
- * @param {string} message 
+ * Logs a message to the MQL output channel.
+ *
+ * The channel is the same one mqlLogger is bound to (see setOutputChannel's
+ * caller in activate()), so routing through mqlLogger is enough — an extra
+ * appendLine here used to print every Wine message twice.
+ * @param {string} message
  */
 function log(message) {
     mqlLogger.info(message);
-    if (outputChannel) {
-        outputChannel.appendLine(message);
-    }
 }
 
 /**
- * Logs a warning message to the output channel (if available) and console.
- * @param {string} message 
+ * Logs a warning message to the MQL output channel.
+ * @param {string} message
  */
 function logWarning(message) {
     mqlLogger.warn(message);
-    if (outputChannel) {
-        outputChannel.appendLine(`[Warning] ${message}`);
-    }
 }
 
 /**
- * Logs an error message to the output channel (if available) and console.
- * @param {string} message 
+ * Logs an error message to the MQL output channel.
+ * @param {string} message
  */
 function logError(message) {
     mqlLogger.error(message);
-    if (outputChannel) {
-        outputChannel.appendLine(`[Error] ${message}`);
-    }
 }
 
 /**

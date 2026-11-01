@@ -277,6 +277,32 @@ suite('noisyDiagnostic — insertSuppression', () => {
     });
 });
 
+suite('noisyDiagnostic — insertSuppression BOM handling', () => {
+    test('appends to the existing Diagnostics block behind a UTF-8 BOM', () => {
+        const content = '\uFEFFDiagnostics:\n  Suppress:\n    - pp_file_not_found\n';
+        const result = insertSuppression(content, 'lexing_error');
+        assert.strictEqual(result.added, true);
+        assert.strictEqual(result.text, '\uFEFFDiagnostics:\n  Suppress:\n    - pp_file_not_found\n    - lexing_error\n');
+    });
+
+    test('preserves the BOM when the flag is already present', () => {
+        const content = '\uFEFFDiagnostics:\n  Suppress:\n    - lexing_error\n';
+        const result = insertSuppression(content, 'lexing_error');
+        assert.strictEqual(result.alreadyPresent, true);
+        assert.strictEqual(result.text, content);
+    });
+
+    test('prepends a Diagnostics block without duplicating it when only a BOM precedes', () => {
+        const content = '\uFEFFCompileFlags:\n  Add: [-c]\n';
+        const result = insertSuppression(content, 'unknown_type');
+        assert.strictEqual(result.added, true);
+        // The BOM must not hide the existing top-level keys: the new block is
+        // appended after them and the BOM survives at the very start.
+        assert.ok(result.text.startsWith('\uFEFFCompileFlags:'));
+        assert.strictEqual(result.text.match(/Diagnostics:/g).length, 1);
+    });
+});
+
 suite('noisyDiagnostic — buildReportText', () => {
     const doc = {
         fileName: 'C:\\MT5\\MQL5\\Experts\\MyEA.mq5',
