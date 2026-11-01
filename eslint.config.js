@@ -32,7 +32,7 @@ const mochaGlobals = {
 
 module.exports = [
     {
-        ignores: ['dist/**', 'node_modules/**', '.vscode-test/**'],
+        ignores: ['dist/**', 'node_modules/**', '.vscode-test/**', '.pi/**'],
     },
     {
         files: ['**/*.js'],

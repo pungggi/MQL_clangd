@@ -72,6 +72,7 @@ const {
 const { MqlDebugAdapter } = require('./debugAdapter');
 const { store: debugStore } = require('./debugStateStore');
 const { registerDebugCodeLens } = require('./debugCodeLens');
+const { reportNoisyDiagnostic } = require('./noisyDiagnostic');
 const { showStartupPage } = require('./startupPage');
 
 
@@ -952,13 +953,37 @@ function resolveHeaderCompilePlan({ targets, magicPath, isBackground = false }, 
 }
 
 async function Compile(rt, context, options = {}) {
-    await FixFormatting();
-    // Save after formatting. Guard against re-entrant CheckOnSave triggers.
-    internalSaveDepth++;
-    try {
-        await vscode.commands.executeCommand('workbench.action.files.saveAll');
-    } finally {
-        internalSaveDepth = Math.max(0, internalSaveDepth - 1);
+    // Background runs never format and never call saveAll. Auto-formatting and
+    // saving every open dirty document from a background syntax check fired
+    // unrelated formatters and save hooks on files the command never touched.
+    // Check-on-save and the startup check read the file that is already on disk,
+    // so their diagnostics stay accurate without any write; only auto-check after
+    // typing has to save the document it is checking (see saveDocumentUri below).
+    if (!options.background) {
+        await FixFormatting();
+        // Save after formatting. Guard against re-entrant CheckOnSave triggers.
+        internalSaveDepth++;
+        try {
+            await vscode.commands.executeCommand('workbench.action.files.saveAll');
+        } finally {
+            internalSaveDepth = Math.max(0, internalSaveDepth - 1);
+        }
+    } else if (options.saveDocumentUri) {
+        // Auto-check after typing: MetaEditor only reads files, so the edited
+        // document has to be saved to be checked. Save exactly that document —
+        // identified by URI at change time, not whatever is active when the
+        // debounce fires (the user may have switched files meanwhile) — and
+        // never reformat from a background run.
+        const editedDocument = vscode.workspace.textDocuments
+            .find((document) => document.uri.toString() === options.saveDocumentUri);
+        if (editedDocument && editedDocument.isDirty) {
+            internalSaveDepth++;
+            try {
+                await editedDocument.save();
+            } finally {
+                internalSaveDepth = Math.max(0, internalSaveDepth - 1);
+            }
+        }
     }
 
     const editor = vscode.window.activeTextEditor;
@@ -2633,8 +2658,11 @@ function activate(context) {
         clearSymbolCache(document.uri.toString());
     }));
 
-    const extensionId = 'ngsoftware.mql-tools';
-    const extPkg = vscode.extensions.getExtension(extensionId)?.packageJSON;
+    // Resolve the package manifest from the running extension instead of hardcoding
+    // an id: the manifest id is `<publisher>.<name>` (ngsoftware.mql-clangd), and the
+    // old hardcoded 'ngsoftware.mql-tools' made getExtension() return undefined,
+    // which silently disabled the migration check and the CPU_ARCH_MAP guard below.
+    const extPkg = context.extension?.packageJSON;
     const currentVersion = extPkg?.version;
     const previousVersion = context.globalState.get('mql-tools.version');
 
@@ -2690,9 +2718,8 @@ function activate(context) {
     sleep(2000).then(async () => {
         if (previousVersion !== currentVersion) {
             if (currentVersion === '1.0.0' || currentVersion === '1.0.1' || currentVersion === '1.0.2') {
-                CreateProperties().then(() => {
-                    // Update successful info message
-                    // console.log(`MQL Tools: Migrated to v${currentVersion}`);
+                CreateProperties().catch((err) => {
+                    outputChannel.appendLine(`[Error] Migration CreateProperties failed: ${err.message}`);
                 });
             }
 
@@ -3090,6 +3117,13 @@ function activate(context) {
         { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
     ));
 
+    // Was contributed in package.json but never registered, so the palette entry
+    // failed with "command not found".
+    context.subscriptions.push(vscode.commands.registerCommand(
+        'mql_tools.reportNoisyDiagnostic',
+        () => reportNoisyDiagnostic(context, outputChannel)
+    ));
+
     // Debounced auto-check on text change
     context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event) => {
         const config = vscode.workspace.getConfiguration('mql_tools');
@@ -3119,18 +3153,19 @@ function activate(context) {
         if (isAutoCheckRunning) return;
 
         const delay = config.AutoCheck.Delay || 3000;
+        const editedUri = docUri; // the document the user typed in
         autoCheckTimer = setTimeout(async () => {
             isAutoCheckRunning = true;
-            const activeDoc = vscode.window.activeTextEditor?.document;
-            const checkingUri = activeDoc?.uri.toString();
 
             try {
-                await Compile(COMPILE_MODE_CHECK, context, { background: true }); // Syntax check (no compilation)
+                await Compile(COMPILE_MODE_CHECK, context, { background: true, saveDocumentUri: editedUri }); // Syntax check (no compilation)
             } finally {
                 // Record the final document version after our edits complete
                 // This prevents re-triggering from FixFormatting or save changes
-                if (checkingUri && vscode.window.activeTextEditor?.document.uri.toString() === checkingUri) {
-                    autoCheckDocVersions.set(checkingUri, vscode.window.activeTextEditor.document.version);
+                const editedDoc = vscode.workspace.textDocuments
+                    .find((document) => document.uri.toString() === editedUri);
+                if (editedDoc) {
+                    autoCheckDocVersions.set(editedUri, editedDoc.version);
                 }
                 isAutoCheckRunning = false;
             }

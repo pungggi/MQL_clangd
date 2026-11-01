@@ -8,3 +8,5 @@ nul
 *.stackdump
 .claude/settings.local.json
 .mql-auto-forwards/
+# Agent harness state, scratch tools and dev telemetry (metrics.jsonl etc.)
+.pi/

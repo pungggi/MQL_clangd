@@ -700,6 +700,12 @@
                 "category": "MQL"
             },
             {
+                "command": "mql_tools.insertWatchAnnotation",
+                "title": "Insert Watch Annotation",
+                "category": "MQL",
+                "icon": "$(eye)"
+            },
+            {
                 "command": "mql_tools.showStartupPage",
                 "title": "%mql_tools.commands.showStartupPage.title%",
                 "category": "MQL"

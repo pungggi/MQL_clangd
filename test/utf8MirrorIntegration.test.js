@@ -127,9 +127,23 @@ function setupSuiteTmpDir() {
         _tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mql-mirror-test-'));
     });
     suiteTeardown(() => {
-        if (_tmpDir) {
-            fs.rmSync(_tmpDir, { recursive: true, force: true });
-            _tmpDir = null;
+        if (!_tmpDir) {
+            return;
+        }
+        const dir = _tmpDir;
+        _tmpDir = null;
+        // Cleanup is best effort: a leftover temp tree must never fail the suite.
+        // `force` only silences ENOENT for the top-level path, so nested entries
+        // that vanish concurrently (Windows lock/ETXTBSY style races) still throw.
+        try {
+            fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+        } catch (err) {
+            console.warn(`[utf8Mirror] temp cleanup of ${dir} failed: code=${err.code} errno=${err.errno} exists=${fs.existsSync(dir)}: ${err.message}`);
+            try {
+                fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+            } catch (retryErr) {
+                console.warn(`[utf8Mirror] temp cleanup retry failed: ${retryErr.message}`);
+            }
         }
     });
 }

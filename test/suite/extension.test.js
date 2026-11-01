@@ -1,17 +1,10 @@
 const assert = require('assert');
-const Module = require('module');
-
-// 1. Hook the Node.js module loader to intercept 'vscode'
 const vscodeMock = require('../mocks/vscode');
-const originalLoad = Module._load;
-Module._load = function (request) {
-    if (request === 'vscode') {
-        return vscodeMock;
-    }
-    return originalLoad.apply(this, arguments);
-};
 
-// 2. Load the modules under test (they will now get the mock)
+// Load the modules under test. The `vscode` module hook is installed centrally
+// in suite/index.js *before* any test file loads, so these all resolve to the
+// same mock instance (installing it here was too late: files loaded earlier in
+// the glob were already bound to the real API).
 const extension = require('../../src/extension');
 const {
     replaceLog,
