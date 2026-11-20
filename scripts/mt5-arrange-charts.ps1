@@ -93,7 +93,7 @@ function FrameInsets([IntPtr]$h) {
     $fr = New-Object Win+RECT
     $sz = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win+RECT])
     if ([Win]::DwmGetWindowAttribute($h, 9, [ref]$fr, $sz) -eq 0 -and $wr.Right - $wr.Left -gt 0) {
-        return @($fr.Left - $wr.Left, $fr.Top - $wr.Top, $wr.Right - $fr.Right, $fr.Bottom - $fr.Bottom)
+        return @(($fr.Left - $wr.Left), ($fr.Top - $wr.Top), ($wr.Right - $fr.Right), ($wr.Bottom - $fr.Bottom))
     }
     return @(0, 0, 0, 0)
 }
