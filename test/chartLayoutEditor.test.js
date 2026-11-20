@@ -529,6 +529,32 @@ suite('chartLayoutEditor (webview script)', () => {
         assert.ok(doc.getElementById('status').textContent.includes('cannot contain'));
     });
 
+    test('apply stays disabled until every region is rectangular', () => {
+        const p = setupHost();
+        const { doc, win } = bootWebview(p.webview.html);
+        assert.strictEqual(doc.getElementById('btnApply').disabled, false);
+        // two diagonal cells sharing one token = non-rectangular region
+        paint(doc, win, 0, 0, 0, 0, 0, 'H4');
+        paint(doc, win, 0, 1, 1, 1, 1, null);
+        assert.strictEqual(doc.getElementById('btnApply').disabled, true);
+        // resolving the region re-enables apply
+        const editor = doc.getElementById('editor');
+        fire(editor, 'contextmenu', { target: cellAt(doc, 0, 1, 1) });
+        assert.strictEqual(doc.getElementById('btnApply').disabled, false);
+    });
+
+    test('preset names with markup are escaped in the sidebar', () => {
+        const p = setupHost(() => {
+            vscodeMock.workspace._configMock.get = () => [
+                { name: '<img src=x onerror=alert(1)>', docked: { monitor: 1, areas: ['A B'] }, gap: 0 },
+            ];
+        });
+        const { doc } = bootWebview(p.webview.html);
+        const item = doc.getElementById('presetList').children[0];
+        assert.strictEqual(item.querySelectorAll('img').length, 0);
+        assert.ok(item.textContent.includes('&lt;img'), item.textContent);
+    });
+
     test('typing Daily in the custom box paints canonical D1', () => {
         const p = setupHost();
         const { doc, win } = bootWebview(p.webview.html);

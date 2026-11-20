@@ -39,9 +39,8 @@ function describeInvalid(p) {
     if (!normalizeGrid(p.docked)) {
         return `preset ${name}needs a docked group: monitor 1+ plus a painted grid (or rows × cols).`;
     }
-    if (p.floating && !normalizeGrid(p.floating)) {
-        return `preset ${name}has a floating group with monitor < 1 or an empty grid.`;
-    }
+    // (normalizePreset silently drops an unusable floating group instead of
+    // failing the whole preset, so a floating problem never reaches here.)
     return `preset ${name}is not a valid layout.`;
 }
 
@@ -85,6 +84,7 @@ class ChartLayoutEditorPanel {
     }
 
     async _onMessage(msg) {
+        if (!msg || typeof msg !== 'object') return;   // malformed: ignore, don't throw
         switch (msg.type) {
             case 'save':
                 try {
@@ -502,6 +502,15 @@ input { font-family: inherit; font-size: 12px; }
     }
     function allJson() { return presets.map(presetToJson); }
     function liveValid(p) { return !!p && p.name.trim() !== '' && p.docked.monitor >= 1; }
+    // Apply paints real windows: a non-rectangular region would be persisted
+    // and then make the worker error at runtime — block it up front, mirroring
+    // the red cells + error hint the grid already shows.
+    function applyable(p) {
+        if (!liveValid(p)) return false;
+        if (analyze(p.docked.grid).nonRect.length) return false;
+        if (p.floating && p.floating.on && analyze(p.floating.grid).nonRect.length) return false;
+        return true;
+    }
 
     // ---------- region analysis (validation + mode hint) ----------
 
@@ -686,7 +695,7 @@ input { font-family: inherit; font-size: 12px; }
         document.getElementById('btnDup').disabled = !has;
         document.getElementById('btnDelete').disabled = !has;
         document.getElementById('btnSave').disabled = !has;
-        document.getElementById('btnApply').disabled = !has || !liveValid(cur());
+        document.getElementById('btnApply').disabled = !has || !applyable(cur());
     }
 
     // ---------- palette ----------
@@ -891,6 +900,8 @@ input { font-family: inherit; font-size: 12px; }
                 var c = canonTok(t);
                 if (c !== t) status(true, t + ' \\u2192 painted as ' + c + ' (both spellings work)');
                 token = c;
+            } else {
+                token = '.';   // box cleared: paint empties, not a stale invisible token
             }
             updatePaletteSel();
         });
@@ -933,7 +944,7 @@ input { font-family: inherit; font-size: 12px; }
             vscode.postMessage({ type: 'save', presets: allJson() });
         });
         document.getElementById('btnApply').addEventListener('click', function () {
-            if (!liveValid(cur())) return;
+            if (!applyable(cur())) return;
             vscode.postMessage({ type: 'apply', presets: allJson(), index: sel });
         });
 

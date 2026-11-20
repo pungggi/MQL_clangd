@@ -12,7 +12,7 @@ Tile your MetaTrader 5 chart windows into a saved layout with one command. Snap 
 
 **Faster:** click the **Charts** button in the status bar (bottom-right) to open the same picker — its label shows the last layout you applied. Hide it with `mql_tools.ChartLayout.ShowStatusBarButton`.
 
-A notification reports what moved, e.g. `Charts arranged — docked 6/6 on mon 2 (2×3); floating 2/2 on mon 1 (1×2)`. In timeframe-match mode, regions that found no matching chart are listed too: `… (areas) [missing: W1, M30]` — open those charts (or fix the token) and re-run.
+A notification reports what moved, e.g. `Charts arranged — docked 6/6 on mon 2 (2×3); floating 2/2 on mon 1 (1×2)`. Regions that found no chart are listed too — in timeframe-match mode when a timeframe has no matching chart, in order-fill mode when there are fewer open charts than regions: `… (areas) [missing: W1, M30]` — open those charts (or fix the token) and re-run.
 
 ## Visual preset editor
 
