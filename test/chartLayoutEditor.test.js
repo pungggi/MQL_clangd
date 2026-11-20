@@ -130,6 +130,7 @@ const TEST_PRESETS = [
     { name: 'legacy', docked: { monitor: 2, rows: 2, cols: 2 }, gap: 4 },
     { name: 'tfwall', docked: { monitor: 1, areas: ['H4 H4 H1', 'H4 H4 M15'] }, floating: { monitor: 2, areas: ['D1 W1'] }, gap: 0 },
     { name: 'broken-no-docked', gap: 0 },
+    { name: 'aliases', docked: { monitor: 1, areas: ['Daily Daily H1', 'Weekly Monthly H1'] }, gap: 0 },
 ];
 
 let panel = null;
@@ -417,11 +418,11 @@ suite('chartLayoutEditor (webview script)', () => {
         const p = setupHost();
         const { doc } = bootWebview(p.webview.html);
         fire(doc.getElementById('btnNew'), 'click');
-        assert.strictEqual(previewJson(doc).name, 'layout 4');
+        assert.strictEqual(previewJson(doc).name, 'layout 5');
         assert.deepStrictEqual(previewJson(doc).docked.areas, ['. . .', '. . .']);
         fire(doc.getElementById('btnDup'), 'click');
-        assert.strictEqual(previewJson(doc).name, 'layout 4 copy');
-        for (let i = 0; i < 5; i++) fire(doc.getElementById('btnDelete'), 'click');
+        assert.strictEqual(previewJson(doc).name, 'layout 5 copy');
+        for (let i = 0; i < 6; i++) fire(doc.getElementById('btnDelete'), 'click');
         assert.ok(doc.getElementById('editor').textContent.includes('No presets'));
         assert.strictEqual(doc.getElementById('btnSave').disabled, true);
     });
@@ -453,5 +454,29 @@ suite('chartLayoutEditor (webview script)', () => {
         assert.strictEqual(api.posted[0].type, 'apply');
         assert.strictEqual(api.posted[0].index, 1);
         assert.strictEqual(api.posted[0].presets[1].name, 'tfwall');
+    });
+
+    test('long timeframe aliases load canonical and keep tf mode', () => {
+        const p = setupHost();
+        const { doc } = bootWebview(p.webview.html);
+        fire(doc.getElementById('presetList'), 'click', { target: doc.getElementById('presetList').children[3] });
+        assert.deepStrictEqual(previewJson(doc).docked.areas, ['D1 D1 H1', 'W1 MN1 H1']);
+        const hint = doc.getElementById('card-0').querySelector('.hint');
+        assert.ok(hint.className.includes('ok'), hint.textContent);
+        assert.ok(hint.textContent.includes('Timeframe-match'));
+    });
+
+    test('typing Daily in the custom box paints canonical D1', () => {
+        const p = setupHost();
+        const { doc, win } = bootWebview(p.webview.html);
+        const ct = doc.getElementById('customTok');
+        ct.value = 'Daily';
+        fire(ct, 'input', { target: ct });
+        paint(doc, win, 0, 0, 0, 0, 0, null);   // single-cell paint with the selected token
+        assert.deepStrictEqual(previewJson(doc).docked.areas, ['D1 B', 'C D']);
+        // the suggestion surfaces in the status line and the canonical chip lights up
+        assert.ok(doc.getElementById('status').textContent.includes('D1'));
+        const d1 = Array.from(doc.getElementById('palChips').children).find((c) => c.getAttribute('data-tok') === 'D1');
+        assert.ok(d1.classList.contains('sel'));
     });
 });

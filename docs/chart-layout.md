@@ -12,13 +12,13 @@ Tile your MetaTrader 5 chart windows into a saved layout with one command. Snap 
 
 **Faster:** click the **Charts** button in the status bar (bottom-right) to open the same picker — its label shows the last layout you applied. Hide it with `mql_tools.ChartLayout.ShowStatusBarButton`.
 
-A notification reports what moved, e.g. `Charts arranged — docked 6/6 on mon 2 (2×3); floating 2/2 on mon 1 (1×2)`.
+A notification reports what moved, e.g. `Charts arranged — docked 6/6 on mon 2 (2×3); floating 2/2 on mon 1 (1×2)`. In timeframe-match mode, regions that found no matching chart are listed too: `… (areas) [missing: W1, M30]` — open those charts (or fix the token) and re-run.
 
 ## Visual preset editor
 
 Skip the JSON: run **MQL: Edit Chart Layout Presets (Visual)** — or pick **$(gear) Configure presets visually…** at the bottom of the preset picker — and paint your layout instead.
 
-- **Paint:** pick a token in the palette bar — a timeframe (`M5`, `H1`, …), `·` for an empty cell, or a custom region name you type — then **drag across cells** to fill a rectangle. A simple click fills one cell; right-click resets a cell to `·`.
+- **Paint:** pick a token in the palette bar — a timeframe (`M5`, `H1`, …), `·` for an empty cell, or a custom region name you type — then **drag across cells** to fill a rectangle. A simple click fills one cell; right-click resets a cell to `·`. Typing `Daily`/`Weekly`/`Monthly` paints the canonical `D1`/`W1`/`MN1` (both spellings work in `areas`).
 - **Grid shape:** the `+/- row` / `+/- col` buttons resize each grid (up to 12×16).
 - **Two cards:** the **docked grid** tiles charts inside the MT5 window; the **floating grid** (toggle *enable*) tiles the charts you undocked onto another monitor. Off = omitted from the preset, undocked charts untouched.
 - **Live hints:** each grid shows its mode — green *timeframe-match* (every token is a timeframe → regions bind to the active symbol) or amber *order-fill* (charts fill regions in reading order). Non-rectangular regions turn **red** — the run would error.
@@ -124,12 +124,13 @@ If **every area name is a timeframe** (`M5`, `H1`, `M15`, …), the layout stops
 }
 ```
 
-- **Primary symbol** = the **active chart's symbol** (the one in MT5's title bar). Each region gets that symbol's chart for its timeframe.
+- Primary symbol = the **active chart's symbol** (the one in MT5's title bar). Each region gets that symbol's chart for its timeframe.
 - Charts of **other symbols**, and any timeframe not in the layout, are **minimized** — leaving a consistent single-symbol wall.
-- A region whose timeframe has no open chart stays empty.
+- Long aliases work: MT5 titles D1/W1/MN1 undocked charts `Daily`/`Weekly`/`Monthly`, so both spellings are accepted as region names (the visual editor always saves the short form).
+- Regions whose timeframe has no open chart stay empty and are reported as `[missing: …]` in the result message.
 - Want a different symbol? Activate one of its charts, re-run → same shape, new symbol.
 
-Standard timeframe tokens: `M1 M2 M3 M4 M5 M6 M10 M12 M15 M20 M30 H1 H2 H3 H4 H6 H8 H12 D1 W1 MN1`.
+Standard timeframe tokens: `M1 M2 M3 M4 M5 M6 M10 M12 M15 M20 M30 H1 H2 H3 H4 H6 H8 H12 D1 W1 MN1` (long aliases `Daily` `Weekly` `Monthly` accepted for the last three).
 
 ## Tips
 

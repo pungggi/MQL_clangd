@@ -203,7 +203,7 @@ input { font-family: inherit; font-size: 12px; }
 #toolbar button:hover:not(:disabled) { filter: brightness(1.2); }
 #toolbar button:disabled { opacity: 0.45; cursor: default; }
 #toolbar button.primary { background: var(--btn); color: var(--btnfg); border-color: transparent; }
-#status { font-size: 12px; color: var(--dim); flex: 1; text-align: right; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status { font-size: 12px; color: var(--dim); flex: 1; text-align: right; padding: 0 8px; overflow: hidden; max-height: 5em; overflow-wrap: anywhere; }
 #status.ok { color: var(--ok); }
 #status.err { color: var(--err); }
 
@@ -332,7 +332,7 @@ input { font-family: inherit; font-size: 12px; }
 <div id="palette">
     <span class="lab">Paint:</span>
     <span id="palChips" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center"></span>
-    <input id="customTok" type="text" placeholder="custom name…" title="Type a custom region name, then paint with it (Enter to confirm)">
+    <input id="customTok" type="text" placeholder="custom name…" title="Type a custom region name, then paint with it (Enter to confirm). Daily/Weekly/Monthly are accepted and saved as D1/W1/MN1.">
 </div>
 <div id="main">
     <div id="sidebar">
@@ -350,6 +350,11 @@ input { font-family: inherit; font-size: 12px; }
     var TF_TOKENS = ['M1','M2','M3','M4','M5','M6','M10','M12','M15','M20','M30','H1','H2','H3','H4','H6','H8','H12','D1','W1','MN1'];
     var TF_SET = {};
     for (var t0 = 0; t0 < TF_TOKENS.length; t0++) TF_SET[TF_TOKENS[t0]] = true;
+    // Long display names MT5 puts in D1/W1/MN1 window titles. The worker
+    // accepts both spellings; the editor canonicalizes to the short codes so
+    // the grid model (and everything saved from it) always uses one token.
+    var TF_ALIAS = { 'Daily': 'D1', 'Weekly': 'W1', 'Monthly': 'MN1' };
+    function canonTok(t) { return TF_ALIAS[t] || t; }
     var MAX_ROWS = 12, MAX_COLS = 16;
 
     var presets = [];
@@ -400,7 +405,7 @@ input { font-family: inherit; font-size: 12px; }
         if (g && Array.isArray(g.areas)) {
             var rows = [];
             for (var i = 0; i < g.areas.length; i++) {
-                var cells = String(g.areas[i]).trim().split(/\\s+/).filter(function (t) { return t !== ''; });
+                var cells = String(g.areas[i]).trim().split(/\\s+/).filter(function (t) { return t !== ''; }).map(canonTok);
                 if (cells.length) rows.push(cells);
             }
             if (rows.length) {
@@ -445,7 +450,7 @@ input { font-family: inherit; font-size: 12px; }
     // ---------- model -> settings shape ----------
 
     function groupJson(g) {
-        return { monitor: g.monitor, areas: g.grid.map(function (row) { return row.join(' '); }) };
+        return { monitor: g.monitor, areas: g.grid.map(function (row) { return row.map(canonTok).join(' '); }) };
     }
     function presetToJson(p) {
         var o = { name: p.name.trim(), docked: groupJson(p.docked) };
@@ -486,7 +491,7 @@ input { font-family: inherit; font-size: 12px; }
         }
         var nonTf = [], tfAll = order.length > 0;
         for (var j = 0; j < order.length; j++) {
-            if (!TF_SET[order[j]]) { tfAll = false; nonTf.push(order[j]); }
+            if (!TF_SET[canonTok(order[j])]) { tfAll = false; nonTf.push(order[j]); }
         }
         return { map: map, order: order, nonRect: nonRect, nonTf: nonTf, tfAll: tfAll, empty: order.length === 0 };
     }
@@ -581,8 +586,9 @@ input { font-family: inherit; font-size: 12px; }
 
     function cellClass(t, nonRectSet) {
         var cls = 'cell';
+        var ct = canonTok(t);
         if (t === '.') cls += ' empty';
-        else if (TF_SET[t]) cls += (t.charAt(0) === 'M' && t !== 'MN1') ? ' tf tf-m' : (t.charAt(0) === 'H' ? ' tf tf-h' : ' tf tf-d');
+        else if (TF_SET[ct]) cls += (ct.charAt(0) === 'M' && ct !== 'MN1') ? ' tf tf-m' : (ct.charAt(0) === 'H' ? ' tf tf-h' : ' tf tf-d');
         else cls += ' custom';
         if (nonRectSet[t]) cls += ' red';
         return cls;
@@ -830,7 +836,11 @@ input { font-family: inherit; font-size: 12px; }
         ct.addEventListener('input', function () {
             custom = ct.value;
             var t = custom.trim();
-            if (t !== '') token = t;
+            if (t !== '') {
+                var c = canonTok(t);
+                if (c !== t) status(true, t + ' \\u2192 painted as ' + c + ' (both spellings work)');
+                token = c;
+            }
             updatePaletteSel();
         });
         ct.addEventListener('keydown', function (e) {

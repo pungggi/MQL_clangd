@@ -122,7 +122,7 @@
                                         "items": {
                                             "type": "string"
                                         },
-                                        "markdownDescription": "CSS `grid-template-areas` layout (overrides `rows`/`cols`). One string per row; cell names separated by spaces. Repeat a name to span cells in any direction; use `.` for an empty cell. Example: `[\"A A B\", \"C C B\"]` — A spans 2 columns, B spans 2 rows (tall).\n\nIf every cell name is a **timeframe** (`M5`, `H1`, …), charts are placed by timeframe and bound to the **active chart's symbol** — charts of other symbols (and unused timeframes) are minimized."
+                                        "markdownDescription": "CSS `grid-template-areas` layout (overrides `rows`/`cols`). One string per row; cell names separated by spaces. Repeat a name to span cells in any direction; use `.` for an empty cell. Example: `[\"A A B\", \"C C B\"]` — A spans 2 columns, B spans 2 rows (tall).\n\nIf every cell name is a **timeframe** (`M5`, `H1`, … — `Daily`/`Weekly`/`Monthly` are accepted aliases for `D1`/`W1`/`MN1`), charts are placed by timeframe and bound to the **active chart's symbol** — charts of other symbols (and unused timeframes) are minimized."
                                     }
                                 }
                             },
