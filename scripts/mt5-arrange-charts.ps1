@@ -53,6 +53,8 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int index);
   [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int max);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
@@ -61,19 +63,54 @@ public class Win {
 $GW_HWNDNEXT = 2
 $GW_OWNER    = 4
 $GW_CHILD    = 5
+$GWL_STYLE   = -16
+$WS_CHILD    = 0x40000000
 $SW_MINIMIZE = 6
 $SW_RESTORE  = 9
 $SWP_NOZ     = 0x0004 -bor 0x0010   # NOZORDER | NOACTIVATE
 # MT5 standard timeframe suffixes -> identifies a chart title "SYMBOL,TF".
-$TF_RE   = ',(M1|M2|M3|M4|M5|M6|M10|M12|M15|M20|M30|H1|H2|H3|H4|H6|H8|H12|D1|W1|MN1)$'
+# D1/W1/MN1 undocked windows carry their LONG names ("Daily", "Weekly",
+# "Monthly") in the title, so accept both spellings.
+$TF_RE   = ',(M1|M2|M3|M4|M5|M6|M10|M12|M15|M20|M30|H1|H2|H3|H4|H6|H8|H12|D1|W1|MN1|Daily|Weekly|Monthly)$'
 # Same set, as a whole token -> used to detect timeframe-named area cells.
-$TF_BARE = '^(M1|M2|M3|M4|M5|M6|M10|M12|M15|M20|M30|H1|H2|H3|H4|H6|H8|H12|D1|W1|MN1)$'
+$TF_BARE = '^(M1|M2|M3|M4|M5|M6|M10|M12|M15|M20|M30|H1|H2|H3|H4|H6|H8|H12|D1|W1|MN1|Daily|Weekly|Monthly)$'
+
+# Canonicalize a timeframe token: long display name -> short TF code.
+function NormalizeTf($tf) {
+    switch ($tf) { 'Daily' { 'D1' } 'Weekly' { 'W1' } 'Monthly' { 'MN1' } default { $tf } }
+}
 
 function Fail($msg) { "ERROR $msg"; exit 1 }
 function TitleOf([IntPtr]$h) { $sb = New-Object System.Text.StringBuilder 256; [void][Win]::GetWindowText($h,$sb,256); $sb.ToString() }
+# Invisible resize border around a top-level window. MoveWindow works on the
+# OUTER rect, so adjacent floating charts would show a desktop strip between
+# them even at gap 0. Expanding each window by these insets makes the VISIBLE
+# edges touch exactly. IMPORTANT: use GetSystemMetrics, NOT DWM extended
+# frame bounds — DWM returns PHYSICAL pixels while this script (DPI-unaware)
+# works in virtualized coordinates; mixing the two corrupts the math on
+# scaled displays (e.g. 150%). System metrics are DPI-virtualized like
+# MoveWindow, so the overlap comes out flush. Returns @(left, top, right,
+# bottom).
+#
+# The compensation applies ONLY to floating (top-level) charts. Docked charts
+# are MDI children: MoveWindow positions them in PARENT-CLIENT coordinates
+# with no invisible frame, so expanding them would push each cell into its
+# neighbor (adjacent children overlap; parent clipping does not undo that).
+# WS_CHILD distinguishes the two kinds structurally.
+$SM_CXSIZEFRAME   = 32
+$SM_CYSIZEFRAME   = 33
+$SM_CXPADDEDBORDER = 92
+function FrameInsets([IntPtr]$h) {
+    if ([Win]::GetWindowLong($h, $GWL_STYLE) -band $WS_CHILD) { return @(0, 0, 0, 0) }
+    $bx = [Win]::GetSystemMetrics($SM_CXSIZEFRAME) + [Win]::GetSystemMetrics($SM_CXPADDEDBORDER)
+    $by = [Win]::GetSystemMetrics($SM_CYSIZEFRAME) + [Win]::GetSystemMetrics($SM_CXPADDEDBORDER)
+    if ($bx -lt 0) { $bx = 0 }
+    if ($by -lt 0) { $by = 0 }
+    return @($bx, $by, $bx, $by)
+}
 # A chart title is "SYMBOL,TF"; split on the last comma.
 function SymbolOf($title) { $i = $title.LastIndexOf(','); if ($i -ge 0) { $title.Substring(0, $i) } else { $title } }
-function TfOf($title)     { $i = $title.LastIndexOf(','); if ($i -ge 0) { $title.Substring($i + 1) } else { "" } }
+function TfOf($title)     { $i = $title.LastIndexOf(','); if ($i -ge 0) { NormalizeTf $title.Substring($i + 1) } else { "" } }
 
 # Tile $hwnds into a rows x cols grid inside the box (x0,y0,W,H). Coordinates are
 # whatever MoveWindow expects for those windows: client-relative for MDI children,
@@ -95,7 +132,10 @@ function Tile($hwnds, $x0, $y0, $W, $H, $rows, $cols, $gap) {
         $x = $x0 + $gap + $c * ($cellW + $gap)
         $y = $y0 + $gap + $r * ($cellH + $gap)
         [void][Win]::ShowWindow($hwnds[$i], $SW_RESTORE)
-        [void][Win]::MoveWindow($hwnds[$i], $x, $y, $cellW, $cellH, $true)
+        # Expand by the invisible DWM border so VISIBLE edges land on the cell
+        # rect (measure AFTER restore: minimized windows report garbage rects).
+        $in = FrameInsets $hwnds[$i]
+        [void][Win]::MoveWindow($hwnds[$i], ($x - $in[0]), ($y - $in[1]), ($cellW + $in[0] + $in[2]), ($cellH + $in[1] + $in[3]), $true)
         $n++
     }
     return $n
@@ -109,7 +149,10 @@ function PlaceRegion($h, $e, $x0, $y0, $colX, $rowY, $gap) {
     $hgt = ($rowY[$e[1] + 1] - $rowY[$e[0]]) - 2 * $gap
     if ($w -le 0 -or $hgt -le 0) { Fail "areas grid too dense at gap $gap" }
     [void][Win]::ShowWindow($h, $SW_RESTORE)
-    [void][Win]::MoveWindow($h, $x, $y, $w, $hgt, $true)
+    # Expand by the invisible DWM border so VISIBLE edges land on the cell rect
+    # (measure AFTER restore: minimized windows report garbage rects).
+    $in = FrameInsets $h
+    [void][Win]::MoveWindow($h, ($x - $in[0]), ($y - $in[1]), ($w + $in[0] + $in[2]), ($hgt + $in[1] + $in[3]), $true)
 }
 
 # Place $charts (objects with H/Symbol/Tf, pre-sorted by Title) using a CSS
@@ -121,7 +164,7 @@ function PlaceRegion($h, $e, $x0, $y0, $colX, $rowY, $gap) {
 # the layout to one symbol ($activeSymbol, fallback first symbol): each region
 # gets that symbol's chart for its timeframe; all other charts are minimized.
 # Otherwise ORDER-FILL: charts fill regions in reading order; extras minimized.
-# Returns the number placed.
+# Returns @{ Placed = n; Missing = @(region names that found no chart) }.
 function TileAreas($charts, $activeSymbol, $x0, $y0, $W, $H, $areasStr, $gap) {
     $grid = @()
     foreach ($row in ($areasStr -split '\|')) {
@@ -168,6 +211,7 @@ function TileAreas($charts, $activeSymbol, $x0, $y0, $W, $H, $areasStr, $gap) {
     foreach ($name in $order) { if ($name -notmatch $TF_BARE) { $tfMode = $false; break } }
 
     $n = 0
+    $missing = New-Object System.Collections.Generic.List[string]
     if ($tfMode) {
         # Bind to the active chart's symbol; if it isn't present in this group
         # (e.g. the active chart lives in the other group, or was closed), fall
@@ -178,11 +222,14 @@ function TileAreas($charts, $activeSymbol, $x0, $y0, $W, $H, $areasStr, $gap) {
         }
         $placed = New-Object System.Collections.Generic.List[IntPtr]
         foreach ($name in $order) {
-            $match = $charts | Where-Object { $_.Symbol -eq $sym -and $_.Tf -eq $name } | Select-Object -First 1
+            # Exclude charts already placed: two region names may normalize to the
+            # same timeframe (e.g. 'D1' and 'Daily') and must not reuse one chart.
+            $match = $charts | Where-Object { -not $placed.Contains($_.H) -and $_.Symbol -eq $sym -and $_.Tf -eq (NormalizeTf $name) } | Select-Object -First 1
             if ($match) {
                 PlaceRegion $match.H $ext[$name] $x0 $y0 $colX $rowY $gap
                 [void]$placed.Add($match.H); $n++
             }
+            else { [void]$missing.Add($name) }   # region stays empty: no such chart
         }
         foreach ($ch in $charts) { if (-not $placed.Contains($ch.H)) { [void][Win]::ShowWindow($ch.H, $SW_MINIMIZE) } }
     }
@@ -192,8 +239,9 @@ function TileAreas($charts, $activeSymbol, $x0, $y0, $W, $H, $areasStr, $gap) {
             PlaceRegion $charts[$i].H $ext[$order[$i]] $x0 $y0 $colX $rowY $gap
             $n++
         }
+        for ($i = $charts.Count; $i -lt $order.Count; $i++) { [void]$missing.Add($order[$i]) }
     }
-    return $n
+    return @{ Placed = $n; Missing = $missing }
 }
 
 # --- monitors ---
@@ -235,9 +283,11 @@ $dockTotal = $dockedSorted.Count
 $cr = New-Object Win+RECT
 [void][Win]::GetClientRect($mdi, [ref]$cr)
 $dockPlaced = 0
+$dockMissing = @()
 if ($dockTotal -gt 0) {
     if ($DockAreas) {
-        $dockPlaced = TileAreas $dockedSorted $activeSymbol 0 0 ($cr.Right - $cr.Left) ($cr.Bottom - $cr.Top) $DockAreas $Gap
+        $r = TileAreas $dockedSorted $activeSymbol 0 0 ($cr.Right - $cr.Left) ($cr.Bottom - $cr.Top) $DockAreas $Gap
+        $dockPlaced = $r.Placed; $dockMissing = @($r.Missing)
     } else {
         $dockedH = @($dockedSorted | ForEach-Object { $_.H })
         $dockPlaced = Tile $dockedH 0 0 ($cr.Right - $cr.Left) ($cr.Bottom - $cr.Top) $DockRows $DockCols $Gap
@@ -247,6 +297,7 @@ if ($dockTotal -gt 0) {
 # --- FLOATING group: top-level, owned by main, chart-titled ---
 $floatPlaced = 0
 $floatTotal = 0
+$floatMissing = @()
 if ($FloatMonitor -ge 1) {
     $fWa = WorkArea $FloatMonitor
     $script:floats = New-Object System.Collections.Generic.List[object]
@@ -265,7 +316,8 @@ if ($FloatMonitor -ge 1) {
     $floatTotal = $floatSorted.Count
     if ($floatTotal -gt 0) {
         if ($FloatAreas) {
-            $floatPlaced = TileAreas $floatSorted $activeSymbol $fWa.X $fWa.Y $fWa.Width $fWa.Height $FloatAreas $Gap
+            $r = TileAreas $floatSorted $activeSymbol $fWa.X $fWa.Y $fWa.Width $fWa.Height $FloatAreas $Gap
+            $floatPlaced = $r.Placed; $floatMissing = @($r.Missing)
         } else {
             $floatHa = @($floatSorted | ForEach-Object { $_.H })
             $floatPlaced = Tile $floatHa $fWa.X $fWa.Y $fWa.Width $fWa.Height $FloatRows $FloatCols $Gap
@@ -276,9 +328,11 @@ if ($FloatMonitor -ge 1) {
 $dockLabel = if ($DockAreas) { "areas" } else { "${DockRows}x${DockCols}" }
 $msg = "OK docked $dockPlaced/$dockTotal on mon $DockMonitor ($dockLabel)"
 if (($dockTotal - $dockPlaced) -gt 0) { $msg += " ($($dockTotal - $dockPlaced) minimized)" }
+if ($dockMissing.Count -gt 0) { $msg += " [missing: $($dockMissing -join ', ')]" }
 if ($FloatMonitor -ge 1) {
     $floatLabel = if ($FloatAreas) { "areas" } else { "${FloatRows}x${FloatCols}" }
     $msg += "; floating $floatPlaced/$floatTotal on mon $FloatMonitor ($floatLabel)"
     if (($floatTotal - $floatPlaced) -gt 0) { $msg += " ($($floatTotal - $floatPlaced) minimized)" }
+    if ($floatMissing.Count -gt 0) { $msg += " [missing: $($floatMissing -join ', ')]" }
 }
 $msg

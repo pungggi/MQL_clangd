@@ -133,10 +133,19 @@ async function ArrangeCharts(context) {
     }
 
     const pick = await vscode.window.showQuickPick(
-        presets.map(p => ({ label: p.name, detail: describe(p), preset: p })),
+        [
+            ...presets.map(p => ({ label: p.name, detail: describe(p), preset: p })),
+            { label: '$(gear) Configure presets visually…', detail: 'Open the visual chart-layout editor', edit: true },
+        ],
         { placeHolder: 'Select a chart layout preset' }
     );
     if (!pick) return;
+    // Lazy require: the editor needs this module's helpers, so pulling it in at
+    // the top would create a require cycle at load time.
+    if (pick.edit) {
+        require('./chartLayoutEditor').createOrShow(context);
+        return;
+    }
 
     const scriptPath = path.join(context.extensionPath, 'scripts', 'mt5-arrange-charts.ps1');
     try {
@@ -177,4 +186,13 @@ function createStatusBar(context) {
     applyStatusVisibility();
 }
 
-module.exports = { ArrangeCharts, createStatusBar, DEFAULT_PRESETS };
+module.exports = {
+    ArrangeCharts,
+    createStatusBar,
+    DEFAULT_PRESETS,
+    getPresets,
+    normalizeGrid,
+    normalizePreset,
+    runArrangeScript,
+    updateStatusLabel,
+};

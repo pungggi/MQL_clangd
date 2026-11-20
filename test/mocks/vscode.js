@@ -43,6 +43,14 @@ const ConfigurationTarget = {
     WorkspaceFolder: 3
 };
 
+const ViewColumn = {
+    Active: 1,
+    Beside: 2,
+    One: 1,
+    Two: 2,
+    Three: 3
+};
+
 const CodeActionKind = {
     Empty: { value: '' },
     QuickFix: { value: 'quickfix' },
@@ -111,6 +119,7 @@ module.exports = {
     DiagnosticSeverity,
     Diagnostic,
     ConfigurationTarget,
+    ViewColumn,
     CodeActionKind,
     CodeAction,
     CodeLens,
