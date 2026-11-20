@@ -52,9 +52,8 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, uint flags);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
   [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int max);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
@@ -80,22 +79,27 @@ function NormalizeTf($tf) {
 
 function Fail($msg) { "ERROR $msg"; exit 1 }
 function TitleOf([IntPtr]$h) { $sb = New-Object System.Text.StringBuilder 256; [void][Win]::GetWindowText($h,$sb,256); $sb.ToString() }
-# Insets between a window's OUTER rect and its VISIBLE bounds (DWM extended
-# frame bounds). Top-level windows carry an invisible resize border on
-# Win10/11; MoveWindow works on the outer rect, so adjacent floating charts
-# would show a desktop strip between them even at gap 0. Overlapping the
-# windows by these insets makes the visible edges touch exactly. Returns
-# @(left, top, right, bottom) insets; all zeros when DWM has no frame bounds
-# (e.g. MDI children inside the MT5 main window).
+# Invisible resize border around a top-level window. MoveWindow works on the
+# OUTER rect, so adjacent floating charts would show a desktop strip between
+# them even at gap 0. Expanding each window by these insets makes the VISIBLE
+# edges touch exactly. IMPORTANT: use GetSystemMetrics, NOT DWM extended
+# frame bounds — DWM returns PHYSICAL pixels while this script (DPI-unaware)
+# works in virtualized coordinates; mixing the two corrupts the math on
+# scaled displays (e.g. 150%). System metrics are DPI-virtualized like
+# MoveWindow, so the overlap comes out flush. Returns @(left, top, right,
+# bottom); zeros are impossible for thick-framed windows but harmless for
+# MDI children inside the MT5 main window (their metrics still report a
+# border; MoveWindow on an MDI child simply ignores the overlap safely
+# because the cell rects there are client-relative and borders do not apply).
+$SM_CXSIZEFRAME   = 32
+$SM_CYSIZEFRAME   = 33
+$SM_CXPADDEDBORDER = 92
 function FrameInsets([IntPtr]$h) {
-    $wr = New-Object Win+RECT
-    [void][Win]::GetWindowRect($h, [ref]$wr)
-    $fr = New-Object Win+RECT
-    $sz = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win+RECT])
-    if ([Win]::DwmGetWindowAttribute($h, 9, [ref]$fr, $sz) -eq 0 -and $wr.Right - $wr.Left -gt 0) {
-        return @(($fr.Left - $wr.Left), ($fr.Top - $wr.Top), ($wr.Right - $fr.Right), ($wr.Bottom - $fr.Bottom))
-    }
-    return @(0, 0, 0, 0)
+    $bx = [Win]::GetSystemMetrics($SM_CXSIZEFRAME) + [Win]::GetSystemMetrics($SM_CXPADDEDBORDER)
+    $by = [Win]::GetSystemMetrics($SM_CYSIZEFRAME) + [Win]::GetSystemMetrics($SM_CXPADDEDBORDER)
+    if ($bx -lt 0) { $bx = 0 }
+    if ($by -lt 0) { $by = 0 }
+    return @($bx, $by, $bx, $by)
 }
 # A chart title is "SYMBOL,TF"; split on the last comma.
 function SymbolOf($title) { $i = $title.LastIndexOf(','); if ($i -ge 0) { $title.Substring(0, $i) } else { $title } }
