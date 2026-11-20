@@ -54,6 +54,7 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int index);
   [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int max);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
@@ -62,6 +63,8 @@ public class Win {
 $GW_HWNDNEXT = 2
 $GW_OWNER    = 4
 $GW_CHILD    = 5
+$GWL_STYLE   = -16
+$WS_CHILD    = 0x40000000
 $SW_MINIMIZE = 6
 $SW_RESTORE  = 9
 $SWP_NOZ     = 0x0004 -bor 0x0010   # NOZORDER | NOACTIVATE
@@ -87,14 +90,18 @@ function TitleOf([IntPtr]$h) { $sb = New-Object System.Text.StringBuilder 256; [
 # works in virtualized coordinates; mixing the two corrupts the math on
 # scaled displays (e.g. 150%). System metrics are DPI-virtualized like
 # MoveWindow, so the overlap comes out flush. Returns @(left, top, right,
-# bottom); zeros are impossible for thick-framed windows but harmless for
-# MDI children inside the MT5 main window (their metrics still report a
-# border; MoveWindow on an MDI child simply ignores the overlap safely
-# because the cell rects there are client-relative and borders do not apply).
+# bottom).
+#
+# The compensation applies ONLY to floating (top-level) charts. Docked charts
+# are MDI children: MoveWindow positions them in PARENT-CLIENT coordinates
+# with no invisible frame, so expanding them would push each cell into its
+# neighbor (adjacent children overlap; parent clipping does not undo that).
+# WS_CHILD distinguishes the two kinds structurally.
 $SM_CXSIZEFRAME   = 32
 $SM_CYSIZEFRAME   = 33
 $SM_CXPADDEDBORDER = 92
 function FrameInsets([IntPtr]$h) {
+    if ([Win]::GetWindowLong($h, $GWL_STYLE) -band $WS_CHILD) { return @(0, 0, 0, 0) }
     $bx = [Win]::GetSystemMetrics($SM_CXSIZEFRAME) + [Win]::GetSystemMetrics($SM_CXPADDEDBORDER)
     $by = [Win]::GetSystemMetrics($SM_CYSIZEFRAME) + [Win]::GetSystemMetrics($SM_CXPADDEDBORDER)
     if ($bx -lt 0) { $bx = 0 }
@@ -215,7 +222,9 @@ function TileAreas($charts, $activeSymbol, $x0, $y0, $W, $H, $areasStr, $gap) {
         }
         $placed = New-Object System.Collections.Generic.List[IntPtr]
         foreach ($name in $order) {
-            $match = $charts | Where-Object { $_.Symbol -eq $sym -and $_.Tf -eq (NormalizeTf $name) } | Select-Object -First 1
+            # Exclude charts already placed: two region names may normalize to the
+            # same timeframe (e.g. 'D1' and 'Daily') and must not reuse one chart.
+            $match = $charts | Where-Object { -not $placed.Contains($_.H) -and $_.Symbol -eq $sym -and $_.Tf -eq (NormalizeTf $name) } | Select-Object -First 1
             if ($match) {
                 PlaceRegion $match.H $ext[$name] $x0 $y0 $colX $rowY $gap
                 [void]$placed.Add($match.H); $n++

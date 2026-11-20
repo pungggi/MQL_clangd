@@ -105,7 +105,7 @@ class ChartLayoutEditorPanel {
         }
     }
 
-    // Normalize + write the full presets array to user settings. Returns a
+    // Normalize + write the full presets array to settings. Returns a
     // result envelope; rejects are caught by the caller.
     async _save(presets, resultType) {
         if (!Array.isArray(presets) || presets.length === 0) {
@@ -123,8 +123,38 @@ class ChartLayoutEditorPanel {
             o.gap = p.gap;
             return o;
         });
-        await vscode.workspace.getConfiguration('mql_tools').update(CONFIG_KEY, clean, vscode.ConfigurationTarget.Global);
-        return { type: resultType, ok: true, message: `Saved ${clean.length} preset${clean.length === 1 ? '' : 's'} to user settings.`, presets: clean };
+        const target = await this._saveTarget();
+        if (!target) return { type: resultType, ok: false, message: 'Save cancelled.' };
+        await vscode.workspace.getConfiguration('mql_tools').update(CONFIG_KEY, clean, target);
+        const scopeName = target === vscode.ConfigurationTarget.Workspace ? 'workspace settings' : 'user settings';
+        return { type: resultType, ok: true, message: `Saved ${clean.length} preset${clean.length === 1 ? '' : 's'} to ${scopeName}.`, presets: clean };
+    }
+
+    // Where to write presets: user settings by default. A workspace-level
+    // override keeps winning over any user-scope write (VS Code precedence:
+    // workspace > user), so a Global-only save would be silently ignored by
+    // the editor on reopen and by Arrange MT5 Charts. When an override is
+    // active, ask once per session where to save.
+    async _saveTarget() {
+        if (this._saveScopeChoice) return this._saveScopeChoice;
+        const insp = vscode.workspace.getConfiguration('mql_tools').inspect(CONFIG_KEY);
+        const overridden = !!(insp && (insp.workspaceValue !== undefined || insp.workspaceFolderValue !== undefined));
+        if (!overridden) return vscode.ConfigurationTarget.Global;
+        const pick = await vscode.window.showQuickPick([
+            {
+                label: '$(workspace) Workspace settings',
+                detail: 'The workspace override stays in effect — save there so the editor and Arrange MT5 Charts see the change.',
+                target: vscode.ConfigurationTarget.Workspace,
+            },
+            {
+                label: '$(home) User settings',
+                detail: 'Keep the workspace override; the saved list will NOT be used in this workspace.',
+                target: vscode.ConfigurationTarget.Global,
+            },
+        ], { placeHolder: 'This workspace overrides mql_tools.ChartLayout.Presets. Where should the presets be saved?' });
+        if (!pick) return null;   // cancelled
+        this._saveScopeChoice = pick.target;
+        return pick.target;
     }
 
     async _apply(presets, index) {
@@ -277,7 +307,7 @@ input { font-family: inherit; font-size: 12px; }
 }
 .off-note { font-size: 12px; color: var(--dim); font-style: italic; padding: 6px 0; }
 
-.grid { display: grid; gap: 4px; user-select: none; }
+.grid { display: grid; gap: 4px; user-select: none; overflow-x: auto; }
 .cell {
     min-height: 42px; display: flex; align-items: center; justify-content: center;
     border: 1px solid var(--border); border-radius: 5px;
@@ -405,7 +435,10 @@ input { font-family: inherit; font-size: 12px; }
         if (g && Array.isArray(g.areas)) {
             var rows = [];
             for (var i = 0; i < g.areas.length; i++) {
-                var cells = String(g.areas[i]).trim().split(/\\s+/).filter(function (t) { return t !== ''; }).map(canonTok);
+                // A token containing '|' would split into rows when the worker
+                // joins/splits on it; drop it to an empty cell instead.
+                var cells = String(g.areas[i]).trim().split(/\\s+/).filter(function (t) { return t !== ''; })
+                    .map(function (t) { return t.indexOf('|') >= 0 ? '.' : canonTok(t); });
                 if (cells.length) rows.push(cells);
             }
             if (rows.length) {
@@ -418,21 +451,25 @@ input { font-family: inherit; font-size: 12px; }
                     grid.push(row);
                 }
             }
+            if (grid) return { monitor: mon, grid: grid, on: true, legacy: false, dirty: false };
         }
-        if (!grid) {
-            // Legacy rows/cols (or nothing usable): uniform grid with sequential
-            // region names = the same order-fill behavior rows/cols gives.
-            var nr = clampInt(g && g.rows, 1, MAX_ROWS, 2);
-            var nc = clampInt(g && g.cols, 1, MAX_COLS, 3);
-            grid = [];
-            var n = 0;
-            for (var rr = 0; rr < nr; rr++) {
-                var line = [];
-                for (var cc = 0; cc < nc; cc++) line.push(seqName(n++));
-                grid.push(line);
-            }
+        // Legacy rows/cols (or nothing usable): uniform grid with sequential
+        // region names = the same order-fill behavior rows/cols gives. No size
+        // clamp here — oversized legacy grids load verbatim so a Save never
+        // silently truncates a preset the user did not touch. The 'legacy'
+        // flag keeps the exact rows/cols shape for saving until the user edits this grid:
+        // the uniform worker geometry differs slightly from areas at gap > 0.
+        var nr = Math.max(1, Math.trunc(Number(g && g.rows)) || 2);
+        var nc = Math.max(1, Math.trunc(Number(g && g.cols)) || 3);
+        var isLegacy = !!(g && Math.trunc(Number(g.rows)) >= 1 && Math.trunc(Number(g.cols)) >= 1);
+        grid = [];
+        var n = 0;
+        for (var rr = 0; rr < nr; rr++) {
+            var line = [];
+            for (var cc = 0; cc < nc; cc++) line.push(seqName(n++));
+            grid.push(line);
         }
-        return { monitor: mon, grid: grid, on: true };
+        return { monitor: mon, grid: grid, on: true, legacy: isLegacy, dirty: false };
     }
 
     function loadPreset(raw, origInvalid) {
@@ -450,6 +487,11 @@ input { font-family: inherit; font-size: 12px; }
     // ---------- model -> settings shape ----------
 
     function groupJson(g) {
+        // Untouched legacy grids save back as rows/cols so the arrangement
+        // (uniform worker geometry) is bit-for-bit what it was before.
+        if (g.legacy && !g.dirty) {
+            return { monitor: g.monitor, rows: g.grid.length, cols: g.grid[0].length };
+        }
         return { monitor: g.monitor, areas: g.grid.map(function (row) { return row.map(canonTok).join(' '); }) };
     }
     function presetToJson(p) {
@@ -709,7 +751,7 @@ input { font-family: inherit; font-size: 12px; }
         if (!p) return;
         if (e.target.id === 'floatToggle') {
             if (e.target.checked && !p.floating) {
-                p.floating = { monitor: 1, grid: blankGrid(2, 2), on: true };
+                p.floating = { monitor: 1, grid: blankGrid(2, 2), on: true, legacy: false, dirty: false };
             } else if (p.floating) {
                 p.floating.on = e.target.checked;
             }
@@ -752,6 +794,7 @@ input { font-family: inherit; font-size: 12px; }
         } else {
             return;
         }
+        g.dirty = true;
         markTouched();
         renderGroup(gi);
         afterChange();
@@ -801,6 +844,7 @@ input { font-family: inherit; font-size: 12px; }
         for (var r = r0; r <= r1; r++) {
             for (var c = c0; c <= c1; c++) g.grid[r][c] = token;
         }
+        g.dirty = true;
         markTouched();
         renderGroup(d.gi);
         afterChange();
@@ -815,6 +859,7 @@ input { font-family: inherit; font-size: 12px; }
         var g = groupOf(p, gi);
         if (!g) return;
         g.grid[parseInt(cell.getAttribute('data-r'), 10)][parseInt(cell.getAttribute('data-c'), 10)] = '.';
+        g.dirty = true;
         markTouched();
         renderGroup(gi);
         afterChange();
@@ -837,6 +882,12 @@ input { font-family: inherit; font-size: 12px; }
             custom = ct.value;
             var t = custom.trim();
             if (t !== '') {
+                // Tokens are separated by spaces and rows by '|': a name with
+                // either would silently split into multiple cells/rows.
+                if (/[\\s|]/.test(t)) {
+                    status(false, 'Region names cannot contain spaces or "|" — keeping the previous token.');
+                    return;
+                }
                 var c = canonTok(t);
                 if (c !== t) status(true, t + ' \\u2192 painted as ' + c + ' (both spellings work)');
                 token = c;
@@ -851,7 +902,7 @@ input { font-family: inherit; font-size: 12px; }
             presets.push({
                 name: 'layout ' + (presets.length + 1),
                 gap: 0,
-                docked: { monitor: 1, grid: blankGrid(2, 3), on: true },
+                docked: { monitor: 1, grid: blankGrid(2, 3), on: true, legacy: false, dirty: false },
                 floating: null,
                 origInvalid: false,
                 touched: true

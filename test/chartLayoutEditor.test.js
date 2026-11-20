@@ -265,6 +265,32 @@ suite('chartLayoutEditor (host)', () => {
         assert.strictEqual(configWrites.length, 0);
     });
 
+    test('workspace override: canceling the scope pick writes nothing', async () => {
+        const p = setupHost(() => {
+            vscodeMock.workspace._configMock.inspect = () => ({ workspaceValue: [{ name: 'ws' }] });
+        });
+        await p.webview._cb({ type: 'save', presets: [{ name: 'x', docked: { monitor: 1, areas: ['H1'] }, gap: 0 }] });
+        assert.strictEqual(p.sent[0].ok, false);
+        assert.ok(p.sent[0].message.includes('cancelled'));
+        assert.strictEqual(configWrites.length, 0);
+    });
+
+    test('workspace override: picking workspace saves there', async () => {
+        const orig = vscodeMock.window.showQuickPick;
+        vscodeMock.window.showQuickPick = () => Promise.resolve({ target: vscodeMock.ConfigurationTarget.Workspace });
+        try {
+            const p = setupHost(() => {
+                vscodeMock.workspace._configMock.inspect = () => ({ workspaceValue: [{ name: 'ws' }] });
+            });
+            await p.webview._cb({ type: 'save', presets: [{ name: 'x', docked: { monitor: 1, areas: ['H1'] }, gap: 0 }] });
+            assert.strictEqual(p.sent[0].ok, true, p.sent[0].message);
+            assert.ok(p.sent[0].message.includes('workspace settings'));
+            assert.strictEqual(configWrites[0].target, vscodeMock.ConfigurationTarget.Workspace);
+        } finally {
+            vscodeMock.window.showQuickPick = orig;
+        }
+    });
+
     test('apply is Windows-only', async () => {
         const plat = Object.getOwnPropertyDescriptor(process, 'platform');
         Object.defineProperty(process, 'platform', { value: 'linux' });
@@ -284,19 +310,44 @@ suite('chartLayoutEditor (host)', () => {
 });
 
 suite('chartLayoutEditor (webview script)', () => {
-    test('loads legacy rows/cols as sequential-name areas grid', () => {
+    test('loads legacy rows/cols and saves them back unchanged until edited', () => {
         const p = setupHost();
-        const { doc } = bootWebview(p.webview.html);
-        // first preset selected by default
+        const { doc, win } = bootWebview(p.webview.html);
+        // first preset selected by default; the untouched legacy grid keeps its
+        // exact rows/cols shape (uniform worker geometry) in the saved JSON
         assert.deepStrictEqual(previewJson(doc), {
             name: 'legacy',
-            docked: { monitor: 2, areas: ['A B', 'C D'] },
+            docked: { monitor: 2, rows: 2, cols: 2 },
             gap: 4,
         });
         // order-fill hint (A is not a timeframe)
         const hint = doc.getElementById('card-0').querySelector('.hint');
         assert.ok(hint.className.includes('warn'));
         assert.ok(hint.textContent.includes('Order-fill'));
+        // painting is a geometry edit: only then does this grid become areas
+        paint(doc, win, 0, 0, 0, 0, 0, 'H4');
+        assert.deepStrictEqual(previewJson(doc).docked.areas, ['H4 B', 'C D']);
+    });
+
+    test('oversized legacy grid loads verbatim (no silent truncation)', () => {
+        const p = setupHost(() => {
+            vscodeMock.workspace._configMock.get = () => [
+                { name: 'wide', docked: { monitor: 1, rows: 1, cols: 17 }, gap: 0 },
+            ];
+        });
+        const { doc } = bootWebview(p.webview.html);
+        assert.deepStrictEqual(previewJson(doc).docked, { monitor: 1, rows: 1, cols: 17 });
+        assert.strictEqual(doc.getElementById('card-0').querySelectorAll('.cell').length, 17);
+    });
+
+    test('pipe token inside an areas row loads as an empty cell', () => {
+        const p = setupHost(() => {
+            vscodeMock.workspace._configMock.get = () => [
+                { name: 'pipes', docked: { monitor: 1, areas: ['A|B C'] }, gap: 0 },
+            ];
+        });
+        const { doc } = bootWebview(p.webview.html);
+        assert.deepStrictEqual(previewJson(doc).docked.areas, ['. C']);
     });
 
     test('loads areas preset with floating group', () => {
@@ -440,7 +491,7 @@ suite('chartLayoutEditor (webview script)', () => {
         assert.strictEqual(api.posted[0].type, 'save');
         assert.deepStrictEqual(api.posted[0].presets[0], {
             name: 'renamed',
-            docked: { monitor: 2, areas: ['A B', 'C D'] },
+            docked: { monitor: 2, rows: 2, cols: 2 },
             gap: 4,
         });
     });
@@ -464,6 +515,18 @@ suite('chartLayoutEditor (webview script)', () => {
         const hint = doc.getElementById('card-0').querySelector('.hint');
         assert.ok(hint.className.includes('ok'), hint.textContent);
         assert.ok(hint.textContent.includes('Timeframe-match'));
+    });
+
+    test('custom tokens with separators are rejected', () => {
+        const p = setupHost();
+        const { doc } = bootWebview(p.webview.html);
+        const ct = doc.getElementById('customTok');
+        ct.value = 'A B';
+        fire(ct, 'input', { target: ct });
+        assert.ok(doc.getElementById('status').textContent.includes('cannot contain'));
+        ct.value = 'A|B';
+        fire(ct, 'input', { target: ct });
+        assert.ok(doc.getElementById('status').textContent.includes('cannot contain'));
     });
 
     test('typing Daily in the custom box paints canonical D1', () => {
