@@ -39,6 +39,7 @@ const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
 const { ArrangeCharts, createStatusBar } = require('./chartLayout');
+const { createOrShow: EditChartLayouts } = require('./chartLayoutEditor');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache, getIncludeDir } = require('./provider');
 const { registerLightweightDiagnostics } = require('./lightweightDiagnostics');
 const { sweepDbgBuildArtifacts } = require('./tempSweep');
@@ -1796,6 +1797,7 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openInME', (uri) => OpenFileInMetaEditor(uri)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.openTradingTerminal', (eaPath, mql5Root) => OpenTradingTerminal(eaPath, mql5Root)));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.arrangeCharts', () => ArrangeCharts(context)));
+    context.subscriptions.push(vscode.commands.registerCommand('mql_tools.editChartLayouts', () => EditChartLayouts(context)));
     createStatusBar(context);
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.commentary', () => CreateComment()));
     context.subscriptions.push(vscode.commands.registerCommand('mql_tools.toggleTerminalLog', () => logTailer.toggle()));

@@ -14,6 +14,19 @@ Tile your MetaTrader 5 chart windows into a saved layout with one command. Snap 
 
 A notification reports what moved, e.g. `Charts arranged — docked 6/6 on mon 2 (2×3); floating 2/2 on mon 1 (1×2)`.
 
+## Visual preset editor
+
+Skip the JSON: run **MQL: Edit Chart Layout Presets (Visual)** — or pick **$(gear) Configure presets visually…** at the bottom of the preset picker — and paint your layout instead.
+
+- **Paint:** pick a token in the palette bar — a timeframe (`M5`, `H1`, …), `·` for an empty cell, or a custom region name you type — then **drag across cells** to fill a rectangle. A simple click fills one cell; right-click resets a cell to `·`.
+- **Grid shape:** the `+/- row` / `+/- col` buttons resize each grid (up to 12×16).
+- **Two cards:** the **docked grid** tiles charts inside the MT5 window; the **floating grid** (toggle *enable*) tiles the charts you undocked onto another monitor. Off = omitted from the preset, undocked charts untouched.
+- **Live hints:** each grid shows its mode — green *timeframe-match* (every token is a timeframe → regions bind to the active symbol) or amber *order-fill* (charts fill regions in reading order). Non-rectangular regions turn **red** — the run would error.
+- **JSON preview:** the bottom pane shows exactly what will land in `settings.json`, updating as you paint.
+- **Save / Apply:** **Save to Settings** writes the whole list to user settings. **Apply Now** saves first, then runs the arrangement for the selected preset — the result shows in the toolbar, not just a toast.
+
+Edits live only in the panel until you press **Save**; **+ New / Duplicate / Delete** manage the list. Legacy `rows`/`cols` presets load as uniform grids with sequential region names (`A`, `B`, …) — the same order-fill behavior — and are saved back as `areas`.
+
 ## Two groups: docked vs floating
 
 The command handles two kinds of chart window, detected automatically:

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Visual chart-layout editor**: New `MQL: Edit Chart Layout Presets (Visual)` command (also reachable as *Configure presets visually…* at the bottom of the Arrange MT5 Charts picker) opens a webview where you paint layout grids instead of hand-writing `areas` JSON. Pick a palette token — a timeframe, empty, or a custom region name — and drag across cells to fill rectangles; right-click resets a cell. The docked and floating groups are separate cards with monitor/gap fields, live region validation (non-rectangular spans turn red), a per-grid mode hint (timeframe-match vs order-fill), and a read-only `settings.json` preview. **Save to Settings** writes the full normalized preset list to user settings; **Apply Now** saves and then runs the arrangement for the selected preset, reporting the result inside the panel. The editor reuses the command's normalization and PowerShell worker, so it cannot drift from `Arrange MT5 Charts` behavior.
+
 ## 1.1.64 (pre-release)
 
 ### Fixes

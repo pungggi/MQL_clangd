@@ -637,6 +637,11 @@
                 "category": "MQL"
             },
             {
+                "command": "mql_tools.editChartLayouts",
+                "title": "Edit Chart Layout Presets (Visual)",
+                "category": "MQL"
+            },
+            {
                 "command": "mql_tools.reportNoisyDiagnostic",
                 "title": "%mql_tools.commands.reportNoisyDiagnostic.title%",
                 "category": "MQL"
