@@ -5,13 +5,16 @@ on:
     branches: [main]
   pull_request:
 
-# The release job tags and creates GitHub Releases; every other job only reads.
+# Least privilege by default; only the release job escalates to write below.
 permissions:
-  contents: write
+  contents: read
 
+# PR runs cancel each other (fast feedback); main-branch runs must NEVER be
+# canceled — a later ordinary commit could otherwise kill an in-flight run
+# whose release job was about to fire, silently skipping the release.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint-and-unit:
@@ -89,7 +92,13 @@ jobs:
   release:
     name: Tag + GitHub Release (release commits only)
     runs-on: ubuntu-latest
+    # Escalation scope: only this job may tag and create releases.
+    permissions:
+      contents: write
     needs: package
+    # NOTE: github.event.head_commit is only the LAST commit of a push. The
+    # release commit must be pushed alone (or as the last commit of a push);
+    # the package.json version guard below fails loudly if it is not HEAD.
     if: "github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: mql-clangd v')"
     steps:
       - uses: actions/checkout@v4
@@ -123,12 +132,16 @@ jobs:
           PRERELEASE: ${{ needs.package.outputs.prerelease }}
         run: |
           TAG="v$VER"
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists — skipping release creation."
+          # Guard on the RELEASE, not the tag: if a previous run created the
+          # tag but died before the release, this rerun must still attach one.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping."
             exit 0
           fi
-          ARGS=(--title "mql-clangd v$VER" --generate-notes)
+          ARGS=(--title "mql-clangd v$VER" --generate-notes --target "$GITHUB_SHA")
           if [ "$PRERELEASE" = "true" ]; then ARGS+=(--prerelease); fi
+          # --target pins the tag to the exact commit the VSIX was built from,
+          # so a rerun after main advanced cannot mix revisions.
           gh release create "$TAG" "mql-clangd-$VER.vsix" "${ARGS[@]}"
 
   mql5-compile:
@@ -144,7 +157,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\Program Files\MetaTrader 5
-          # Bump this key manually to pull a fresh terminal build.
+          # Fixed path: mt5setup /auto always installs here. If MetaQuotes ever
+          # relocates, the post-install Test-Path below fails loudly (advisory
+          # red, never blocks merge) and this key/path get updated together.
+          # Bump the key manually to pull a fresh terminal build.
           key: mt5-install-v1
       - name: Download and install MT5 silently
         if: steps.mt5cache.outputs.cache-hit != 'true'
@@ -187,23 +203,32 @@ jobs:
           }
       - name: Fail on compile errors
         shell: pwsh
+        # One log per staged source: a missing log means that MetaEditor
+        # invocation silently did nothing — that must fail, not pass vacuously
+        # because another source produced a log.
         run: |
-          $logs = Get-ChildItem "$env:MQL5_STAGE\Experts\*.log"
-          if (-not $logs) { throw 'No compile logs produced — MetaEditor invocation may have changed.' }
+          $sources = Get-ChildItem "$env:MQL5_STAGE\Experts\*.mq5"
+          if (-not $sources) { throw 'No staged .mq5 sources found.' }
           $failed = $false
-          foreach ($log in $logs) {
-            Write-Host "::group::$($log.Name)"
-            Get-Content $log.FullName | ForEach-Object { Write-Host $_ }
+          foreach ($src in $sources) {
+            $logPath = "$($src.FullName).log"
+            if (-not (Test-Path $logPath)) {
+              Write-Host "::error file=$($src.Name)::No compile log produced — MetaEditor invocation may have changed."
+              $failed = $true
+              continue
+            }
+            Write-Host "::group::$($src.Name)"
+            Get-Content $logPath | ForEach-Object { Write-Host $_ }
             Write-Host '::endgroup::'
-            $text = Get-Content $log.FullName -Raw
+            $text = Get-Content $logPath -Raw
             if ($text -match 'Result:\s*(\d+)\s+errors?') {
               $errs = [int]$Matches[1]
               if ($errs -gt 0) {
-                Write-Host "::error file=$($log.Name)::$errs compile errors"
+                Write-Host "::error file=$($src.Name)::$errs compile errors"
                 $failed = $true
               }
             } else {
-              Write-Host "::error file=$($log.Name)::No 'Result' line in log"
+              Write-Host "::error file=$($src.Name)::No 'Result' line in log"
               $failed = $true
             }
           }

@@ -813,7 +813,7 @@ Why two pipelines: building artifacts is cheap and automatic, but pushing to two
 
 - **Lint + unit tests** (Linux): fast feedback, and it proves the extension core stays platform-independent.
 - **VS Code extension tests** (Windows): `@vscode/test-electron` launches real VS Code, matching the environment most users have.
-- **Package VSIX**: builds the exact artifact the stores receive and uploads it as a workflow artifact. The channel (pre-release vs stable) is auto-detected from the CHANGELOG section header (`## X.Y.Z (pre-release)`).
+- **Package VSIX**: builds a VSIX from the same source and scripts the stores get and uploads it as a workflow artifact, handy for smoke-installing any PR or release candidate. The channel (pre-release vs stable) is auto-detected from the CHANGELOG section header (`## X.Y.Z (pre-release)`). Note: the Publish pipeline builds its own VSIX from the same source rather than downloading this artifact, keeping one packaging code path for CI and local publishing.
 - **Tag + GitHub Release**: when a commit titled `release: mql-clangd vX.Y.Z` lands on `main`, CI creates tag `vX.Y.Z` and a GitHub Release with the VSIX attached. Why: stable download links for every shipped version, plus free release diffs once tags exist.
 - **MetaEditor compile smoke** (advisory): silently installs MT5, compiles `files/*.mq5` headlessly, and fails on compile errors. Advisory on purpose: it depends on a MetaQuotes download, so it can never block a merge. It parses the compile log instead of the exit code, because `metaeditor64.exe` returns `1` even on success.
 
@@ -831,6 +831,6 @@ The pipeline writes them into `.vscode/.env.json` (git-ignored) and reuses `scri
 ### Release flow, end to end
 
 1. Merge feature PRs and let CI go green.
-2. On `main`: bump the version (`node scripts/bump-version.js`), fill the CHANGELOG section, commit as `release: mql-clangd vX.Y.Z`, and push. CI tags the release and attaches the VSIX.
+2. On `main`: bump the version (`node scripts/bump-version.js`), fill the CHANGELOG section, commit as `release: mql-clangd vX.Y.Z`, and push. Push the release commit on its own (or as the last commit of a push): the release job keys off the push's last commit message, and a version guard fails loudly if the release commit is not the tip. CI tags the release and attaches the VSIX.
 3. Smoke-check the VSIX artifact from the CI run if you want.
 4. Run the **Publish** workflow and verify both stores.

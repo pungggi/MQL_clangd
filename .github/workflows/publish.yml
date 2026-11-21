@@ -48,7 +48,9 @@ jobs:
           test -n "$OVSX_PAT" || { echo '::error::Secret OVSX_PAT is not configured.'; missing=1; }
           test "$missing" = 0 || exit 1
           mkdir -p .vscode
-          printf '{"VSCE_PAT":"%s","OVSX_PAT":"%s"}\n' "$VSCE_PAT" "$OVSX_PAT" > .vscode/.env.json
+          # node writes the JSON so PAT contents are escaped correctly;
+          # printf could produce invalid JSON for tokens with quotes/backslashes.
+          node -e 'require("fs").writeFileSync(".vscode/.env.json", JSON.stringify({ VSCE_PAT: process.env.VSCE_PAT, OVSX_PAT: process.env.OVSX_PAT }, null, 4))'
       - name: Publish to VS Code Marketplace
         if: inputs.target == 'both' || inputs.target == 'vsce'
         run: |
