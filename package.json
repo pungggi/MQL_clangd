@@ -83,7 +83,7 @@
                 },
                 "mql_tools.ChartLayout.Presets": {
                     "type": "array",
-                    "markdownDescription": "Named layouts for the **MQL: Arrange MT5 Charts** command. Each preset tiles charts into two independent groups:\n\n- **`docked`** (required) — charts docked inside the MT5 window; tiled into a `rows × cols` grid there, and the MT5 window is moved to `monitor` first.\n- **`floating`** (optional) — charts you have **undocked** (right-click chart → uncheck *Docked*); tiled onto another `monitor` in their own grid. Omit to leave undocked charts alone.\n\nMonitor numbers match `System.Windows.Forms.Screen.AllScreens` order (1-based). See `docs/chart-layout.md` for the full guide.",
+                    "markdownDescription": "Named layouts for the **MQL: Arrange MT5 Charts** command. Each preset tiles charts into two independent groups:\n\n- **`docked`** (required) — charts docked inside the MT5 window; tiled into a `rows × cols` grid there, and the MT5 window is moved to `monitor` first.\n- **`floating`** (optional) — charts you have **undocked** (right-click chart → uncheck *Docked*); tiled onto another `monitor` in their own grid. Omit to leave undocked charts alone.\n- **`mt5Path`** (optional) — full path to a `terminal64.exe`, pinning the preset to one MT5 instance when several terminals run. Without it, the command targets the only running instance, or asks which one to arrange when several run.\n\nMonitor numbers match `System.Windows.Forms.Screen.AllScreens` order (1-based). See `docs/chart-layout.md` for the full guide.",
                     "items": {
                         "type": "object",
                         "required": [

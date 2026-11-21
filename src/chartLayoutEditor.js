@@ -17,13 +17,12 @@
 // Save writes the whole array to user settings).
 
 const vscode = require('vscode');
-const path = require('path');
 const crypto = require('crypto');
 const {
+    arrangeViaBackend,
     getPresets,
     normalizeGrid,
     normalizePreset,
-    runArrangeScript,
     updateStatusLabel,
 } = require('./chartLayout');
 
@@ -121,6 +120,7 @@ class ChartLayoutEditorPanel {
             const o = { name: p.name, docked: p.docked };
             if (p.floating) o.floating = p.floating;
             o.gap = p.gap;
+            if (p.mt5Path) o.mt5Path = p.mt5Path;   // pinned MT5 instance, verbatim
             return o;
         });
         const target = await this._saveTarget();
@@ -158,10 +158,6 @@ class ChartLayoutEditorPanel {
     }
 
     async _apply(presets, index) {
-        if (process.platform !== 'win32') {
-            this._post({ type: 'applyResult', ok: false, message: 'Arrange MT5 Charts is Windows-only (it positions native MT5 windows).' });
-            return;
-        }
         const saved = await this._save(presets, 'applyResult');
         if (!saved.ok) {
             this._post({ type: 'applyResult', ok: false, message: `Not applied — ${saved.message}` });
@@ -169,9 +165,19 @@ class ChartLayoutEditorPanel {
         }
         const i = Math.max(0, Math.min(Math.trunc(Number(index)) || 0, saved.presets.length - 1));
         const preset = saved.presets[i];
-        const scriptPath = path.join(this._context.extensionPath, 'scripts', 'mt5-arrange-charts.ps1');
+        let run;
         try {
-            const result = await runArrangeScript(scriptPath, preset);
+            run = await arrangeViaBackend(this._context, preset);
+        } catch (e) {
+            this._post({ type: 'applyResult', ok: false, message: `Arrange failed: ${e.message}` });
+            return;
+        }
+        if (!run) {
+            this._post({ type: 'applyResult', ok: false, message: 'Arrange cancelled — no MT5 instance selected.' });
+            return;
+        }
+        try {
+            const result = run.result;
             updateStatusLabel(preset.name);
             this._post({ type: 'applyResult', ok: true, message: result.replace(/^OK\s*/, 'Charts arranged — ') });
         } catch (e) {
@@ -288,6 +294,12 @@ input { font-family: inherit; font-size: 12px; }
 }
 #presetName { width: 100%; }
 #presetGap { width: 80px; }
+.mt5-row { margin-bottom: 12px; }
+.mt5-row label { color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+#presetMt5 {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 5px 8px; font-size: 12px; width: 100%;
+}
 
 /* group cards */
 .card {
@@ -477,6 +489,7 @@ input { font-family: inherit; font-size: 12px; }
         return {
             name: typeof raw.name === 'string' ? raw.name : '',
             gap: clampInt(raw.gap, 0, 999, 0),
+            mt5Path: typeof raw.mt5Path === 'string' ? raw.mt5Path : '',
             docked: loadGroup(raw.docked),
             floating: raw.floating ? loadGroup(raw.floating) : null,
             origInvalid: !!origInvalid,
@@ -498,6 +511,7 @@ input { font-family: inherit; font-size: 12px; }
         var o = { name: p.name.trim(), docked: groupJson(p.docked) };
         if (p.floating && p.floating.on) o.floating = groupJson(p.floating);
         o.gap = p.gap;
+        if (p.mt5Path && p.mt5Path.trim()) o.mt5Path = p.mt5Path.trim();
         return o;
     }
     function allJson() { return presets.map(presetToJson); }
@@ -627,6 +641,9 @@ input { font-family: inherit; font-size: 12px; }
             '<label class="grow">Preset name <input id="presetName" type="text" value="' + esc(p.name) + '" placeholder="e.g. wall"></label>' +
             '<label>Gap (px) <input id="presetGap" type="number" min="0" max="999" step="1" value="' + p.gap + '"></label>' +
             '</div>' +
+            '<div class="row mt5-row">' +
+            '<label class="grow">MT5 terminal (optional) <input id="presetMt5" type="text" value="' + esc(p.mt5Path) + '" placeholder="any running instance — full path to terminal64.exe pins this preset to one MT5"></label>' +
+            '</div>' +
             cardHtml(0, 'Docked grid', 'charts inside the MT5 window — MT5 moves to this monitor first') +
             cardHtml(1, 'Floating grid', 'charts you undocked in MT5 (their own top-level windows)') +
             '<details class="json" open><summary>settings.json preview (read-only, updates live)</summary><pre id="jsonPreview"></pre></details>';
@@ -743,6 +760,9 @@ input { font-family: inherit; font-size: 12px; }
             updateButtons();
         } else if (e.target.id === 'presetGap') {
             p.gap = clampInt(e.target.value, 0, 999, 0);
+            updatePreview();
+        } else if (e.target.id === 'presetMt5') {
+            p.mt5Path = e.target.value;
             updatePreview();
         } else if (e.target.classList.contains('monitor')) {
             var gi = giOf(e.target);
