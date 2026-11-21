@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Welcome page**: the *Run Backtest* tab is temporarily replaced by a new **Arrange Charts** tab introducing the chart-layout presets, the status-bar button and the visual preset editor (including an *Arrange Charts now* button that runs the command directly). The backtest tab partial stays in the repo for a later return.
+
 ## 1.2.0 (pre-release)
 
 ### Features

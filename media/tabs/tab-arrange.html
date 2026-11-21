@@ -1,0 +1,101 @@
+        <!-- ─── Tab: Arrange Charts ─── -->
+        <div id="tab-arrange" class="tab-panel" role="tabpanel" aria-labelledby="btn-arrange" aria-hidden="true">
+
+            <div class="card">
+                <h2>Arrange Charts <span class="badge"
+                        style="background-color: var(--vscode-testing-iconPassed);">New</span></h2>
+
+                <p>Snap your MetaTrader 5 chart windows into a layout — <strong>directly from VS Code</strong>, for
+                    docked and undocked (floating) charts alike.</p>
+
+                <div class="highlight-box">
+                    Run <span class="code-inline">MQL: Arrange MT5 Charts</span> from the Command Palette, or click the
+                    <strong>&#9879; Charts</strong> button in the status bar (bottom-right). A notification reports what
+                    moved, e.g. <span class="code-inline">docked 6/6 on mon 2 (2×3); floating 2/2 on mon 1</span>.
+                </div>
+
+                <h3>Why use this?</h3>
+                <ul>
+                    <li><strong>No dragging windows:</strong> One command tiles every open chart into your saved
+                        layout — across monitors, including the charts you undocked.</li>
+                    <li><strong>Paint instead of JSON:</strong> The new <strong>visual preset editor</strong> (<span
+                            class="code-inline">MQL: Edit Chart Layout Presets (Visual)</span>) lets you drag-paint the
+                        grid — timeframes, empty cells, custom regions — with a live settings preview.</li>
+                    <li><strong>Layout modes:</strong> All-timeframe grids bind each region to your active symbol's
+                        chart of that timeframe; anything else fills charts in reading order. Extra charts are tucked
+                        away minimized.</li>
+                    <li><strong>Clear feedback:</strong> Regions that found no chart are reported as <span
+                            class="code-inline">[missing: W1, M30]</span> so you know exactly what to open.</li>
+                </ul>
+
+                <h3>Step-by-Step Guide</h3>
+                <ul class="step-list">
+                    <li>
+                        <strong>Paint your layout</strong><br>
+                        Run <span class="code-inline">MQL: Edit Chart Layout Presets (Visual)</span> and drag across
+                        cells to fill rectangles — one card for docked charts inside the MT5 window, one for floating
+                        charts on another monitor. Or edit <span class="code-inline">mql_tools.ChartLayout.Presets</span>
+                        by hand (three presets ship out of the box).
+                    </li>
+                    <li>
+                        <strong>Save &amp; apply</strong><br>
+                        <strong>Save to Settings</strong> writes the preset list; <strong>&#9656; Apply Now</strong>
+                        saves and immediately arranges the charts so you can iterate until it feels right.
+                    </li>
+                    <li>
+                        <strong>Arrange anytime</strong><br>
+                        With MT5 running, run <span class="code-inline">MQL: Arrange MT5 Charts</span> and pick a
+                        preset — or use the status-bar button, which remembers the last layout you applied.
+                    </li>
+                </ul>
+
+                <h3>Good to know</h3>
+                <ul>
+                    <li>Timeframe regions accept long aliases too: <span class="code-inline">Daily</span>,
+                        <span class="code-inline">Weekly</span>, <span class="code-inline">Monthly</span> behave like
+                        <span class="code-inline">D1</span>/<span class="code-inline">W1</span>/<span
+                            class="code-inline">MN1</span>.</li>
+                    <li>Arranging is Windows-only (it positions native MT5 windows) and never closes a chart — extra
+                        charts are just minimized.</li>
+                </ul>
+
+                <h3>Settings Reference</h3>
+                <table>
+                    <tr>
+                        <th>Setting</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td><span class="code-inline">mql_tools.ChartLayout.Presets</span></td>
+                        <td><span class="code-inline">wall, quad, focus</span></td>
+                        <td>The preset list. Each preset has a docked grid (and optionally a floating grid) with a
+                            monitor, an <span class="code-inline">areas</span> template or <span
+                                class="code-inline">rows</span>×<span class="code-inline">cols</span>, and a gap.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="code-inline">mql_tools.ChartLayout.ShowStatusBarButton</span></td>
+                        <td><span class="code-inline">true</span></td>
+                        <td>Show / hide the &#9879; Charts status-bar button.</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>Feedback</h2>
+                <p>Missing a layout option, or something doesn't land where it should?</p>
+                <p><a href="https://github.com/pungggi/MQL_clangd/issues/new?title=%5BChartLayout%5D%20"
+                        style="color: var(--accent-color); font-weight: bold; text-decoration: none; font-size: 1.1em;">Open
+                        an Issue on GitHub</a></p>
+            </div>
+
+            <div class="actions">
+                <p>Have you read through the new features? You can dismiss this page until the next major update.</p>
+                <button id="btn-arrange-charts">&#9656; Arrange Charts now</button>
+                <button class="dismiss-btn">Got it! Dismiss for version {{version}}</button>
+            </div>
+
+            <div class="footer">
+                Thank you for using MQL Clangd. We can't wait to hear your feedback!
+            </div>
+        </div>

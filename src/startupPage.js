@@ -41,6 +41,9 @@ function showStartupPage(context, force = false) {
                 case 'installCompileListenerService':
                     vscode.commands.executeCommand('mql_tools.installCompileListenerService');
                     return;
+                case 'arrangeCharts':
+                    vscode.commands.executeCommand('mql_tools.arrangeCharts');
+                    return;
             }
         },
         undefined,
@@ -48,7 +51,7 @@ function showStartupPage(context, force = false) {
     );
 }
 
-const TAB_NAMES = ['debugger', 'livelog', 'backtest', 'compilelistener'];
+const TAB_NAMES = ['debugger', 'livelog', 'arrange', 'compilelistener'];
 
 function readTabPartial(extensionPath, tabName) {
     const tabPath = path.join(extensionPath, 'media', 'tabs', `tab-${tabName}.html`);
