@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{{nonce}}';">
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{{nonce}}'; img-src data:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Welcome to MQL Extension</title>
     <style>
@@ -266,15 +266,15 @@
                 aria-controls="tab-debugger" tabindex="0">MQL Debugger</button>
             <button class="tab-btn" id="btn-livelog" data-tab="livelog" role="tab" aria-selected="false"
                 aria-controls="tab-livelog" tabindex="-1">Live Log</button>
-            <button class="tab-btn" id="btn-backtest" data-tab="backtest" role="tab" aria-selected="false"
-                aria-controls="tab-backtest" tabindex="-1">Run Backtest</button>
+            <button class="tab-btn" id="btn-arrange" data-tab="arrange" role="tab" aria-selected="false"
+                aria-controls="tab-arrange" tabindex="-1">Arrange Charts</button>
             <button class="tab-btn" id="btn-compilelistener" data-tab="compilelistener" role="tab" aria-selected="false"
                 aria-controls="tab-compilelistener" tabindex="-1">Compile Listener</button>
         </nav>
 
         {{tab-debugger}}
         {{tab-livelog}}
-        {{tab-backtest}}
+        {{tab-arrange}}
         {{tab-compilelistener}}
 
     </div>
@@ -314,6 +314,10 @@
 
         document.getElementById('btn-install-service')?.addEventListener('click', () => {
             vscode.postMessage({ command: 'installCompileListenerService' });
+        });
+
+        document.getElementById('btn-arrange-charts')?.addEventListener('click', () => {
+            vscode.postMessage({ command: 'arrangeCharts' });
         });
 
         // Arrow-key navigation for tabs (ARIA tabs pattern)
