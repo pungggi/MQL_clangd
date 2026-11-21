@@ -1,0 +1,63 @@
+name: Publish
+
+# Manual dispatch only, on purpose: publishing to two public stores should
+# never happen as a side effect of a push. Run it after the CI run for the
+# release commit is green and you've smoke-checked the VSIX artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target store(s)
+        type: choice
+        options: [both, vsce, ovsx]
+        default: both
+      pre_release:
+        description: Publish as pre-release
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One publish at a time; never cancel an in-flight store upload.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Materialize store PATs (.vscode/.env.json)
+        # scripts/publish.js reads .vscode/.env.json (git-ignored); writing it
+        # from secrets keeps one shared code path for local and CI publishing.
+        # Secrets go through env vars, never into the command line.
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          missing=0
+          test -n "$VSCE_PAT" || { echo '::error::Secret VSCE_PAT is not configured.'; missing=1; }
+          test -n "$OVSX_PAT" || { echo '::error::Secret OVSX_PAT is not configured.'; missing=1; }
+          test "$missing" = 0 || exit 1
+          mkdir -p .vscode
+          printf '{"VSCE_PAT":"%s","OVSX_PAT":"%s"}\n' "$VSCE_PAT" "$OVSX_PAT" > .vscode/.env.json
+      - name: Publish to VS Code Marketplace
+        if: inputs.target == 'both' || inputs.target == 'vsce'
+        run: |
+          ARGS=()
+          if [ "${{ inputs.pre_release }}" = "true" ]; then ARGS+=(--pre-release); fi
+          node scripts/publish.js vsce "${ARGS[@]}"
+      - name: Publish to Open VSX
+        if: inputs.target == 'both' || inputs.target == 'ovsx'
+        run: |
+          ARGS=()
+          if [ "${{ inputs.pre_release }}" = "true" ]; then ARGS+=(--pre-release); fi
+          node scripts/publish.js ovsx "${ARGS[@]}"

@@ -21,6 +21,7 @@
 - [Troubleshooting clangd diagnostics (MQL-specific)](#troubleshooting-clangd-diagnostics-mql-specific)
 - [FAQ: Common Questions](#faq-common-questions)
 - [Preserving Custom Diagnostic Suppressions](#preserving-custom-diagnostic-suppressions)
+- [CI & Publishing (Maintainers)](#ci--publishing-maintainers)
 
 ---
 
@@ -798,3 +799,38 @@ Merging combines your custom suppressions with the defaults, deduplicating autom
 ```
 
 If set to "prompt", you'll see a choice dialog when an existing `.clangd` is found.
+
+## CI & Publishing (Maintainers)
+
+Two GitHub Actions pipelines keep releases safe:
+
+- **CI** (`.github/workflows/ci.yml`) runs on every PR and push to `main`.
+- **Publish** (`.github/workflows/publish.yml`) runs only when you fire it manually.
+
+Why two pipelines: building artifacts is cheap and automatic, but pushing to two public stores should be a deliberate human decision, never a side effect of a push.
+
+### CI pipeline
+
+- **Lint + unit tests** (Linux): fast feedback, and it proves the extension core stays platform-independent.
+- **VS Code extension tests** (Windows): `@vscode/test-electron` launches real VS Code, matching the environment most users have.
+- **Package VSIX**: builds the exact artifact the stores receive and uploads it as a workflow artifact. The channel (pre-release vs stable) is auto-detected from the CHANGELOG section header (`## X.Y.Z (pre-release)`).
+- **Tag + GitHub Release**: when a commit titled `release: mql-clangd vX.Y.Z` lands on `main`, CI creates tag `vX.Y.Z` and a GitHub Release with the VSIX attached. Why: stable download links for every shipped version, plus free release diffs once tags exist.
+- **MetaEditor compile smoke** (advisory): silently installs MT5, compiles `files/*.mq5` headlessly, and fails on compile errors. Advisory on purpose: it depends on a MetaQuotes download, so it can never block a merge. It parses the compile log instead of the exit code, because `metaeditor64.exe` returns `1` even on success.
+
+### Publish pipeline
+
+Run it from **Actions → Publish → Run workflow**: pick the target (Marketplace, Open VSX, or both) and the pre-release flag, after the release commit's CI run is green.
+
+Required repository secrets (Settings → Secrets and variables → Actions):
+
+- **`VSCE_PAT`**: Azure DevOps token with Marketplace *Manage* scope.
+- **`OVSX_PAT`**: open-vsx.org access token.
+
+The pipeline writes them into `.vscode/.env.json` (git-ignored) and reuses `scripts/publish.js` unchanged, so local and CI publishing share one code path.
+
+### Release flow, end to end
+
+1. Merge feature PRs and let CI go green.
+2. On `main`: bump the version (`node scripts/bump-version.js`), fill the CHANGELOG section, commit as `release: mql-clangd vX.Y.Z`, and push. CI tags the release and attaches the VSIX.
+3. Smoke-check the VSIX artifact from the CI run if you want.
+4. Run the **Publish** workflow and verify both stores.

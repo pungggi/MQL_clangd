@@ -14,6 +14,8 @@ scripts/**
 .agent/**
 # Agent harness state/scratch — dev-only, never read by the extension.
 .pi/**
+# CI pipelines are dev-only.
+.github/**
 package-lock.json
 *.log
 # Exclude webpack config from package
