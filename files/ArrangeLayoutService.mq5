@@ -53,6 +53,7 @@ int  GetSystemMetrics(int nIndex);
 long MonitorFromRect(RECT &rect, uint dwFlags);   // MONITOR_DEFAULTTONEAREST = 2
 bool GetMonitorInfoW(long hMonitor, MONITORINFO &info);
 int  GetWindowTextW(long hWnd, ushort &buffer[], int nMaxCount);
+int  GetClassNameW(long hWnd, ushort &buffer[], int nMaxCount);
 #import
 
 // --- constants (winuser.h) ---
@@ -160,6 +161,16 @@ string ActiveSymbolOf(long main)
    return TrimAll(seg);
 }
 
+bool IsMdiClient(long hwnd)
+{
+   ushort buf[64];
+   int n = GetClassNameW(hwnd, buf, 64);
+   if(n <= 0) return false;
+   string cls;
+   for(int i = 0; i < n; i++) cls += ShortToString(buf[i]);
+   return (cls == "MDIClient");
+}
+
 int EnumerateCharts(ChartInfo &charts[])
 {
    ArrayFree(charts);
@@ -167,6 +178,17 @@ int EnumerateCharts(ChartInfo &charts[])
    while(id >= 0) {
       long hwnd = ChartGetInteger(id, CHART_WINDOW_HANDLE);
       if(hwnd != 0) {
+         long p = GetParent(hwnd);
+         if(p != 0 && !IsMdiClient(p)) {
+            // Current MT5 builds wrap each docked chart in an MDI child
+            // FRAME: CHART_WINDOW_HANDLE is the inner VIEW (view -> frame ->
+            // MDIClient). Moving the view leaves the frame behind and MFC
+            // re-tiles the frames. Operate on the frame instead: its parent
+            // is the MDI client, so MoveWindow coordinates (and mdi= in
+            // state.txt) line up exactly.
+            hwnd = p;
+            p = GetParent(hwnd);
+         }
          int n = ArraySize(charts);
          ArrayResize(charts, n + 1);
          charts[n].hwnd   = hwnd;
@@ -175,7 +197,7 @@ int EnumerateCharts(ChartInfo &charts[])
          // minutes. Publish plain minutes (what state.txt / the extension
          // expect) via PeriodSeconds().
          charts[n].period = (int)(PeriodSeconds(ChartPeriod(id)) / 60);
-         charts[n].docked = (GetParent(hwnd) != 0);   // MDI child -> docked
+         charts[n].docked = (p != 0);   // MDI child (frame) -> docked
       }
       id = ChartNext(id);
    }
@@ -445,7 +467,8 @@ void ProcessRequest()
    }
 
    // Chart moves. Docked charts are WS_CHILD: MoveWindow takes MDI-client
-   // coordinates and there is no invisible frame. Top-level charts (floating,
+   // coordinates. On current builds the moved window is the MDI child FRAME
+   // (parent = MDIClient), so cells map 1:1. Top-level charts (floating,
    // or the main window itself) get expanded by SM_C*SIZEFRAME +
    // SM_CXPADDEDBORDER so their VISIBLE edges land exactly on the cell rect —
    // same compensation as the PowerShell backend.
