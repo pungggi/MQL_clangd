@@ -96,6 +96,8 @@ function parseHtml(html, root) {
         while ((a = attrRe.exec(attrStr))) {
             el._attrs[a[1]] = a[2] !== undefined ? a[2] : (a[3] !== undefined ? a[3] : '');
         }
+        // Mirror the DOM default: <input value="x"> starts with .value === 'x'.
+        if (el._attrs.value !== undefined) el.value = el._attrs.value;
         for (const c of String(el._attrs.class || '').split(/\s+/).filter(Boolean)) el.classList.add(c);
         el.parentNode = stack[stack.length - 1];
         stack[stack.length - 1].children.push(el);
@@ -250,6 +252,21 @@ suite('chartLayoutEditor (host)', () => {
         assert.ok(!('floating' in configWrites[0].value[0]));
     });
 
+    test('save keeps the mt5Path pin of each preset', async () => {
+        const p = setupHost();
+        await p.webview._cb({
+            type: 'save',
+            presets: [
+                { name: 'work', docked: { monitor: 1, areas: ['H1'] }, mt5Path: '  C:\\MT5\\terminal64.exe ', gap: 0 },
+                { name: 'any', docked: { monitor: 1, areas: ['H1'] }, gap: 0 },
+            ],
+        });
+        assert.strictEqual(p.sent[0].ok, true, p.sent[0].message);
+        const w = configWrites[0].value;
+        assert.strictEqual(w[0].mt5Path, 'C:\\MT5\\terminal64.exe');   // trimmed by normalizePreset
+        assert.ok(!('mt5Path' in w[1]));
+    });
+
     test('invalid preset blocks the save with a reason', async () => {
         const p = setupHost();
         await p.webview._cb({ type: 'save', presets: [{ name: '', docked: { monitor: 1, areas: ['H1'] }, gap: 0 }] });
@@ -291,18 +308,19 @@ suite('chartLayoutEditor (host)', () => {
         }
     });
 
-    test('apply is Windows-only', async () => {
+    test('apply on non-Windows routes to the Wine backend (needs Include5Dir)', async () => {
         const plat = Object.getOwnPropertyDescriptor(process, 'platform');
         Object.defineProperty(process, 'platform', { value: 'linux' });
         try {
             const p = setupHost();
             await p.webview._cb({ type: 'apply', presets: TEST_PRESETS.slice(0, 1), index: 0 });
-            Object.defineProperty(process, 'platform', plat);
             assert.strictEqual(p.sent.length, 1);
             assert.strictEqual(p.sent[0].type, 'applyResult');
             assert.strictEqual(p.sent[0].ok, false);
-            assert.ok(p.sent[0].message.includes('Windows-only'));
-            assert.strictEqual(configWrites.length, 0);
+            // presets are saved first, then the Wine backend complains about
+            // the missing terminal data folder (state/service probe never runs)
+            assert.ok(p.sent[0].message.includes('Include5Dir'), p.sent[0].message);
+            assert.strictEqual(configWrites.length, 1);
         } finally {
             Object.defineProperty(process, 'platform', plat);
         }
@@ -505,6 +523,34 @@ suite('chartLayoutEditor (webview script)', () => {
         assert.strictEqual(api.posted[0].type, 'apply');
         assert.strictEqual(api.posted[0].index, 1);
         assert.strictEqual(api.posted[0].presets[1].name, 'tfwall');
+    });
+
+    test('mt5Path pins survive the webview round-trip and land in the save payload', () => {
+        const pinned = [
+            { name: 'work', docked: { monitor: 1, rows: 1, cols: 2 }, mt5Path: 'C:\\MT5-BrokerA\\terminal64.exe', gap: 0 },
+            { name: 'any', docked: { monitor: 1, rows: 1, cols: 1 }, gap: 0 },
+        ];
+        const p = setupHost(() => {
+            vscodeMock.workspace._configMock.get = (key) => (key === 'ChartLayout.Presets' ? pinned : undefined);
+        });
+        const { doc, api } = bootWebview(p.webview.html);
+        // loaded verbatim into the preview and the MT5 terminal input
+        assert.strictEqual(previewJson(doc).mt5Path, 'C:\\MT5-BrokerA\\terminal64.exe');
+        assert.strictEqual(doc.getElementById('presetMt5').value, 'C:\\MT5-BrokerA\\terminal64.exe');
+        // editing the path updates the preview live
+        const editor = doc.getElementById('editor');
+        const mt5Input = doc.getElementById('presetMt5');
+        mt5Input.value = 'D:\\MT5-BrokerB\\terminal64.exe';
+        fire(editor, 'input', { target: mt5Input, value: 'D:\\MT5-BrokerB\\terminal64.exe' });
+        assert.strictEqual(previewJson(doc).mt5Path, 'D:\\MT5-BrokerB\\terminal64.exe');
+        // a preset without a pin never grows one
+        fire(doc.getElementById('presetList'), 'click', { target: doc.getElementById('presetList').children[1] });
+        assert.ok(!('mt5Path' in previewJson(doc)));
+        // the whole list saves with the pin intact (and only there)
+        fire(doc.getElementById('btnSave'), 'click');
+        assert.strictEqual(api.posted[0].type, 'save');
+        assert.strictEqual(api.posted[0].presets[0].mt5Path, 'D:\\MT5-BrokerB\\terminal64.exe');
+        assert.ok(!('mt5Path' in api.posted[0].presets[1]));
     });
 
     test('long timeframe aliases load canonical and keep tf mode', () => {

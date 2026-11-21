@@ -20,7 +20,8 @@
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
+// Kept as the module object (not destructured) so tests can stub execFile.
+const childProcess = require('child_process');
 
 const STATUS_SETTING = 'mql_tools.ChartLayout.ShowStatusBarButton';
 let statusItem = null;
@@ -60,13 +61,18 @@ function normalizeGrid(g) {
 }
 
 // Coerce a configured preset; returns null if the (required) docked grid is bad.
+// An optional mt5Path (full path to a terminal64.exe) pins the preset to one
+// MT5 instance and is carried through verbatim when non-empty.
 function normalizePreset(p) {
     if (!p || typeof p.name !== 'string' || !p.name.trim()) return null;
     const docked = normalizeGrid(p.docked);
     if (!docked) return null;
     const floating = normalizeGrid(p.floating); // optional
     const gap = Math.max(0, Math.trunc(Number(p.gap)) || 0);
-    return { name: p.name.trim(), docked, floating, gap };
+    const out = { name: p.name.trim(), docked, floating, gap };
+    const mt5Path = typeof p.mt5Path === 'string' ? p.mt5Path.trim() : '';
+    if (mt5Path) out.mt5Path = mt5Path;
+    return out;
 }
 
 // CLI args for one grid group. `grid` is null when a floating group is absent
@@ -81,13 +87,19 @@ function gridArgs(prefix, grid) {
     return a;
 }
 
-function buildArgs(scriptPath, preset) {
-    return [
+// Full worker command line. `pid` (from the instance picker) and
+// preset.mt5Path (pinned instance) are appended only when present; the worker
+// resolves the target as: -Mt5Pid > -Mt5Path > first instance found.
+function buildArgs(scriptPath, preset, pid) {
+    const a = [
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath,
         ...gridArgs('Dock', preset.docked),
         ...gridArgs('Float', preset.floating),
         '-Gap', String(preset.gap),
     ];
+    if (preset.mt5Path) a.push('-Mt5Path', preset.mt5Path);
+    if (pid > 0) a.push('-Mt5Pid', String(Math.trunc(pid)));
+    return a;
 }
 
 // Resolve the system PowerShell by absolute path so we don't rely on PATH /
@@ -99,15 +111,104 @@ function resolvePowershell() {
     return fs.existsSync(abs) ? abs : 'powershell.exe';
 }
 
-function runArrangeScript(scriptPath, preset) {
+function runArrangeScript(scriptPath, preset, pid) {
     return new Promise((resolve, reject) => {
-        execFile(resolvePowershell(), buildArgs(scriptPath, preset), { windowsHide: true }, (err, stdout, stderr) => {
+        childProcess.execFile(resolvePowershell(), buildArgs(scriptPath, preset, pid), { windowsHide: true }, (err, stdout, stderr) => {
             const out = String(stdout || '').trim();
             if (out.startsWith('OK')) return resolve(out);
             const detail = out || String(stderr || '').trim() || (err && err.message) || 'unknown error';
             reject(new Error(detail.replace(/^ERROR\s*/, '')));
         });
     });
+}
+
+// Probe the running MT5 instances via the worker's -ListInstances mode.
+// Resolves to [{pid, title, path}] (path '' when the process is elevated or
+// in another session); rejects when the probe itself fails.
+function listMt5Instances(scriptPath) {
+    return new Promise((resolve, reject) => {
+        const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-ListInstances'];
+        childProcess.execFile(resolvePowershell(), args, { windowsHide: true }, (err, stdout, stderr) => {
+            if (err && !stdout) {
+                return reject(new Error(String(stderr || '').trim() || err.message || 'instance probe failed'));
+            }
+            try {
+                const list = JSON.parse(String(stdout || '').trim());
+                if (!Array.isArray(list)) throw new Error('unexpected probe output');
+                resolve(list.map(i => ({
+                    pid: Number(i.pid) || 0,
+                    title: String(i.title || ''),
+                    path: String(i.path || ''),
+                })));
+            } catch (e) {
+                reject(new Error(`cannot parse MT5 instance list: ${e.message}`));
+            }
+        });
+    });
+}
+
+// Decide which running MT5 instance to arrange.
+// - Preset pinned via mt5Path: the worker matches the process by exe path; no
+//   probe needed (returns {pid: 0, path: <pinned path>}).
+// - Single instance running: auto-selected, no prompt.
+// - Several instances: QuickPick (window title / exe path / pid).
+// Returns {pid, path} (pid 0 = let the worker match by path), or null when the
+// user dismissed the picker. Throws when no instance is running.
+async function resolveInstance(preset, scriptPath) {
+    if (preset && preset.mt5Path) return { pid: 0, path: preset.mt5Path };
+    const instances = await listMt5Instances(scriptPath);
+    if (instances.length === 0) throw new Error('MT5 (terminal64) not running');
+    if (instances.length === 1) return { pid: instances[0].pid, path: instances[0].path };
+    const choice = await vscode.window.showQuickPick(
+        instances.map(i => ({
+            label: i.title || `MetaTrader 5 — pid ${i.pid}`,
+            description: `pid ${i.pid}`,
+            detail: i.path || '(exe path unavailable — elevated or other user session)',
+            pid: i.pid,
+            path: i.path,
+        })),
+        { placeHolder: 'Several MT5 instances are running — which terminal should be arranged?', matchOnDetail: true }
+    );
+    return choice ? { pid: choice.pid, path: choice.path } : null;
+}
+
+// Expand ${workspaceFolder} in Include5Dir (the setting's description allows
+// it; the backtest path resolves the same variable). Returns the raw value
+// when nothing needs expanding.
+function resolveInclude5Dir(include5) {
+    const raw = String(include5 || '').trim();
+    if (!raw.includes('${workspaceFolder}')) return raw;
+    const ws = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+    const base = ws ? ws.uri.fsPath : '';
+    return raw.split('${workspaceFolder}').join(base);
+}
+
+// Backend dispatcher: on Windows the PowerShell worker moves the windows; on
+// Wine / Linux / macOS the in-terminal ArrangeLayoutService does it via flag
+// files (see chartLayoutWine.js). Returns { result, pinOffer } — pinOffer is
+// set only when the instance was chosen interactively and can be pinned via
+// mt5Path. Returns null when the user dismissed the instance picker.
+async function arrangeViaBackend(context, preset) {
+    const scriptPath = path.join(context.extensionPath, 'scripts', 'mt5-arrange-charts.ps1');
+    if (process.platform === 'win32') {
+        const target = await resolveInstance(preset, scriptPath);
+        if (!target) return null;                       // picker dismissed
+        const result = await runArrangeScript(scriptPath, preset, target.pid);
+        const pinOffer = (target.pid > 0 && target.path) ? { path: target.path } : null;
+        return { result, pinOffer };
+    }
+    const wine = require('./chartLayoutWine');
+    const include5 = resolveInclude5Dir(
+        vscode.workspace.getConfiguration('mql_tools').get('Metaeditor.Include5Dir', '')
+    );
+    if (!include5) {
+        throw new Error('mql_tools.Metaeditor.Include5Dir is not set — the Wine backend needs it to locate the terminal\'s MQL5/Files folder');
+    }
+    if (preset.mt5Path) {
+        vscode.window.showInformationMessage('Preset "mt5Path" pinning applies to the Windows backend — under Wine the terminal configured via Include5Dir is targeted.');
+    }
+    const result = await wine.runArrangeViaService(path.join(include5, 'Files'), preset);
+    return { result, pinOffer: null };
 }
 
 function gridLabel(g) {
@@ -117,15 +218,11 @@ function gridLabel(g) {
 function describe(preset) {
     let s = `docked ${gridLabel(preset.docked)} on mon ${preset.docked.monitor}`;
     if (preset.floating) s += `  •  floating ${gridLabel(preset.floating)} on mon ${preset.floating.monitor}`;
+    if (preset.mt5Path) s += `  •  pinned to ${path.basename(path.dirname(preset.mt5Path)) || preset.mt5Path}`;
     return s;
 }
 
 async function ArrangeCharts(context) {
-    if (process.platform !== 'win32') {
-        vscode.window.showWarningMessage('Arrange MT5 Charts is Windows-only (it positions native MT5 windows).');
-        return;
-    }
-
     const presets = getPresets().map(normalizePreset).filter(Boolean);
     if (presets.length === 0) {
         vscode.window.showErrorMessage('No valid chart-layout presets. Each needs a name and a docked grid: monitor ≥ 1 plus either rows ≥ 1 and cols ≥ 1, or an areas template. Check mql_tools.ChartLayout.Presets.');
@@ -147,11 +244,35 @@ async function ArrangeCharts(context) {
         return;
     }
 
-    const scriptPath = path.join(context.extensionPath, 'scripts', 'mt5-arrange-charts.ps1');
+    // Which MT5 instance / backend: pinned via the preset's mt5Path, the only
+    // one running, or the user's picker choice (Windows); the Wine backend
+    // targets the configured terminal instead (see arrangeViaBackend).
+    let run;
     try {
-        const result = await runArrangeScript(scriptPath, pick.preset);
+        run = await arrangeViaBackend(context, pick.preset);
+    } catch (e) {
+        vscode.window.showErrorMessage(`Arrange MT5 Charts failed: ${e.message}`);
+        return;
+    }
+    if (!run) return;
+
+    try {
+        const result = run.result;
         updateStatusLabel(pick.preset.name);
         vscode.window.showInformationMessage(result.replace(/^OK\s*/, 'Charts arranged — '));
+        // Chosen interactively (several instances ran) and the exe path is
+        // known: offer a ready-to-paste snippet that pins this preset to the
+        // chosen terminal, so next time no picker is needed.
+        if (run.pinOffer) {
+            const pin = await vscode.window.showInformationMessage(
+                `Pin preset "${pick.preset.name}" to this MT5 instance?`,
+                'Copy "mt5Path" snippet'
+            );
+            if (pin) {
+                await vscode.env.clipboard.writeText(`"mt5Path": ${JSON.stringify(run.pinOffer.path)}`);
+                vscode.window.showInformationMessage('Snippet copied — paste it into this preset entry in settings.json to always target this terminal.');
+            }
+        }
     } catch (e) {
         vscode.window.showErrorMessage(`Arrange MT5 Charts failed: ${e.message}`);
     }
@@ -188,11 +309,15 @@ function createStatusBar(context) {
 
 module.exports = {
     ArrangeCharts,
+    arrangeViaBackend,
+    buildArgs,
     createStatusBar,
     DEFAULT_PRESETS,
     getPresets,
+    listMt5Instances,
     normalizeGrid,
     normalizePreset,
+    resolveInstance,
     runArrangeScript,
     updateStatusLabel,
 };

@@ -17,6 +17,16 @@
 # title pattern. Panels (Market Watch / Navigator / Toolbox) have non-chart
 # titles and are skipped.
 #
+#   MT5 instance targeting (several terminal64 processes may run at once,
+#   one install folder per broker/account):
+#     -Mt5Path <full exe path>   arrange only the instance launched from that
+#                                 terminal64.exe (case-insensitive, slashes
+#                                 normalized)
+#     -Mt5Pid  <process id>       arrange only that exact process
+#     -ListInstances              print the running instances as one-line JSON
+#                                 [{"pid":..,"title":..,"path":..}] and exit
+#   With neither, the first instance found is targeted (legacy behavior).
+#
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File mt5-arrange-charts.ps1 `
 #       -DockMonitor 2 -DockRows 2 -DockCols 4 `
@@ -32,10 +42,24 @@ param(
     [int]$FloatRows    = 1,
     [int]$FloatCols    = 1,
     [string]$FloatAreas = "",
-    [int]$Gap          = 0
+    [int]$Gap          = 0,
+    [string]$Mt5Path   = "",   # full path to terminal64.exe: target that instance
+    [int]$Mt5Pid       = 0,    # exact process id: target that instance
+    [switch]$ListInstances     # print running MT5 instances as JSON, then exit
 )
 
 $ErrorActionPreference = 'Stop'
+
+# --- Probe mode: list running MT5 instances, no window touched ---
+if ($ListInstances) {
+    $list = @(Get-Process -Name terminal64 -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne 0 } |
+        Sort-Object Id |
+        ForEach-Object { [pscustomobject]@{ pid = $_.Id; title = $_.MainWindowTitle; path = [string]$_.Path } })
+    # -InputObject keeps a single instance wrapped as [..] and an empty set as [].
+    ConvertTo-Json -InputObject $list -Compress
+    exit 0
+}
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
@@ -253,9 +277,30 @@ function WorkArea($n) {
 $dockWa = WorkArea $DockMonitor
 
 # --- MT5 main window ---
-$proc = Get-Process -Name terminal64 -ErrorAction SilentlyContinue |
-        Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-if (-not $proc) { Fail "MT5 (terminal64) not running" }
+# Several MT5 terminals may run at once (typically one install folder per
+# broker/account). Target selection: -Mt5Pid (exact process) wins over
+# -Mt5Path (exe path, case-insensitive, slashes normalized); with neither,
+# the first instance found is used. $_.Path is $null for elevated or
+# other-session processes, so compare only non-null paths.
+$instances = @(Get-Process -Name terminal64 -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne 0 })
+if ($instances.Count -eq 0) { Fail "MT5 (terminal64) not running" }
+$proc = $null
+if ($Mt5Pid -gt 0) {
+    $proc = $instances | Where-Object { $_.Id -eq $Mt5Pid }
+    if (-not $proc) { Fail "MT5 process id $Mt5Pid is not running" }
+}
+elseif ($Mt5Path -ne '') {
+    $want = $Mt5Path.Trim() -replace '/', '\'
+    $proc = $instances |
+        Where-Object { $_.Path -and (($_.Path -replace '/', '\') -ieq $want) } |
+        Select-Object -First 1
+    if (-not $proc) {
+        $found = (@($instances | ForEach-Object { [string]$_.Path }) -join '; ')
+        Fail "MT5 at '$Mt5Path' is not running (found: $found)"
+    }
+}
+else { $proc = $instances | Select-Object -First 1 }
 $main = $proc.MainWindowHandle
 $mainPid = [uint32]$proc.Id
 # MT5's title ends with the active chart's "SYMBOL,TF" -> use that symbol as the

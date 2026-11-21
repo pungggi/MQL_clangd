@@ -39,6 +39,8 @@ mocha.addFile(path.resolve(__dirname, 'noisyDiagnostic.test.js'));
 mocha.addFile(path.resolve(__dirname, 'tempSweep.test.js'));
 mocha.addFile(path.resolve(__dirname, 'createPropertiesQueue.test.js'));
 mocha.addFile(path.resolve(__dirname, 'chartLayoutEditor.test.js'));
+mocha.addFile(path.resolve(__dirname, 'chartLayout.test.js'));
+mocha.addFile(path.resolve(__dirname, 'chartLayoutWine.test.js'));
 
 // Run the tests
 mocha.run(failures => {

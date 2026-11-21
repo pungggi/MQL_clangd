@@ -127,7 +127,8 @@ module.exports = {
     SymbolKind,
     DocumentSymbol,
     env: {
-        language: 'en'
+        language: 'en',
+        clipboard: { writeText: async () => { } }
     },
     window: {
         showInformationMessage: () => Promise.resolve(),

@@ -2,7 +2,7 @@
 
 Tile your MetaTrader 5 chart windows into a saved layout with one command. Snap docked charts into a grid inside the terminal, and spread undocked charts across other monitors.
 
-> ⚠️ **Windows only (for now).** This feature moves native MT5 windows through the Win32 API. On macOS / Linux (including Wine) the command does nothing.
+> **Windows natively, other platforms via a one-time terminal service.** On Windows the command drives a PowerShell worker. On macOS / Linux / Wine it drives a small MT5 service you install once — see [Wine / Linux / macOS setup](#wine--linux--macos-terminal-service).
 
 ## Quick start
 
@@ -67,8 +67,12 @@ Edit them via **Settings UI** (`Ctrl+,` → search `ChartLayout` → *Edit in se
     "gap": 4
   },
 
-  // One big chart, primary monitor.
-  { "name": "focus", "docked": { "monitor": 1, "rows": 1, "cols": 1 } }
+  // One big chart, primary monitor, pinned to a specific MT5 installation.
+  {
+    "name": "focus",
+    "docked": { "monitor": 1, "rows": 1, "cols": 1 },
+    "mt5Path": "D:\\MT5-Demo\\terminal64.exe"
+  }
 ]
 ```
 
@@ -78,6 +82,7 @@ Edit them via **Settings UI** (`Ctrl+,` → search `ChartLayout` → *Edit in se
 | `docked.monitor`              | Monitor the MT5 window moves to (1-based).                                    |
 | `docked.rows` / `docked.cols` | Grid for docked charts.                                                       |
 | `floating`                    | Same shape, for undocked charts on another monitor. Omit to leave them alone. |
+| `mt5Path`                      | Optional full path to a `terminal64.exe` pinning the preset to one instance.  |
 | `gap`                         | Pixels between and around cells. Default `0`.                                 |
 
 Match `rows × cols` to your chart count. Any **extra charts beyond the grid's cells are minimized** (tucked to the bottom) so they never overlap the grid — the notification reports how many, e.g. `docked 6/7 (1 minimized)`. Restore them from MT5's window list, or pick a preset with more cells.
@@ -132,6 +137,36 @@ If **every area name is a timeframe** (`M5`, `H1`, `M15`, …), the layout stops
 
 Standard timeframe tokens: `M1 M2 M3 M4 M5 M6 M10 M12 M15 M20 M30 H1 H2 H3 H4 H6 H8 H12 D1 W1 MN1` (long aliases `Daily` `Weekly` `Monthly` accepted for the last three).
 
+## Targeting a specific MT5 instance
+
+Several MT5 terminals can run at once — typically one installation folder per broker or account. The command picks the instance like this:
+
+- **Pinned preset:** a `mt5Path` field (full path to that install's `terminal64.exe`) always targets that terminal. If it is not running, the run errors instead of arranging a different instance.
+- **One instance running:** it is targeted automatically, no prompt.
+- **Several running, no `mt5Path`:** a picker lists each instance — window title (broker + active chart), exe path and PID — and only the chosen terminal is arranged.
+
+After arranging via the picker, a notification offers **Copy `"mt5Path"` snippet**: paste it into that preset entry in `settings.json` to pin it, and future runs skip the prompt. The visual editor has an **MT5 terminal** field per preset for the same purpose.
+
+## Wine / Linux / macOS (terminal service)
+
+The PowerShell worker only exists on Windows, and X11 tools cannot see MT5's docked charts (Wine renders child windows inside its own surface). The cross-platform answer is a tiny service that runs **inside** the terminal and executes window moves on the extension's behalf — under Wine it goes through Wine's own user32, so it behaves exactly like the Windows path.
+
+**One-time setup:**
+
+1. Copy `ArrangeLayoutService.mq5` from the extension's `files/` folder into that terminal's `MQL5/Services/`.
+2. Compile it in MetaEditor (F7).
+3. In the Navigator under *Services*, right-click **ArrangeLayoutService** → **Add Service**.
+4. In the dialog enable **Allow DLL imports** (or enable it globally under Tools → Options → Expert Advisors) — the service only calls user32 move/size APIs.
+5. Set `mql_tools.Metaeditor.Include5Dir` to that terminal's MQL5 folder (Wine setups usually have it set already for backtests).
+
+**How it works:** the service watches `MQL5/Files/mql_clangd_arrange/` — it publishes a `state.txt` snapshot (charts, their window handles, monitor geometry) and executes `req.txt` move lists written by the extension. All layout math stays in the extension, so the service never needs updating when layouts gain features. First run moves the MT5 window, then a second pass tiles the charts (about a second end to end).
+
+**Limits under Wine (v1):**
+
+- **Monitor numbering.** All monitors are detected (rect + work area, host panels respected). They are numbered left-to-right, top-to-bottom — which may differ from the device order Windows uses on a native setup, so check which number is which once.
+- **One terminal.** The terminal configured via `Include5Dir` is targeted — no multi-instance picker, and a preset's `mt5Path` is ignored (with a notice).
+- **State freshness.** The service heartbeats every ~3 s; if `state.txt` is older than 15 s the command reports the service as not running.
+
 ## Tips
 
 - **All on one screen:** size the docked grid to your chart count (8 charts → `2×4`). No `floating` block needed.
@@ -140,8 +175,8 @@ Standard timeframe tokens: `M1 M2 M3 M4 M5 M6 M10 M12 M15 M20 M30 H1 H2 H3 H4 H6
 
 ## Limits
 
-- **Windows only.** It moves native MT5 windows via the Win32 API. Under Wine it does nothing.
-- **First MT5 instance.** If several `terminal64` processes run, it targets the first one.
+- **Windows native / Wine via service.** On Windows a PowerShell worker moves the windows. On macOS / Linux / Wine the in-terminal [ArrangeLayoutService](#wine--linux--macos-terminal-service) does it (one-time setup; multi-monitor layouts supported).
+- **Pinned or picked instance.** The first running MT5 is targeted only when the preset has no `mt5Path` and exactly one instance runs; several instances trigger the picker (see [Targeting a specific MT5 instance](#targeting-a-specific-mt5-instance)).
 - **Uniform display scaling.** Positioning assumes the same DPI/scaling across monitors. On a mixed-scaling setup (e.g. 100% + 150%) charts may land slightly off; set the target monitors to the same scale.
 - **No auto-undock.** MT5 exposes no reliable way to toggle a chart's dock state from outside, so you undock manually (or via a saved profile). This command only _positions_ windows.
 
