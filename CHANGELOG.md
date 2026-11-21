@@ -1,11 +1,16 @@
 # Changelog                         
 
-## Unreleased
+## 1.3.0 (pre-release)
 
 ### Features
 
 - **Chart layout — works on Wine / Linux / macOS** via a one-time terminal service (`files/ArrangeLayoutService.mq5`): the extension computes the layout and the service executes the window moves inside MT5, so docked charts tile under Wine too. All layout math stays in the extension; the service is a thin executor talking over `MQL5/Files/mql_clangd_arrange/` flag files. Multi-monitor presets work (monitors numbered left-to-right); targets the terminal configured via `Include5Dir` (a preset's `mt5Path` is Windows-only).
 - **Chart layout — target a specific MT5 instance**: with several `terminal64` terminals running (one install per broker/account), the arrangement no longer blindly targets the first one. Each preset accepts an optional `mt5Path` (full path to that install's `terminal64.exe`) pinning it to one terminal — if that terminal is not running, the run errors instead of rearranging a different instance. Without a pin, the only running instance is targeted automatically; when several run, a picker lists each one (window title with broker + active chart, exe path, PID) so you choose which to arrange, and a follow-up notification offers a ready-to-paste `"mt5Path"` snippet to pin the preset for next time. The visual editor has an **MT5 terminal** field per preset and round-trips the pin on save.
+
+### Fixes
+
+- **Wine service — robust against current MT5 builds** (verified live on build 6230): docked charts are wrapped in an MDI child frame (`view → frame → MDIClient`), so the service now resolves and moves the **frame**, not the inner `CHART_WINDOW_HANDLE` view (which left frames behind and made MT5 re-tile). Timeframes publish as minutes (`PeriodSeconds`) instead of raw `ENUM_TIMEFRAMES` codes, the terminal window is resolved via `GA_ROOTOWNER` (a floating first chart can no longer be mistaken for the terminal), and concurrent arranges on the same service directory are serialized. A missing `state.txt` refresh after the main move now aborts with a clear error instead of planning with a stale MDI size.
+- **Chart layout** — `${workspaceFolder}` in `Include5Dir` is expanded before locating the Wine service files; new presets from the visual editor's *+ New* no longer show `undefined` in the MT5 terminal field.
 
 ## 1.2.1
 
