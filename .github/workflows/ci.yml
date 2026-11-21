@@ -160,8 +160,9 @@ jobs:
           # Fixed path: mt5setup /auto always installs here. If MetaQuotes ever
           # relocates, the post-install Test-Path below fails loudly (advisory
           # red, never blocks merge) and this key/path get updated together.
-          # Bump the key manually to pull a fresh terminal build.
-          key: mt5-install-v1
+          # v2: initialized by a portable terminal first-run (see next step);
+          # bump the key manually to pull a fresh terminal build.
+          key: mt5-install-v2
       - name: Download and install MT5 silently
         if: steps.mt5cache.outputs.cache-hit != 'true'
         shell: pwsh
@@ -173,13 +174,32 @@ jobs:
           if (-not (Test-Path 'C:\Program Files\MetaTrader 5\metaeditor64.exe')) {
             throw 'metaeditor64.exe not found after silent install'
           }
+      - name: Initialize MT5 (one portable terminal run)
+        shell: pwsh
+        # A silent install gives us metaeditor64.exe but NO terminal data
+        # folder — and without one, MetaEditor runs /compile yet writes no
+        # logs (observed on runners: exit code 1, zero .log files). One
+        # portable first-run creates the data folder inside the install dir,
+        # which the cache then persists. Self-guarding: skips when the
+        # stdlib signal already exists.
+        run: |
+          $mt5 = 'C:\Program Files\MetaTrader 5'
+          $signal = "$mt5\MQL5\Include\Trade\Trade.mqh"
+          if (Test-Path $signal) { Write-Host 'Already initialized — skipping first run.'; exit 0 }
+          Start-Process -FilePath "$mt5\terminal64.exe" -ArgumentList '/portable'
+          $deadline = (Get-Date).AddSeconds(180)
+          while ((Get-Date) -lt $deadline -and -not (Test-Path $signal)) { Start-Sleep -Seconds 5 }
+          Stop-Process -Name terminal64 -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path $signal)) {
+            throw 'Terminal first-run did not create MQL5\Include within 180s — cannot trust MetaEditor logging without it.'
+          }
       - name: Stage MQL5 sources (outside the install tree)
         shell: pwsh
         # /inc staging keeps the cached install pristine: the workspace tree
         # carries our headers, and the compiler never writes into the install.
-        # Our sources are stdlib-free, so no terminal first-run is needed; if a
-        # future source includes <Trade\...> & friends, add a portable
-        # terminal64 first-run to unpack MQL5\Include here.
+        # (Terminal first-run above initializes the data folder only; our
+        # sources are stdlib-free, the stdlib just needs to EXIST for
+        # MetaEditor to operate and log.)
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = Join-Path $env:RUNNER_TEMP 'mql5-stage'
