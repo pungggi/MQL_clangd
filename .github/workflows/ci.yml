@@ -212,12 +212,17 @@ jobs:
         shell: pwsh
         # NOTE: metaeditor64 exits with 1 even on success (verified on build
         # 6230) — never gate on the exit code; the log parse below decides.
+        # /portable keeps all data inside the install dir: without it,
+        # MetaEditor needs a per-user data folder in %APPDATA% and silently
+        # writes NO logs on fresh non-interactive runner sessions. Explicit
+        # /log:<path> instead of bare /log for the same reason (matches the
+        # long-running FX31337/MQL-Compile-Action invocation).
         run: |
           $me = 'C:\Program Files\MetaTrader 5\metaeditor64.exe'
           Get-ChildItem "$env:MQL5_STAGE\Experts\*.mq5" | ForEach-Object {
             Write-Host "Compiling $($_.Name)..."
             $p = Start-Process -FilePath $me `
-              -ArgumentList "/compile:`"$($_.FullName)`"", "/inc:`"$env:MQL5_STAGE`"", '/log' `
+              -ArgumentList '/portable', "/inc:`"$env:MQL5_STAGE`"", "/compile:`"$($_.FullName)`"", "/log:`"$($_.FullName).log`"" `
               -PassThru -Wait
             Write-Host "MetaEditor exit code: $($p.ExitCode)"
           }
