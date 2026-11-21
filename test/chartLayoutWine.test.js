@@ -338,4 +338,80 @@ suite('chartLayoutWine: file protocol with fake service', () => {
             stop();
         }
     });
+
+    test('runArrangeViaService: main moved but state never refreshed -> error', async function () {
+        this.timeout(8000);
+        const dir = fakeServiceDir(stateText({ charts: DOCKED }));
+        // Service answers the main move with ok but never refreshes state.txt
+        // (mtime stays old) — the client must abort instead of planning with
+        // the stale MDI size.
+        const stop = (() => {
+            const t = setInterval(() => {
+                const req = path.join(dir, 'req.txt');
+                if (!fs.existsSync(req)) return;
+                const text = fs.readFileSync(req, 'utf8');
+                fs.unlinkSync(req);
+                if (text.startsWith('version=1\r\nmain=')) {
+                    fs.writeFileSync(path.join(dir, 'res.txt'), 'ok moved=1 min=0 skipped=0\r\n');
+                } else {
+                    const moves = (text.match(/^move=/gm) || []).length;
+                    fs.writeFileSync(path.join(dir, 'res.txt'), `ok moved=${moves} min=0 skipped=0\r\n`);
+                }
+            }, 40);
+            return () => clearInterval(t);
+        })();
+        try {
+            await assert.rejects(
+                () => wine.runArrangeViaService(tmpRoot, { name: 't', gap: 0, docked: { monitor: 1, rows: 1, cols: 1 } }),
+                /did not refresh state\.txt/
+            );
+        } finally {
+            stop();
+        }
+    });
+
+    test('runArrangeViaService: concurrent runs on one dir are serialized', async function () {
+        this.timeout(10000);
+        const seq = [];
+        let mdi = '800,600';
+        const dir = fakeServiceDir(stateText({ charts: DOCKED }));
+        // Logging fake service: records each request it serves, refreshes
+        // state on the main move. 60ms delay per request makes an unqueued
+        // client interleave observably.
+        const stop = (() => {
+            const t = setInterval(() => {
+                const req = path.join(dir, 'req.txt');
+                const res = path.join(dir, 'res.txt');
+                if (!fs.existsSync(req)) return;
+                const text = fs.readFileSync(req, 'utf8');
+                fs.unlinkSync(req);
+                if (text.startsWith('version=1\r\nmain=')) {
+                    seq.push('main');
+                    mdi = '1912,1000';
+                    fs.writeFileSync(path.join(dir, 'state.txt'), stateText({ charts: DOCKED, mdi }));
+                    fs.writeFileSync(res, 'ok moved=1 min=0 skipped=0\r\n');
+                } else {
+                    const moves = (text.match(/^move=/gm) || []).length;
+                    const mins = (text.match(/^min=/gm) || []).length;
+                    seq.push('moves:' + moves + ':min:' + mins);
+                    fs.writeFileSync(res, `ok moved=${moves} min=${mins} skipped=0\r\n`);
+                }
+            }, 20);
+            return () => clearInterval(t);
+        })();
+        try {
+            const [rA, rB] = await Promise.all([
+                wine.runArrangeViaService(tmpRoot, { name: 'a', gap: 0, docked: { monitor: 1, rows: 2, cols: 2 } }),
+                (async () => { await new Promise((r) => setTimeout(r, 20)); return wine.runArrangeViaService(tmpRoot, { name: 'b', gap: 0, docked: { monitor: 1, rows: 1, cols: 1 } }); })(),
+            ]);
+            assert.ok(rA.startsWith('OK '), rA);
+            assert.ok(rB.startsWith('OK '), rB);
+            // The queue must run each arrange's full protocol back to back:
+            // A: main -> 4 moves, then B: main -> 1 move (4 docked charts fit
+            // into the 2x2 grid; only the first fits into 1x1, rest minimized).
+            assert.deepStrictEqual(seq, ['main', 'moves:4:min:0', 'main', 'moves:1:min:3']);
+        } finally {
+            stop();
+        }
+    });
 });

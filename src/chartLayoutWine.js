@@ -348,6 +348,11 @@ function buildRequest(plan) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// One arrange at a time per service directory: the req/res protocol has a
+// single slot, so two overlapping runs (command + editor) would overwrite
+// each other's request. Calls queue here and keep their own results.
+const inflight = new Map();   // dir -> tail promise (never rejects)
+
 function serviceDir(filesRoot) { return path.join(filesRoot, DIR_NAME); }
 
 function readState(dir) {
@@ -392,7 +397,7 @@ async function waitResult(dir, sentAtMs, timeoutMs = RES_TIMEOUT_MS) {
  * terminal's MQL5/Files folder). Resolves with an "OK ..." summary line
  * compatible with the PowerShell backend, rejects with a readable error.
  */
-async function runArrangeViaService(filesRoot, preset) {
+async function arrangeViaServiceInner(filesRoot, preset) {
     const dir = serviceDir(filesRoot);
     const probe = readState(dir);
     if (!probe || !isStateFresh(probe.mtimeMs, Date.now())) {
@@ -406,12 +411,18 @@ async function runArrangeViaService(filesRoot, preset) {
     await waitResult(dir, sent1);
 
     // Phase 2: re-read state (the service refreshes it after moving main —
-    // MDIClient has a new size), then send the concrete chart moves.
+    // MDIClient has a new size), then send the concrete chart moves. If the
+    // refresh never happens, abort instead of planning with the stale MDI
+    // size: the cells would not match the moved window.
     let snap = null;
+    let refreshed = false;
     for (let i = 0; i < 40; i++) {
         snap = readState(dir);
-        if (snap && snap.mtimeMs > probe.mtimeMs) break;
+        if (snap && snap.mtimeMs > probe.mtimeMs) { refreshed = true; break; }
         await sleep(100);
+    }
+    if (!refreshed) {
+        throw new Error('service did not refresh state.txt after moving the main window — docked cells would use the old MDI size');
     }
     if (!snap) throw new Error('lost state.txt while arranging');
     const plan = computeMoves(snap.state, preset);
@@ -421,6 +432,16 @@ async function runArrangeViaService(filesRoot, preset) {
         await waitResult(dir, sent2);
     }
     return `OK ${plan.summary}`;
+}
+
+/** Queued entry point (see `inflight`). */
+async function runArrangeViaService(filesRoot, preset) {
+    const key = serviceDir(filesRoot);
+    const prior = inflight.get(key) || Promise.resolve();
+    const task = prior.catch(() => { }).then(() => arrangeViaServiceInner(filesRoot, preset));
+    const tail = task.finally(() => { if (inflight.get(key) === tail) inflight.delete(key); });
+    inflight.set(key, tail);
+    return task;
 }
 
 module.exports = {

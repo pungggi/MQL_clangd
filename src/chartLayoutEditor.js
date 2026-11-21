@@ -933,6 +933,7 @@ input { font-family: inherit; font-size: 12px; }
             presets.push({
                 name: 'layout ' + (presets.length + 1),
                 gap: 0,
+                mt5Path: '',
                 docked: { monitor: 1, grid: blankGrid(2, 3), on: true, legacy: false, dirty: false },
                 floating: null,
                 origInvalid: false,

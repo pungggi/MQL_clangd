@@ -57,6 +57,7 @@ int  GetWindowTextW(long hWnd, ushort &buffer[], int nMaxCount);
 
 // --- constants (winuser.h) ---
 #define GA_ROOT          2
+#define GA_ROOTOWNER     3
 #define GWL_STYLE      (-16)
 #define WS_CHILD    0x40000000
 #define SW_MINIMIZE      6
@@ -170,7 +171,10 @@ int EnumerateCharts(ChartInfo &charts[])
          ArrayResize(charts, n + 1);
          charts[n].hwnd   = hwnd;
          charts[n].symbol = ChartSymbol(id);
-         charts[n].period = (int)ChartPeriod(id);
+         // ChartPeriod() returns ENUM_TIMEFRAMES, where H1 is 16385 — NOT
+         // minutes. Publish plain minutes (what state.txt / the extension
+         // expect) via PeriodSeconds().
+         charts[n].period = (int)(PeriodSeconds(ChartPeriod(id)) / 60);
          charts[n].docked = (GetParent(hwnd) != 0);   // MDI child -> docked
       }
       id = ChartNext(id);
@@ -181,6 +185,11 @@ int EnumerateCharts(ChartInfo &charts[])
 long MainHwndOf(const ChartInfo &charts[])
 {
    if(ArraySize(charts) == 0) return 0;
+   // GA_ROOT of a FLOATING chart returns the chart window itself (it is
+   // top-level). GA_ROOTOWNER walks parents AND owners, so it lands on the
+   // terminal frame for both docked and floating charts.
+   long root = GetAncestor(charts[0].hwnd, GA_ROOTOWNER);
+   if(root != 0) return root;
    return GetAncestor(charts[0].hwnd, GA_ROOT);
 }
 

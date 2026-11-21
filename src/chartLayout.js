@@ -172,6 +172,17 @@ async function resolveInstance(preset, scriptPath) {
     return choice ? { pid: choice.pid, path: choice.path } : null;
 }
 
+// Expand ${workspaceFolder} in Include5Dir (the setting's description allows
+// it; the backtest path resolves the same variable). Returns the raw value
+// when nothing needs expanding.
+function resolveInclude5Dir(include5) {
+    const raw = String(include5 || '').trim();
+    if (!raw.includes('${workspaceFolder}')) return raw;
+    const ws = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+    const base = ws ? ws.uri.fsPath : '';
+    return raw.split('${workspaceFolder}').join(base);
+}
+
 // Backend dispatcher: on Windows the PowerShell worker moves the windows; on
 // Wine / Linux / macOS the in-terminal ArrangeLayoutService does it via flag
 // files (see chartLayoutWine.js). Returns { result, pinOffer } — pinOffer is
@@ -187,7 +198,9 @@ async function arrangeViaBackend(context, preset) {
         return { result, pinOffer };
     }
     const wine = require('./chartLayoutWine');
-    const include5 = vscode.workspace.getConfiguration('mql_tools').get('Metaeditor.Include5Dir', '');
+    const include5 = resolveInclude5Dir(
+        vscode.workspace.getConfiguration('mql_tools').get('Metaeditor.Include5Dir', '')
+    );
     if (!include5) {
         throw new Error('mql_tools.Metaeditor.Include5Dir is not set — the Wine backend needs it to locate the terminal\'s MQL5/Files folder');
     }
