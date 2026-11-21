@@ -1,0 +1,267 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege by default; only the release job escalates to write below.
+permissions:
+  contents: read
+
+# PR runs cancel each other (fast feedback); main-branch runs must NEVER be
+# canceled — a later ordinary commit could otherwise kill an in-flight run
+# whose release job was about to fire, silently skipping the release.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint-and-unit:
+    name: Lint + unit tests (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:unit
+
+  extension-tests:
+    name: VS Code extension tests (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node ./test/runTest.js
+
+  package:
+    name: Package VSIX
+    runs-on: ubuntu-latest
+    needs: [lint-and-unit, extension-tests]
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Derive version + release channel
+        id: ver
+        shell: bash
+        # Release channel comes from the CHANGELOG section header, matching the
+        # documented release flow ("## X.Y.Z (pre-release)").
+        run: |
+          VER="$(node -p "require('./package.json').version")"
+          if grep -qE "^## ${VER//./\\.} \(pre-release\)[[:space:]]*$" CHANGELOG.md; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+      - name: Package VSIX (pre-release channel)
+        if: steps.ver.outputs.prerelease == 'true'
+        # prepublish swaps package.json main to ./dist before vsce reads it
+        # (same dance as scripts/publish.js); afterpublish reverts it.
+        run: |
+          node scripts/prepublish.js
+          npx --yes vsce package --pre-release
+          node scripts/afterpublish.js
+      - name: Package VSIX (stable channel)
+        if: steps.ver.outputs.prerelease == 'false'
+        run: |
+          node scripts/prepublish.js
+          npx --yes vsce package
+          node scripts/afterpublish.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mql-clangd-vsix
+          path: mql-clangd-*.vsix
+          if-no-files-found: error
+
+  release:
+    name: Tag + GitHub Release (release commits only)
+    runs-on: ubuntu-latest
+    # Escalation scope: only this job may tag and create releases.
+    permissions:
+      contents: write
+    needs: package
+    # NOTE: github.event.head_commit is only the LAST commit of a push. The
+    # release commit must be pushed alone (or as the last commit of a push);
+    # the package.json version guard below fails loudly if it is not HEAD.
+    if: "github.event_name == 'push' && startsWith(github.event.head_commit.message, 'release: mql-clangd v')"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release commit matches package.json
+        id: rel
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          HEADLINE="$(printf '%s' "$COMMIT_MESSAGE" | head -n1)"
+          echo "Commit: $HEADLINE"
+          if [[ ! "$HEADLINE" =~ ^release:\ mql-clangd\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Not a release commit (subject mismatch); nothing to do."
+            exit 1
+          fi
+          RELVER="${BASH_REMATCH[1]}"
+          PKGVER="$(node -p "require('./package.json').version")"
+          if [ "$RELVER" != "$PKGVER" ]; then
+            echo "::error::Release commit says v$RELVER but package.json is $PKGVER — refusing to tag."
+            exit 1
+          fi
+          echo "version=$RELVER" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: mql-clangd-vsix
+      - name: Create tag + GitHub Release with VSIX
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.rel.outputs.version }}
+          PRERELEASE: ${{ needs.package.outputs.prerelease }}
+        run: |
+          TAG="v$VER"
+          # Guard on the RELEASE, not the tag: if a previous run created the
+          # tag but died before the release, this rerun must still attach one.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping."
+            exit 0
+          fi
+          ARGS=(--title "mql-clangd v$VER" --generate-notes --target "$GITHUB_SHA")
+          if [ "$PRERELEASE" = "true" ]; then ARGS+=(--prerelease); fi
+          # --target pins the tag to the exact commit the VSIX was built from,
+          # so a rerun after main advanced cannot mix revisions.
+          gh release create "$TAG" "mql-clangd-$VER.vsix" "${ARGS[@]}"
+
+  mql5-compile:
+    name: MetaEditor compile smoke (advisory)
+    runs-on: windows-latest
+    # Advisory by design: depends on a MetaQuotes download, so a flaky
+    # upstream or compiler hiccup must never block a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore MT5 install from cache
+        id: mt5cache
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files\MetaTrader 5
+          # Fixed path: mt5setup /auto always installs here. If MetaQuotes ever
+          # relocates, the post-install Test-Path below fails loudly (advisory
+          # red, never blocks merge) and this key/path get updated together.
+          # v2: initialized by a portable terminal first-run (see next step);
+          # bump the key manually to pull a fresh terminal build.
+          key: mt5-install-v2
+      - name: Download and install MT5 silently
+        if: steps.mt5cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Join-Path $env:RUNNER_TEMP 'mt5setup.exe'
+          Invoke-WebRequest -Uri 'https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe' -OutFile $setup
+          Start-Process -FilePath $setup -ArgumentList '/auto' -Wait
+          if (-not (Test-Path 'C:\Program Files\MetaTrader 5\metaeditor64.exe')) {
+            throw 'metaeditor64.exe not found after silent install'
+          }
+      - name: Initialize MT5 (one portable terminal run)
+        shell: pwsh
+        # A silent install gives us metaeditor64.exe but NO terminal data
+        # folder — and without one, MetaEditor runs /compile yet writes no
+        # logs (observed on runners: exit code 1, zero .log files). One
+        # portable first-run creates the data folder inside the install dir,
+        # which the cache then persists. Self-guarding: skips when the
+        # stdlib signal already exists.
+        run: |
+          $mt5 = 'C:\Program Files\MetaTrader 5'
+          $signal = "$mt5\MQL5\Include\Trade\Trade.mqh"
+          if (Test-Path $signal) { Write-Host 'Already initialized — skipping first run.'; exit 0 }
+          Start-Process -FilePath "$mt5\terminal64.exe" -ArgumentList '/portable'
+          $deadline = (Get-Date).AddSeconds(180)
+          while ((Get-Date) -lt $deadline -and -not (Test-Path $signal)) { Start-Sleep -Seconds 5 }
+          Stop-Process -Name terminal64 -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path $signal)) {
+            throw 'Terminal first-run did not create MQL5\Include within 180s — cannot trust MetaEditor logging without it.'
+          }
+      - name: Stage MQL5 sources (outside the install tree)
+        shell: pwsh
+        # /inc staging keeps the cached install pristine: the workspace tree
+        # carries our headers, and the compiler never writes into the install.
+        # (Terminal first-run above initializes the data folder only; our
+        # sources are stdlib-free, the stdlib just needs to EXIST for
+        # MetaEditor to operate and log.)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'mql5-stage'
+          New-Item "$stage\Include", "$stage\Experts" -ItemType Directory -Force | Out-Null
+          Copy-Item 'files\*.mqh', 'files\mql_clangd_compat.h' "$stage\Include\" -Force
+          Copy-Item 'files\*.mq5' "$stage\Experts\" -Force
+          Remove-Item "$stage\Experts\*.log" -Force -ErrorAction SilentlyContinue
+          "MQL5_STAGE=$stage" | Add-Content $env:GITHUB_ENV
+      - name: Compile services with MetaEditor
+        shell: pwsh
+        # NOTE: metaeditor64 exits with 1 even on success (verified on build
+        # 6230) — never gate on the exit code; the log parse below decides.
+        # /portable keeps all data inside the install dir: without it,
+        # MetaEditor needs a per-user data folder in %APPDATA% and silently
+        # writes NO logs on fresh non-interactive runner sessions. Explicit
+        # /log:<path> instead of bare /log for the same reason (matches the
+        # long-running FX31337/MQL-Compile-Action invocation).
+        run: |
+          $me = 'C:\Program Files\MetaTrader 5\metaeditor64.exe'
+          Get-ChildItem "$env:MQL5_STAGE\Experts\*.mq5" | ForEach-Object {
+            Write-Host "Compiling $($_.Name)..."
+            $p = Start-Process -FilePath $me `
+              -ArgumentList '/portable', "/inc:`"$env:MQL5_STAGE`"", "/compile:`"$($_.FullName)`"", "/log:`"$($_.FullName).log`"" `
+              -PassThru -Wait
+            Write-Host "MetaEditor exit code: $($p.ExitCode)"
+          }
+      - name: Fail on compile errors
+        shell: pwsh
+        # One log per staged source: a missing log means that MetaEditor
+        # invocation silently did nothing — that must fail, not pass vacuously
+        # because another source produced a log.
+        run: |
+          $sources = Get-ChildItem "$env:MQL5_STAGE\Experts\*.mq5"
+          if (-not $sources) { throw 'No staged .mq5 sources found.' }
+          $failed = $false
+          foreach ($src in $sources) {
+            $logPath = "$($src.FullName).log"
+            if (-not (Test-Path $logPath)) {
+              Write-Host "::error file=$($src.Name)::No compile log produced — MetaEditor invocation may have changed."
+              $failed = $true
+              continue
+            }
+            Write-Host "::group::$($src.Name)"
+            Get-Content $logPath | ForEach-Object { Write-Host $_ }
+            Write-Host '::endgroup::'
+            $text = Get-Content $logPath -Raw
+            if ($text -match 'Result:\s*(\d+)\s+errors?') {
+              $errs = [int]$Matches[1]
+              if ($errs -gt 0) {
+                Write-Host "::error file=$($src.Name)::$errs compile errors"
+                $failed = $true
+              }
+            } else {
+              Write-Host "::error file=$($src.Name)::No 'Result' line in log"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+      - name: Upload compile logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mql5-compile-logs
+          path: ${{ runner.temp }}\mql5-stage\Experts\*.log
+          if-no-files-found: ignore

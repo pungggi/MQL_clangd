@@ -403,8 +403,14 @@ suite('backtestService — Wine tester log discovery', function () {
         fs.mkdirSync(logDir1, { recursive: true });
         fs.mkdirSync(logDir2, { recursive: true });
 
-        // Touch logDir2 to make it the freshest
+        // Write a log into dir2 and pin explicit mtimes: on fast machines both
+        // dirs can be created within the same millisecond, which would make
+        // the freshness comparison a tie decided by scan order.
         fs.writeFileSync(path.join(logDir2, 'dummy.log'), 'test');
+        const past = new Date(Date.now() - 60_000);
+        const fresh = new Date();
+        fs.utimesSync(logDir1, past, past);
+        fs.utimesSync(logDir2, fresh, fresh);
 
         const winePrefix = path.join(tempDir, 'prefix');
         const result = findTesterLogDir(mql5Root, '', { winePrefix });

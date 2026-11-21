@@ -833,7 +833,11 @@ suite('inferMqlDataDirFromPath', () => {
     });
 });
 
-suite('Compat Header Compilation', () => {
+suite('Compat Header Compilation', function () {
+    // Spawns an external clang++ (PATH lookup + cold first launch) — the
+    // default 2s mocha timeout is too tight on cold CI runners.
+    this.timeout(30_000);
+
     const compatHeader = path.join(__dirname, '..', '..', 'files', 'mql_clangd_compat.h');
 
     function findClangPP() {
