@@ -11,6 +11,8 @@ scripts/**
 # ...but ship the chart-arranger worker: it is a runtime asset loaded from
 # extensionPath/scripts, not bundled by webpack.
 !scripts/mt5-arrange-charts.ps1
+# ...and the MetaEditor GUI-compile worker ("Compile MQL file using script").
+!scripts/metaeditor-gui-compile.ps1
 .agent/**
 # Agent harness state/scratch — dev-only, never read by the extension.
 .pi/**

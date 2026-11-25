@@ -19,7 +19,7 @@
 
 const vscode = require('vscode');
 const path = require('path');
-const fs = require('fs');
+const { resolvePowershell } = require('./powershell');
 // Kept as the module object (not destructured) so tests can stub execFile.
 const childProcess = require('child_process');
 
@@ -100,15 +100,6 @@ function buildArgs(scriptPath, preset, pid) {
     if (preset.mt5Path) a.push('-Mt5Path', preset.mt5Path);
     if (pid > 0) a.push('-Mt5Pid', String(Math.trunc(pid)));
     return a;
-}
-
-// Resolve the system PowerShell by absolute path so we don't rely on PATH /
-// current-directory search order (which could run a hijacked powershell.exe in
-// an untrusted workspace). Fall back to the bare name only if it's missing.
-function resolvePowershell() {
-    const root = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
-    const abs = path.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    return fs.existsSync(abs) ? abs : 'powershell.exe';
 }
 
 function runArrangeScript(scriptPath, preset, pid) {

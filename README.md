@@ -12,6 +12,7 @@
 - [Quick Setup Guide](#quick-setup-guide)
 - [Important Notes](#important-notes)
 - [MetaEditor on macOS / Linux (Wine)](#metaeditor-on-macos--linux-wine)
+- [Compile Through MetaEditor (Reload EAs on Charts)](#compile-through-metaeditor-reload-eas-on-charts)
 - [Auto-Reload EA After Compile (MT5 Service)](#auto-reload-ea-after-compile-mt5-service)
 - [Live Runtime Log](#live-runtime-log)
 - [Trade Report Dashboard](#trade-report-dashboard)
@@ -186,6 +187,27 @@ When `mql_tools.Wine.Enabled` is `true` on macOS/Linux:
 - Compile / Check commands run MetaEditor via Wine instead of executing the `.exe` directly.
 - Paths for source files, include directories and logs are automatically converted with `winepath -w`, so MetaEditor sees them as `Z:\\...` paths.
 - Behaviour on Windows is unchanged (the wrapper is ignored on Windows, or when `Wine.Enabled` is `false`).
+
+---
+
+### Compile Through MetaEditor (Reload EAs on Charts)
+
+MetaTrader reloads an EA or indicator that runs on a chart only after a compile made inside MetaEditor. A command-line compile rewrites the `.ex4/.ex5`, but the charts keep running the previous build. The two compile commands therefore differ in what happens after the binary is written:
+
+| Command | Key | Behaviour |
+| --- | --- | --- |
+| `MQL: Compile MQL file` | `Ctrl+Shift+X` | Command-line compile only. MetaEditor never opens, charts keep the old build. |
+| `MQL: Compile MQL file using script` | `Ctrl+Shift+C` | The same command-line compile fills the Problems panel, then the file is opened in MetaEditor and compiled there, so MetaTrader reloads the programs running on your charts. |
+
+**How the script compile works**
+
+- **Compile (F7) is posted to the MetaEditor window** that shows the file, and only to a MetaEditor of the configured installation. No keystrokes are simulated and no window is activated for it, so it also works while MetaEditor sits behind other windows.
+- **One MetaEditor window**: MetaEditor is single-instance. If it is already running, the file opens as a tab of the running instance instead of a second window.
+- **The hand-over is awaited**: when an instance was already running, the started process only hands the file over and exits. The compile key is sent after that hand-over finished, so a tab that merely carries the same file name (another folder) is never compiled by mistake.
+- **Keys held delay the key briefly**: while a Shift, Ctrl, Alt or Windows key is held, the compile key waits (up to 3 s) so it is not read as a different shortcut. If the key is still held then, F7 is sent anyway and the output line says so.
+- **MetaEditor stays open** so you can read the final compile log in its Toolbox. If launching it takes the focus away from VS Code, focus is handed back to the window you were working in.
+- **Confirmation**: the `.ex4/.ex5` next to the source must be rewritten within 20 s. If it is not, the Output channel and a warning say so, because then nothing was reloaded on the charts (for example another tab was compiled or MetaEditor shows a dialog).
+- **Windows only.** Under Wine the command keeps its previous behaviour; use [Auto-Reload EA After Compile (MT5 Service)](#auto-reload-ea-after-compile-mt5-service) to reload EAs there.
 
 ---
 

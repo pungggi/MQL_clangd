@@ -38,6 +38,7 @@ const { tf } = require('./timeUtils');
 const { Help, OfflineHelp } = require('./help');
 const { ShowFiles, InsertNameFileMQH, InsertMQH, InsertNameFileMQL, InsertMQL, InsertResource, InsertImport, InsertTime, InsertIcon, OpenFileInMetaEditor, OpenTradingTerminal, CreateComment } = require('./contextMenu');
 const { IconsInstallation } = require('./addIcon');
+const { runMetaEditorGuiCompile, describeGuiCompileResult } = require('./metaEditorGuiCompile');
 const { ArrangeCharts, createStatusBar } = require('./chartLayout');
 const { createOrShow: EditChartLayouts } = require('./chartLayoutEditor');
 const { Hover_log, DefinitionProvider, Hover_MQL, ItemProvider, HelpProvider, ColorProvider, MQLDocumentSymbolProvider, getObjItems, clearSymbolCache, getIncludeDir } = require('./provider');
@@ -461,6 +462,27 @@ function cleanupTempMqproj(projPath) {
 }
 
 /**
+ * What "Compile MQL file using script" does once the command-line compile
+ * succeeded. The command-line compile only produces the binary and the
+ * diagnostics; MetaTrader reloads the programs running on its charts solely
+ * after a compile made in the MetaEditor UI (issue #77).
+ *
+ * @param {number} rt        - Compile mode
+ * @param {boolean} hasErrors - The command-line compile reported errors
+ * @param {object} env
+ * @param {boolean} env.useWine
+ * @param {string} [env.platform]
+ * @returns {'none'|'wine'|'gui'|'cli'} 'wine' keeps the batch-file compile used
+ *   under Wine, 'gui' is the MetaEditor GUI compile on Windows, 'cli' the bare
+ *   command-line compile for non-Windows hosts without Wine.
+ */
+function resolveScriptCompileFollowUp(rt, hasErrors, { useWine, platform = process.platform } = {}) {
+    if (rt !== COMPILE_MODE_SCRIPT || hasErrors) return 'none';
+    if (useWine) return 'wine';
+    return platform === 'win32' ? 'gui' : 'cli';
+}
+
+/**
  * Compile a single file path.
  *
  * @param {number} rt           - Compile mode (COMPILE_MODE_CHECK, COMPILE_MODE_COMPILE, COMPILE_MODE_SCRIPT)
@@ -762,50 +784,80 @@ async function compilePath(rt, pathToCompile, _context) {
             const cpuArchTag = cpuArchActive ? ` [${cpuArchSetting.toUpperCase()}]` : '';
             outputChannel.appendLine(`[${time}] ${teq} ${targetLabel}${cpuArchTag} [${timeCompile}s]`);
 
-            if (rt === COMPILE_MODE_SCRIPT && !log.error) {
-                if (useWine) {
-                    try {
-                        const wineEnv = getWineEnv(config);
-                        // Use the already converted metaEditorWinPath
-                        const rt2Args = [`/compile:"${compileArg}"`];
-                        const rt2BatContent = buildBatchContent(metaEditorWinPath, rt2Args);
-                        const rt2BatFile = await createWineBatchFile(rt2BatContent, wineBinary, winePrefix);
-                        const wineCmd = buildWineCmd(wineBinary, rt2BatFile.winPath);
+            const followUp = resolveScriptCompileFollowUp(rt, Boolean(log.error), { useWine });
+            if (followUp === 'none') {
+                outputChannel.appendLine(String(log.text));
+                resolve(log.error);
+            } else if (followUp === 'wine') {
+                try {
+                    const wineEnv = getWineEnv(config);
+                    // Use the already converted metaEditorWinPath
+                    const rt2Args = [`/compile:"${compileArg}"`];
+                    const rt2BatContent = buildBatchContent(metaEditorWinPath, rt2Args);
+                    const rt2BatFile = await createWineBatchFile(rt2BatContent, wineBinary, winePrefix);
+                    const wineCmd = buildWineCmd(wineBinary, rt2BatFile.winPath);
 
-                        childProcess.spawn(wineCmd.executable, wineCmd.args, buildSpawnOptions({ env: wineEnv }))
-                            .on('error', (error) => {
-                                const startErr = `${lg['err_start_script']}: ${error.message}`;
-                                outputChannel.appendLine(`[Error]  ${startErr}`);
-                                cleanupBatchFile(rt2BatFile.unixPath);
-                                resolve(startErr);
-                            })
-                            .on('close', () => {
-                                outputChannel.appendLine(String(log.text + lg['info_log_compile']));
-                                cleanupBatchFile(rt2BatFile.unixPath);
-                                resolve(false);
-                            });
-                    } catch (batchErr) {
-                        const batchFailErr = `Failed to create Wine batch file for script execution: ${batchErr.message}`;
-                        outputChannel.appendLine(`[Error] ${batchFailErr}`);
-                        resolve(batchFailErr);
-                    }
-                } else {
-                    // Direct execution on Windows – windowsVerbatimArguments keeps quotes intact (fixes #6)
-                    const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
-                    childProcess.spawn(executable, args, { shell: false, windowsVerbatimArguments: true })
+                    childProcess.spawn(wineCmd.executable, wineCmd.args, buildSpawnOptions({ env: wineEnv }))
                         .on('error', (error) => {
                             const startErr = `${lg['err_start_script']}: ${error.message}`;
                             outputChannel.appendLine(`[Error]  ${startErr}`);
+                            cleanupBatchFile(rt2BatFile.unixPath);
                             resolve(startErr);
                         })
                         .on('close', () => {
                             outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                            cleanupBatchFile(rt2BatFile.unixPath);
                             resolve(false);
                         });
+                } catch (batchErr) {
+                    const batchFailErr = `Failed to create Wine batch file for script execution: ${batchErr.message}`;
+                    outputChannel.appendLine(`[Error] ${batchFailErr}`);
+                    resolve(batchFailErr);
                 }
+            } else if (followUp === 'gui') {
+                // Windows: open the file in the MetaEditor GUI and press Compile there.
+                // MetaTrader reloads a running EA/indicator only after a compile made in
+                // the MetaEditor UI; the command-line compiles rewrite the .ex4/.ex5 but
+                // leave the charts on the previous build (#77). MetaEditor stays open,
+                // the final compile log is in its Toolbox window.
+                const isProgram = extension === '.mq4' || extension === '.mq5';
+                const result = await runMetaEditorGuiCompile({
+                    context: _context,
+                    metaEditor: MetaDir,
+                    sourceFile: pathToCompile,
+                    portable: Boolean(portableSwitch),
+                    // A header compiled on its own produces no binary to confirm.
+                    resultTimeoutMs: isProgram ? undefined : 0,
+                });
+                const binaryName = pathModule.basename(pathToCompile, extension).concat(extension === '.mq4' ? '.ex4' : '.ex5');
+                outputChannel.appendLine(describeGuiCompileResult(result, { fileName, binaryName, waitedForBinary: isProgram }));
+                outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                if (!result.ok) {
+                    vscode.window.showWarningMessage(`${lg['gui_compile_failed']}: ${fileName} (${result.detail})`);
+                    return resolve(`[MetaEditor GUI compile] ${result.detail}`);
+                }
+                if (result.status === 'triggered' && isProgram) {
+                    // F7 went out, but the binary did not change: usually MetaEditor
+                    // compiled another tab with the same file name or shows a dialog.
+                    // The command-line compile above still stands, only the reload
+                    // on the charts did not happen, so this is a warning, not an error.
+                    vscode.window.showWarningMessage(`${lg['gui_compile_unconfirmed']}: ${binaryName}`);
+                }
+                resolve(false);
             } else {
-                outputChannel.appendLine(String(log.text));
-                resolve(log.error);
+                // Non-Windows host without Wine: plain command-line compile, as before.
+                // windowsVerbatimArguments keeps quotes intact (fixes #6)
+                const { executable, args } = buildMetaEditorCmd(MetaDir, [`/compile:${compileArg}`]);
+                childProcess.spawn(executable, args, { shell: false, windowsVerbatimArguments: true })
+                    .on('error', (error) => {
+                        const startErr = `${lg['err_start_script']}: ${error.message}`;
+                        outputChannel.appendLine(`[Error]  ${startErr}`);
+                        resolve(startErr);
+                    })
+                    .on('close', () => {
+                        outputChannel.appendLine(String(log.text + lg['info_log_compile']));
+                        resolve(false);
+                    });
             }
         };
 
@@ -2319,6 +2371,7 @@ module.exports = {
     shouldRunConfiguredPostCompileTask,
     runConfiguredPostCompileTask,
     resolveHeaderCompilePlan,
+    resolveScriptCompileFollowUp,
     inferMqlDataDirFromPath,
     bumpVersionsInFile: require('./versionBumper').bumpVersionsInFile
 };
