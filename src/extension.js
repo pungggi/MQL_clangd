@@ -836,6 +836,13 @@ async function compilePath(rt, pathToCompile, _context) {
                     vscode.window.showWarningMessage(`${lg['gui_compile_failed']}: ${fileName} (${result.detail})`);
                     return resolve(`[MetaEditor GUI compile] ${result.detail}`);
                 }
+                if (result.status === 'triggered' && isProgram) {
+                    // F7 went out, but the binary did not change: usually MetaEditor
+                    // compiled another tab with the same file name or shows a dialog.
+                    // The command-line compile above still stands, only the reload
+                    // on the charts did not happen, so this is a warning, not an error.
+                    vscode.window.showWarningMessage(`${lg['gui_compile_unconfirmed']}: ${binaryName}`);
+                }
                 resolve(false);
             } else {
                 // Non-Windows host without Wine: plain command-line compile, as before.

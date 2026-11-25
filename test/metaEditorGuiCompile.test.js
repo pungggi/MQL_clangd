@@ -76,8 +76,8 @@ suite('metaEditorGuiCompile', () => {
     suite('parseWorkerResult', () => {
         test('OK compiled line becomes a successful result with timings', () => {
             const m = freshModule();
-            const r = m.parseWorkerResult('noise\r\nOK compiled  pid=29932 window-ms=1496 bin-ms=439 focus=restored\r\n');
-            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 29932, windowMs: 1496, binaryMs: 439, focus: 'restored' });
+            const r = m.parseWorkerResult('noise\r\nOK compiled  pid=29932 window-ms=1496 bin-ms=439 focus=restored handoff=exited mods-ms=40 already-open=1\r\n');
+            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 29932, windowMs: 1496, binaryMs: 439, focus: 'restored', handoff: 'exited', modsMs: 40, alreadyOpen: true });
         });
 
         test('OK triggered line (binary not seen rewritten) is still a success', () => {
@@ -87,6 +87,10 @@ suite('metaEditorGuiCompile', () => {
             assert.strictEqual(r.status, 'triggered');
             assert.strictEqual(r.binaryMs, -1);
             assert.strictEqual(r.pid, 0);
+            // Fields the older worker lines did not carry get neutral defaults.
+            assert.strictEqual(r.handoff, 'none');
+            assert.strictEqual(r.modsMs, 0);
+            assert.strictEqual(r.alreadyOpen, false);
         });
 
         test('ERROR line keeps the reason as detail', () => {
@@ -124,7 +128,7 @@ suite('metaEditorGuiCompile', () => {
             assert.strictEqual(call.opts.timeout, m.DEFAULT_WINDOW_TIMEOUT_MS + m.DEFAULT_RESULT_TIMEOUT_MS + 30000);
             assert.deepStrictEqual(call.args, m.buildWorkerArgs(m.workerPath(CONTEXT), INPUTS));
             assert.ok(call.args[4].endsWith(path.join('scripts', 'metaeditor-gui-compile.ps1')));
-            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 7, windowMs: 1200, binaryMs: 400, focus: 'none' });
+            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 7, windowMs: 1200, binaryMs: 400, focus: 'none', handoff: 'none', modsMs: 0, alreadyOpen: false });
         });
 
         test('a failed worker resolves to ok=false with the worker reason', async () => {
@@ -212,12 +216,20 @@ suite('metaEditorGuiCompile', () => {
             const line = m.describeGuiCompileResult(
                 { ok: true, status: 'compiled', windowMs: 1496, binaryMs: 439, focus: 'none' }, names);
             assert.match(line, /^\[Info\] MetaEditor GUI compile: Compile \(F7\) sent to "My EA\.mq5" after 1\.5 s, My EA\.ex5 rewritten 0\.4 s later\. MetaTrader reloads/);
+            assert.doesNotMatch(line, /already open/);
         });
 
-        test('triggered: still an info line, points at the MetaEditor Toolbox', () => {
+        test('compiled with a same-named tab already open: says the hand-over was awaited', () => {
+            const m = freshModule();
+            const line = m.describeGuiCompileResult(
+                { ok: true, status: 'compiled', windowMs: 1844, binaryMs: 389, focus: 'none', handoff: 'exited', modsMs: 0, alreadyOpen: true }, names);
+            assert.match(line, /after 1\.8 s, My EA\.ex5 rewritten 0\.4 s later\. MetaTrader reloads the programs running on its charts after a MetaEditor compile\. The file name was already open in MetaEditor, the hand-over to the running instance was awaited first\.$/);
+        });
+
+        test('triggered with a binary wait: a warning naming the binary that did not change', () => {
             const m = freshModule();
             const line = m.describeGuiCompileResult({ ok: true, status: 'triggered', windowMs: 1355, binaryMs: -1 }, names);
-            assert.match(line, /^\[Info\] .*after 1\.4 s; My EA\.ex5 was not rewritten within the wait time, see the MetaEditor Toolbox\.$/);
+            assert.match(line, /^\[Warning\] MetaEditor GUI compile: Compile \(F7\) sent to "My EA\.mq5" after 1\.4 s, but My EA\.ex5 was not rewritten within the wait time\. Check which tab MetaEditor compiled/);
         });
 
         test('triggered without a binary wait (headers): no mention of a binary', () => {

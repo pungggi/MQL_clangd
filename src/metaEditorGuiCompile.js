@@ -26,7 +26,7 @@ const WORKER_SCRIPT = 'metaeditor-gui-compile.ps1';
 // that just compiled on the command line takes well under that. Both waits run
 // asynchronously in the worker, they never block VS Code.
 const DEFAULT_WINDOW_TIMEOUT_MS = 20000;
-const DEFAULT_RESULT_TIMEOUT_MS = 15000;
+const DEFAULT_RESULT_TIMEOUT_MS = 20000;
 // PowerShell start-up and the worker's Add-Type compile happen before the
 // worker's own clock starts; this margin keeps the execFile timeout from firing
 // first.
@@ -52,12 +52,13 @@ function buildWorkerArgs(scriptPath, { metaEditor, sourceFile, portable = false,
 
 /**
  * Parse the worker's last stdout line:
- *   OK compiled  pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept>
- *   OK triggered pid=<n> window-ms=<n> bin-ms=-1 focus=<...>
+ *   OK compiled   pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept> handoff=<none|exited|timeout> mods-ms=<n> already-open=<0|1>
+ *   OK triggered  pid=<n> window-ms=<n> bin-ms=-1 ...
  *   ERROR <reason>
  *
  * @returns {{ok: boolean, status: string, detail: string, pid?: number,
- *            windowMs?: number, binaryMs?: number, focus?: string}}
+ *            windowMs?: number, binaryMs?: number, focus?: string,
+ *            handoff?: string, modsMs?: number, alreadyOpen?: boolean}}
  */
 function parseWorkerResult(stdout) {
     const lines = String(stdout || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -77,6 +78,9 @@ function parseWorkerResult(stdout) {
         windowMs: Number(fields['window-ms']) || 0,
         binaryMs: fields['bin-ms'] === undefined ? -1 : (Number(fields['bin-ms']) || -1),
         focus: fields.focus || 'none',
+        handoff: fields.handoff || 'none',
+        modsMs: fields['mods-ms'] === undefined ? 0 : (Number(fields['mods-ms']) || 0),
+        alreadyOpen: fields['already-open'] === '1',
     };
 }
 
@@ -129,17 +133,21 @@ function seconds(ms) {
     return `${(ms / 1000).toFixed(1)} s`;
 }
 
-/** One output-channel line describing a worker result. */
+/**
+ * One output-channel line describing a worker result. A triggered compile whose
+ * binary did not change is reported as a warning: MetaEditor usually compiled a
+ * different tab or showed a dialog, and nothing was reloaded on the charts.
+ */
 function describeGuiCompileResult(result, { fileName, binaryName, waitedForBinary = true }) {
     if (result.status === 'compiled') {
         return `[Info] MetaEditor GUI compile: Compile (F7) sent to "${fileName}" after ${seconds(result.windowMs)}, ` +
             `${binaryName} rewritten ${seconds(result.binaryMs)} later. MetaTrader reloads the programs running on its ` +
-            'charts after a MetaEditor compile.';
+            `charts after a MetaEditor compile.${result.alreadyOpen ? ' The file name was already open in MetaEditor, the hand-over to the running instance was awaited first.' : ''}`;
     }
-    const sent = `[Info] MetaEditor GUI compile: Compile (F7) sent to "${fileName}" after ${seconds(result.windowMs)}`;
+    const sent = `[${waitedForBinary ? 'Warning' : 'Info'}] MetaEditor GUI compile: Compile (F7) sent to "${fileName}" after ${seconds(result.windowMs)}`;
     if (result.status === 'triggered') {
         return waitedForBinary
-            ? `${sent}; ${binaryName} was not rewritten within the wait time, see the MetaEditor Toolbox.`
+            ? `${sent}, but ${binaryName} was not rewritten within the wait time. Check which tab MetaEditor compiled and its Toolbox; nothing was reloaded on the charts.`
             : `${sent}. MetaTrader reloads the programs running on its charts after a MetaEditor compile.`;
     }
     return `[Error] MetaEditor GUI compile failed for "${fileName}": ${result.detail}`;

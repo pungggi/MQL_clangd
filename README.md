@@ -201,9 +201,12 @@ MetaTrader reloads an EA or indicator that runs on a chart only after a compile 
 
 **How the script compile works**
 
-- **Compile (F7) is posted to the MetaEditor window** that shows the file. No keystrokes are simulated and no window is activated for it, so it also works while MetaEditor sits behind other windows.
+- **Compile (F7) is posted to the MetaEditor window** that shows the file, and only to a MetaEditor of the configured installation. No keystrokes are simulated and no window is activated for it, so it also works while MetaEditor sits behind other windows.
 - **One MetaEditor window**: MetaEditor is single-instance. If it is already running, the file opens as a tab of the running instance instead of a second window.
+- **The hand-over is awaited**: when an instance was already running, the started process only hands the file over and exits. The compile key is sent after that hand-over finished, so a tab that merely carries the same file name (another folder) is never compiled by mistake.
+- **Keys must be released**: the key is posted only once no Shift, Ctrl, Alt or Windows key is held (bounded wait), so it is not read as a different shortcut.
 - **MetaEditor stays open** so you can read the final compile log in its Toolbox. If launching it takes the focus away from VS Code, focus is handed back to the window you were working in.
+- **Confirmation**: the `.ex4/.ex5` next to the source must be rewritten within 20 s. If it is not, the Output channel and a warning say so, because then nothing was reloaded on the charts (for example another tab was compiled or MetaEditor shows a dialog).
 - **Windows only.** Under Wine the command keeps its previous behaviour; use [Auto-Reload EA After Compile (MT5 Service)](#auto-reload-ea-after-compile-mt5-service) to reload EAs there.
 
 ---

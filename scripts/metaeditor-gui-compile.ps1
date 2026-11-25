@@ -9,29 +9,36 @@
 #   command (MQL_clangd#77): open the file in MetaEditor and press Compile there.
 #
 # How it works
-#   1. Remembers the current foreground window.
+#   1. Remembers the current foreground window and which MetaEditor of the
+#      configured installation is already running.
 #   2. Starts MetaEditor with the source file as a bare argument (GUI mode, no
 #      /compile), detached from this console.
-#   3. Waits (bounded) for a MetaEditor window of the configured installation
-#      whose title shows the file ("MetaEditor - [Name.mq5]"). MetaEditor is
-#      single-instance: when it is already running, the new process hands the
-#      file to the running instance and exits without a window, so the target
-#      is found by title, never by the PID started here. A window of another
-#      MetaEditor installation showing a file with the same name is ignored.
-#   4. Posts F7 (Compile) straight to that window with PostMessage. No
-#      activation is needed, so this also works while MetaEditor sits behind
-#      other windows.
-#   5. Focus: for a short moment after the key, if MetaEditor's launch made it
+#   3. MetaEditor is single-instance: when an instance was already running, the
+#      new process only hands the file over and exits. The worker waits for that
+#      exit (bounded) plus a short grace period, so the F7 in step 5 always
+#      reaches the instance after it switched to the requested file. Without
+#      that wait the key could hit a tab that merely carries the same file name
+#      (other folder), compiling the wrong file.
+#   4. Waits (bounded) for a MetaEditor window of the configured installation
+#      whose title shows the file ("MetaEditor - [Name.mq5]"). The target is
+#      found by title, never by the PID started here, because that process has
+#      exited after the hand-over. A window of another MetaEditor installation
+#      showing a file with the same name is ignored.
+#   5. Waits (bounded) until no Shift/Ctrl/Alt/Win key is held, so the key is not
+#      read as a different shortcut, then posts F7 (Compile) to that window with
+#      PostMessage. No activation is needed, so this also works while MetaEditor
+#      sits behind other windows.
+#   6. Focus: for a short moment after the key, if MetaEditor's launch made it
 #      the foreground window and the user has not meanwhile moved to another
 #      window, the window from step 1 is activated again so the user keeps
 #      working where they were (VS Code).
-#   6. Waits (bounded) for the compiled .ex4/.ex5 next to the source to be
+#   7. Waits (bounded) for the compiled .ex4/.ex5 next to the source to be
 #      rewritten, as confirmation that the GUI compile really ran.
-#   7. MetaEditor stays open: the final compile log is in its Toolbox window.
+#   8. MetaEditor stays open: the final compile log is in its Toolbox window.
 #
 # Output protocol: the last stdout line is the result, exit code 0 only for OK.
-#   OK compiled   pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept>
-#   OK triggered  pid=<n> window-ms=<n> bin-ms=-1 focus=<...>
+#   OK compiled   pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept> handoff=<none|exited|timeout> mods-ms=<n> already-open=<0|1>
+#   OK triggered  pid=<n> window-ms=<n> bin-ms=-1 focus=<...> handoff=<...> mods-ms=<n> already-open=<0|1>
 #   ERROR <reason>
 #
 # Usage:
@@ -43,7 +50,10 @@ param(
     [Parameter(Mandatory = $true)][string]$SourceFile,  # the .mq4/.mq5 file to open and compile
     [switch]$Portable,                                  # append /portable (mql_tools.Metaeditor.Portable4/5)
     [int]$WindowTimeoutMs = 20000,                      # max wait for the MetaEditor window showing the file
-    [int]$ResultTimeoutMs = 15000                       # max wait for the .ex4/.ex5 to be rewritten (0 = skip)
+    [int]$ResultTimeoutMs = 20000,                      # max wait for the .ex4/.ex5 to be rewritten (0 = skip)
+    [int]$HandOffTimeoutMs = 5000,                      # max wait for the started process to hand the file to a running instance and exit
+    [int]$HandOffGraceMs = 250,                         # extra time for that instance to switch to the file's tab
+    [int]$ModifierTimeoutMs = 3000                      # max wait for released Shift/Ctrl/Alt/Win keys before F7 (0 = no wait)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +81,7 @@ public class MeGui {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint uintType);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern uint GetLongPathName(string shortPath, StringBuilder longPath, uint buffer);
     [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool QueryFullProcessImageName(IntPtr h, uint flags, StringBuilder name, ref uint size);
@@ -122,6 +133,15 @@ public class MeGui {
 
     public static uint WindowPid(IntPtr h) { uint pid; GetWindowThreadProcessId(h, out pid); return pid; }
 
+    // True while a modifier key is physically held (Shift, Ctrl, Alt, Win).
+    public static bool AnyModifierDown() {
+        int[] keys = new int[] { 0x10, 0x11, 0x12, 0x5B, 0x5C };
+        foreach (int k in keys) {
+            if ((GetAsyncKeyState(k) & 0x8000) != 0) return true;
+        }
+        return false;
+    }
+
     // WM_KEYDOWN + WM_KEYUP for `vk` with a proper lParam (repeat count 1, scan
     // code, transition/release bits). Built here so the value is correct in a
     // 32-bit as well as a 64-bit PowerShell host.
@@ -139,6 +159,7 @@ public class MeGui {
 $VK_F7 = 0x76
 $baseName = [System.IO.Path]::GetFileName($SourceFile)
 $titlePart = '[' + $baseName + ']'
+$whatWeLookFor = 'a window of "' + $MetaEditor + '" titled "*' + $titlePart + '*"'
 $ext = [System.IO.Path]::GetExtension($SourceFile).ToLowerInvariant()
 $outExt = if ($ext -eq '.mq4') { '.ex4' } else { '.ex5' }
 $outFile = [System.IO.Path]::ChangeExtension($SourceFile, $outExt)
@@ -156,6 +177,17 @@ function Get-MetaEditorPids {
     return ,([uint32[]]@(Get-Process -Name $exeNames -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }))
 }
 
+function Get-InstallationPids {
+    # [uint32[]] of the running MetaEditor processes whose readable image path
+    # is the configured installation.
+    $all = Get-MetaEditorPids
+    $found = @($all | Where-Object {
+        $p = [MeGui]::ImagePath($_)
+        $p -and ([MeGui]::NormalizePath($p) -eq $metaEditorKey)
+    })
+    return ,([uint32[]]$found)
+}
+
 function Find-TargetWindow {
     # The process started here always wins. Otherwise only a MetaEditor of the
     # configured installation qualifies: another installation may already show a
@@ -171,21 +203,30 @@ function Find-TargetWindow {
         if ($ownerPid -eq $launchPid) { return $h }
         $ownerPath = [MeGui]::ImagePath($ownerPid)
         if ($ownerPath) {
-            if ([MeGui]::NormalizePath($ownerPath) -ne $script:metaEditorKey) { continue }
+            if ([MeGui]::NormalizePath($ownerPath) -ne $metaEditorKey) { continue }
             if ($bestRank -gt 1) { $bestRank = 1; $best = $h }
         } elseif ($bestRank -gt 2) { $bestRank = 2; $best = $h }
     }
     return $best
 }
 
-# --- 1. foreground window before the launch ---
+# --- 1. state before the launch: foreground window, running instances ---
 $fgBefore = [MeGui]::GetForegroundWindow()
 $fgBeforePid = 0
 if ($fgBefore -ne [IntPtr]::Zero) { $fgBeforePid = [MeGui]::WindowPid($fgBefore) }
 
+$existingPids = Get-InstallationPids
+$alreadyOpen = 0
+if ($existingPids.Count -gt 0 -and @([MeGui]::FindWindows($existingPids, $titlePart)).Count -gt 0) {
+    # A tab with this file name is already open (possibly another folder's file
+    # with the same name): only reported, the hand-over wait below orders it.
+    $alreadyOpen = 1
+}
+
 # --- 2. launch MetaEditor with the file (GUI mode) ---
 $argList = @('"' + $SourceFile + '"')
 if ($Portable) { $argList += '/portable' }
+$proc = $null
 try {
     $proc = Start-Process -FilePath $MetaEditor -ArgumentList $argList -PassThru
     if ($proc) { $launchPid = [uint32]$proc.Id }
@@ -193,7 +234,22 @@ try {
     Fail ("launch-failed: " + $_.Exception.Message)
 }
 
-# --- 3. wait for the MetaEditor window showing the file ---
+# --- 3. hand-over: a running instance receives the file, the new process exits ---
+$handOff = 'none'
+if ($existingPids.Count -gt 0 -and $proc) {
+    $exited = $false
+    try { $exited = $proc.WaitForExit($HandOffTimeoutMs) } catch { $exited = $true }
+    if ($exited) {
+        $handOff = 'exited'
+        Start-Sleep -Milliseconds $HandOffGraceMs
+    } else {
+        # Not single-instance after all, or the process hangs: its own window is
+        # preferred below, so only the wait is reported.
+        $handOff = 'timeout'
+    }
+}
+
+# --- 4. wait for the MetaEditor window showing the file ---
 $hwnd = [IntPtr]::Zero
 while ($sw.ElapsedMilliseconds -lt $WindowTimeoutMs) {
     $hwnd = Find-TargetWindow
@@ -201,19 +257,32 @@ while ($sw.ElapsedMilliseconds -lt $WindowTimeoutMs) {
     Start-Sleep -Milliseconds 50
 }
 if ($hwnd -eq [IntPtr]::Zero) {
-    Fail ("window-timeout: no MetaEditor window titled '*" + $titlePart + "*' within ${WindowTimeoutMs} ms" +
+    Fail ("window-timeout: no " + $whatWeLookFor + " within ${WindowTimeoutMs} ms" +
         " (MetaEditor may still be starting, or it is showing a dialog)")
 }
 $tWindow = $sw.ElapsedMilliseconds
 
-# --- 4. post F7 (Compile) to that window ---
-$before = if (Test-Path -LiteralPath $outFile) { (Get-Item -LiteralPath $outFile).LastWriteTimeUtc } else { [datetime]::MinValue }
+# --- 5. no modifier key may be held when F7 goes out ---
+$tMods = $sw.ElapsedMilliseconds
+if ($ModifierTimeoutMs -gt 0) {
+    while ([MeGui]::AnyModifierDown()) {
+        if ($sw.ElapsedMilliseconds -ge $tMods + $ModifierTimeoutMs) {
+            Fail ("modifiers-held: Shift/Ctrl/Alt/Win still down after ${ModifierTimeoutMs} ms, F7 not sent to " + $whatWeLookFor)
+        }
+        Start-Sleep -Milliseconds 50
+    }
+}
+$modsMs = $sw.ElapsedMilliseconds - $tMods
+
+$before = [datetime]::MinValue
+$beforeItem = Get-Item -LiteralPath $outFile -ErrorAction SilentlyContinue
+if ($beforeItem) { $before = $beforeItem.LastWriteTimeUtc }
 if (-not [MeGui]::PostKey($hwnd, $VK_F7)) {
     Fail ("post-failed: could not post F7 to the MetaEditor window 0x" + $hwnd.ToInt64().ToString('X'))
 }
 $tKey = $sw.ElapsedMilliseconds
 
-# --- 5. + 6. watch the foreground for a moment, wait for the rewritten binary ---
+# --- 6. + 7. watch the foreground for a moment, wait for the rewritten binary ---
 # The binary check is informational only: the command-line compile that ran
 # before this worker already produced it, so a timeout here means "not
 # confirmed", never a failure.
@@ -227,9 +296,11 @@ while ($true) {
     $fg = [MeGui]::GetForegroundWindow()
     $fgIsMetaEditor = ($fg -ne [IntPtr]::Zero -and $mePids -contains [MeGui]::WindowPid($fg))
 
-    if ($binMs -lt 0 -and $ResultTimeoutMs -gt 0 -and $now -lt $tKey + $ResultTimeoutMs -and
-        (Test-Path -LiteralPath $outFile) -and (Get-Item -LiteralPath $outFile).LastWriteTimeUtc -gt $before) {
-        $binMs = $now - $tKey
+    # -ErrorAction SilentlyContinue: MetaEditor deletes the old binary while a
+    # failed compile runs, so existence and read must not be two steps.
+    if ($binMs -lt 0 -and $ResultTimeoutMs -gt 0 -and $now -lt $tKey + $ResultTimeoutMs) {
+        $item = Get-Item -LiteralPath $outFile -ErrorAction SilentlyContinue
+        if ($item -and $item.LastWriteTimeUtc -gt $before) { $binMs = $now - $tKey }
     }
 
     if ($focus -eq 'none' -and $now -le $focusWatchUntil) {
@@ -260,10 +331,11 @@ while ($true) {
     Start-Sleep -Milliseconds 40
 }
 
-# --- 7. report ---
+# --- 8. report ---
+$common = "pid=$launchPid window-ms=$tWindow focus=$focus handoff=$handOff mods-ms=$modsMs already-open=$alreadyOpen"
 if ($binMs -ge 0) {
-    "OK compiled pid=$launchPid window-ms=$tWindow bin-ms=$binMs focus=$focus"
+    "OK compiled $common bin-ms=$binMs"
 } else {
-    "OK triggered pid=$launchPid window-ms=$tWindow bin-ms=-1 focus=$focus"
+    "OK triggered $common bin-ms=-1"
 }
 exit 0
