@@ -1,4 +1,10 @@
-# Changelog                         
+# Changelog
+                                                 
+## Unreleased
+
+### Fixes
+
+- **"Compile MQL file using script" compiles through the MetaEditor UI again** (#77): MetaTrader reloads a running EA or indicator only after a compile made inside MetaEditor; a command-line compile rewrites the `.ex4/.ex5`, but the charts keep running the previous build. The command still starts with the command-line compile that fills the Problems panel, and now opens the file in MetaEditor and presses Compile (F7) there afterwards, as the original MQL Tools extension did. MetaEditor is single-instance, so a running MetaEditor gets the file as a new tab instead of a second window; the window stays open for the final compile log, and only if its launch pulls the focus away from VS Code is the focus handed back. The key is posted to the window (no simulated keystrokes, no activation), so the compile also runs while MetaEditor sits behind other windows. Windows only: non-Windows hosts without Wine keep the command-line behaviour, and under Wine the `CompileListenerService` remains the way to reload EAs.
 
 ## 1.3.0 (pre-release)
 

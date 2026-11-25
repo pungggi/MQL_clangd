@@ -13,6 +13,7 @@
     "editor64to": "to",
     "err_read_log": "Error reading log file.",
     "err_start_script": "Error starting script!!!",
+    "gui_compile_failed": "MetaEditor GUI compile failed",
     "err_remove_log": "Error occurred while trying to remove log file",
     "info_log_compile": "\n[Info] This log displays the syntax check, the final compilation log can be viewed in MetaEditor.",
     "help_Lo": "The MQL help is loading...",
