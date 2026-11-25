@@ -159,7 +159,7 @@ public class MeGui {
 $VK_F7 = 0x76
 $baseName = [System.IO.Path]::GetFileName($SourceFile)
 $titlePart = '[' + $baseName + ']'
-$whatWeLookFor = 'a window of "' + $MetaEditor + '" titled "*' + $titlePart + '*"'
+$whatWeLookFor = 'window of "' + $MetaEditor + '" titled "*' + $titlePart + '*"'
 $ext = [System.IO.Path]::GetExtension($SourceFile).ToLowerInvariant()
 $outExt = if ($ext -eq '.mq4') { '.ex4' } else { '.ex5' }
 $outFile = [System.IO.Path]::ChangeExtension($SourceFile, $outExt)
@@ -267,7 +267,7 @@ $tMods = $sw.ElapsedMilliseconds
 if ($ModifierTimeoutMs -gt 0) {
     while ([MeGui]::AnyModifierDown()) {
         if ($sw.ElapsedMilliseconds -ge $tMods + $ModifierTimeoutMs) {
-            Fail ("modifiers-held: Shift/Ctrl/Alt/Win still down after ${ModifierTimeoutMs} ms, F7 not sent to " + $whatWeLookFor)
+            Fail ("modifiers-held: Shift/Ctrl/Alt/Win still down after ${ModifierTimeoutMs} ms, F7 not posted to the " + $whatWeLookFor)
         }
         Start-Sleep -Milliseconds 50
     }
