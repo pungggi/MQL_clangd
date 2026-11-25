@@ -76,8 +76,8 @@ suite('metaEditorGuiCompile', () => {
     suite('parseWorkerResult', () => {
         test('OK compiled line becomes a successful result with timings', () => {
             const m = freshModule();
-            const r = m.parseWorkerResult('noise\r\nOK compiled  pid=29932 window-ms=1496 bin-ms=439 focus=restored handoff=exited mods-ms=40 already-open=1\r\n');
-            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 29932, windowMs: 1496, binaryMs: 439, focus: 'restored', handoff: 'exited', modsMs: 40, alreadyOpen: true });
+            const r = m.parseWorkerResult('noise\r\nOK compiled  pid=29932 window-ms=1496 bin-ms=439 focus=restored handoff=exited mods-ms=3000 mods=held already-open=1\r\n');
+            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 29932, windowMs: 1496, binaryMs: 439, focus: 'restored', handoff: 'exited', modsMs: 3000, mods: 'held', alreadyOpen: true });
         });
 
         test('OK triggered line (binary not seen rewritten) is still a success', () => {
@@ -90,6 +90,7 @@ suite('metaEditorGuiCompile', () => {
             // Fields the older worker lines did not carry get neutral defaults.
             assert.strictEqual(r.handoff, 'none');
             assert.strictEqual(r.modsMs, 0);
+            assert.strictEqual(r.mods, 'clear');
             assert.strictEqual(r.alreadyOpen, false);
         });
 
@@ -128,7 +129,7 @@ suite('metaEditorGuiCompile', () => {
             assert.strictEqual(call.opts.timeout, m.DEFAULT_WINDOW_TIMEOUT_MS + m.DEFAULT_RESULT_TIMEOUT_MS + 30000);
             assert.deepStrictEqual(call.args, m.buildWorkerArgs(m.workerPath(CONTEXT), INPUTS));
             assert.ok(call.args[4].endsWith(path.join('scripts', 'metaeditor-gui-compile.ps1')));
-            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 7, windowMs: 1200, binaryMs: 400, focus: 'none', handoff: 'none', modsMs: 0, alreadyOpen: false });
+            assert.deepStrictEqual(r, { ok: true, status: 'compiled', pid: 7, windowMs: 1200, binaryMs: 400, focus: 'none', handoff: 'none', modsMs: 0, mods: 'clear', alreadyOpen: false });
         });
 
         test('a failed worker resolves to ok=false with the worker reason', async () => {
@@ -230,6 +231,14 @@ suite('metaEditorGuiCompile', () => {
             const m = freshModule();
             const line = m.describeGuiCompileResult({ ok: true, status: 'triggered', windowMs: 1355, binaryMs: -1 }, names);
             assert.match(line, /^\[Warning\] MetaEditor GUI compile: Compile \(F7\) sent to "My EA\.mq5" after 1\.4 s, but My EA\.ex5 was not rewritten within the wait time\. Check which tab MetaEditor compiled/);
+        });
+
+        test('key sent while a modifier was still held: said so on success and on trigger', () => {
+            const m = freshModule();
+            const ok = m.describeGuiCompileResult({ ok: true, status: 'compiled', windowMs: 1400, binaryMs: 400, mods: 'held' }, names);
+            assert.match(ok, /after a MetaEditor compile\. Shift\/Ctrl\/Alt\/Win was still held when the compile key was sent \(sent anyway\)\.$/);
+            const trig = m.describeGuiCompileResult({ ok: true, status: 'triggered', windowMs: 1400, binaryMs: -1, mods: 'held' }, names);
+            assert.match(trig, /^\[Warning\] MetaEditor GUI compile: Compile \(F7\) sent to "My EA\.mq5" after 1\.4 s Shift\/Ctrl\/Alt\/Win was still held when the compile key was sent \(sent anyway\)\., but My EA\.ex5 was not rewritten/);
         });
 
         test('triggered without a binary wait (headers): no mention of a binary', () => {

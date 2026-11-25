@@ -52,13 +52,13 @@ function buildWorkerArgs(scriptPath, { metaEditor, sourceFile, portable = false,
 
 /**
  * Parse the worker's last stdout line:
- *   OK compiled   pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept> handoff=<none|exited|timeout> mods-ms=<n> already-open=<0|1>
+ *   OK compiled   pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept> handoff=<none|exited|timeout> mods-ms=<n> mods=<clear|held> already-open=<0|1>
  *   OK triggered  pid=<n> window-ms=<n> bin-ms=-1 ...
  *   ERROR <reason>
  *
  * @returns {{ok: boolean, status: string, detail: string, pid?: number,
  *            windowMs?: number, binaryMs?: number, focus?: string,
- *            handoff?: string, modsMs?: number, alreadyOpen?: boolean}}
+ *            handoff?: string, modsMs?: number, mods?: string, alreadyOpen?: boolean}}
  */
 function parseWorkerResult(stdout) {
     const lines = String(stdout || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -80,6 +80,7 @@ function parseWorkerResult(stdout) {
         focus: fields.focus || 'none',
         handoff: fields.handoff || 'none',
         modsMs: fields['mods-ms'] === undefined ? 0 : (Number(fields['mods-ms']) || 0),
+        mods: fields.mods || 'clear',
         alreadyOpen: fields['already-open'] === '1',
     };
 }
@@ -139,12 +140,15 @@ function seconds(ms) {
  * different tab or showed a dialog, and nothing was reloaded on the charts.
  */
 function describeGuiCompileResult(result, { fileName, binaryName, waitedForBinary = true }) {
+    // Sent while a modifier key was still held: worth saying, because MetaEditor
+    // may have read another shortcut.
+    const held = result.mods === 'held' ? ' Shift/Ctrl/Alt/Win was still held when the compile key was sent (sent anyway).' : '';
     if (result.status === 'compiled') {
         return `[Info] MetaEditor GUI compile: Compile (F7) sent to "${fileName}" after ${seconds(result.windowMs)}, ` +
             `${binaryName} rewritten ${seconds(result.binaryMs)} later. MetaTrader reloads the programs running on its ` +
-            `charts after a MetaEditor compile.${result.alreadyOpen ? ' The file name was already open in MetaEditor, the hand-over to the running instance was awaited first.' : ''}`;
+            `charts after a MetaEditor compile.${result.alreadyOpen ? ' The file name was already open in MetaEditor, the hand-over to the running instance was awaited first.' : ''}${held}`;
     }
-    const sent = `[${waitedForBinary ? 'Warning' : 'Info'}] MetaEditor GUI compile: Compile (F7) sent to "${fileName}" after ${seconds(result.windowMs)}`;
+    const sent = `[${waitedForBinary ? 'Warning' : 'Info'}] MetaEditor GUI compile: Compile (F7) sent to "${fileName}" after ${seconds(result.windowMs)}${held}`;
     if (result.status === 'triggered') {
         return waitedForBinary
             ? `${sent}, but ${binaryName} was not rewritten within the wait time. Check which tab MetaEditor compiled and its Toolbox; nothing was reloaded on the charts.`

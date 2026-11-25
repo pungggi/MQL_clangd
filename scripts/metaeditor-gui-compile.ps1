@@ -24,10 +24,13 @@
 #      found by title, never by the PID started here, because that process has
 #      exited after the hand-over. A window of another MetaEditor installation
 #      showing a file with the same name is ignored.
-#   5. Waits (bounded) until no Shift/Ctrl/Alt/Win key is held, so the key is not
-#      read as a different shortcut, then posts F7 (Compile) to that window with
-#      PostMessage. No activation is needed, so this also works while MetaEditor
-#      sits behind other windows.
+#   5. Delays the key (bounded) while a Shift/Ctrl/Alt/Win key is held, so it is
+#      not read as a different shortcut, then posts F7 (Compile) to that window
+#      with PostMessage. If a modifier is still held after the bound, the key
+#      goes out anyway and the result says so: a misread chord at worst ends as
+#      "triggered", a withheld key would fail the command for somebody who
+#      simply keeps typing. No activation is needed, so this also works while
+#      MetaEditor sits behind other windows.
 #   6. Focus: for a short moment after the key, if MetaEditor's launch made it
 #      the foreground window and the user has not meanwhile moved to another
 #      window, the window from step 1 is activated again so the user keeps
@@ -37,8 +40,8 @@
 #   8. MetaEditor stays open: the final compile log is in its Toolbox window.
 #
 # Output protocol: the last stdout line is the result, exit code 0 only for OK.
-#   OK compiled   pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept> handoff=<none|exited|timeout> mods-ms=<n> already-open=<0|1>
-#   OK triggered  pid=<n> window-ms=<n> bin-ms=-1 focus=<...> handoff=<...> mods-ms=<n> already-open=<0|1>
+#   OK compiled   pid=<n> window-ms=<n> bin-ms=<n> focus=<none|restored|kept> handoff=<none|exited|timeout> mods-ms=<n> mods=<clear|held> already-open=<0|1>
+#   OK triggered  pid=<n> window-ms=<n> bin-ms=-1 focus=<...> handoff=<...> mods-ms=<n> mods=<clear|held> already-open=<0|1>
 #   ERROR <reason>
 #
 # Usage:
@@ -53,7 +56,7 @@ param(
     [int]$ResultTimeoutMs = 20000,                      # max wait for the .ex4/.ex5 to be rewritten (0 = skip)
     [int]$HandOffTimeoutMs = 5000,                      # max wait for the started process to hand the file to a running instance and exit
     [int]$HandOffGraceMs = 250,                         # extra time for that instance to switch to the file's tab
-    [int]$ModifierTimeoutMs = 3000                      # max wait for released Shift/Ctrl/Alt/Win keys before F7 (0 = no wait)
+    [int]$ModifierTimeoutMs = 3000                      # how long F7 is delayed while Shift/Ctrl/Alt/Win is held (0 = no wait; sent anyway afterwards)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -262,13 +265,17 @@ if ($hwnd -eq [IntPtr]::Zero) {
 }
 $tWindow = $sw.ElapsedMilliseconds
 
-# --- 5. no modifier key may be held when F7 goes out ---
+# --- 5. briefly delay the key while a modifier is held ---
+# A held Shift/Ctrl/Alt/Win could turn the posted F7 into another shortcut, so
+# the key waits (bounded) until they are released. After the bound it is sent
+# anyway and reported: a misread chord at worst ends as "triggered" (binary not
+# rewritten, warning), a key that is never sent would fail the command although
+# the command-line compile was clean.
 $tMods = $sw.ElapsedMilliseconds
+$mods = 'clear'
 if ($ModifierTimeoutMs -gt 0) {
     while ([MeGui]::AnyModifierDown()) {
-        if ($sw.ElapsedMilliseconds -ge $tMods + $ModifierTimeoutMs) {
-            Fail ("modifiers-held: Shift/Ctrl/Alt/Win still down after ${ModifierTimeoutMs} ms, F7 not posted to the " + $whatWeLookFor)
-        }
+        if ($sw.ElapsedMilliseconds -ge $tMods + $ModifierTimeoutMs) { $mods = 'held'; break }
         Start-Sleep -Milliseconds 50
     }
 }
@@ -332,7 +339,7 @@ while ($true) {
 }
 
 # --- 8. report ---
-$common = "pid=$launchPid window-ms=$tWindow focus=$focus handoff=$handOff mods-ms=$modsMs already-open=$alreadyOpen"
+$common = "pid=$launchPid window-ms=$tWindow focus=$focus handoff=$handOff mods-ms=$modsMs mods=$mods already-open=$alreadyOpen"
 if ($binMs -ge 0) {
     "OK compiled $common bin-ms=$binMs"
 } else {
