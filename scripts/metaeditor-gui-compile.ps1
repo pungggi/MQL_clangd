@@ -12,17 +12,19 @@
 #   1. Remembers the current foreground window.
 #   2. Starts MetaEditor with the source file as a bare argument (GUI mode, no
 #      /compile), detached from this console.
-#   3. Waits (bounded) for a MetaEditor window whose title shows the file
-#      ("MetaEditor - [Name.mq5]"). MetaEditor is single-instance: when it is
-#      already running, the new process hands the file to the running instance
-#      and exits without a window, so the target is found by title, never by the
-#      PID started here.
+#   3. Waits (bounded) for a MetaEditor window of the configured installation
+#      whose title shows the file ("MetaEditor - [Name.mq5]"). MetaEditor is
+#      single-instance: when it is already running, the new process hands the
+#      file to the running instance and exits without a window, so the target
+#      is found by title, never by the PID started here. A window of another
+#      MetaEditor installation showing a file with the same name is ignored.
 #   4. Posts F7 (Compile) straight to that window with PostMessage. No
 #      activation is needed, so this also works while MetaEditor sits behind
 #      other windows.
-#   5. Focus: if MetaEditor's launch made it the foreground window, the window
-#      from step 1 is activated again so the user keeps working where they were
-#      (VS Code). If the user already moved to another window, nothing is touched.
+#   5. Focus: for a short moment after the key, if MetaEditor's launch made it
+#      the foreground window and the user has not meanwhile moved to another
+#      window, the window from step 1 is activated again so the user keeps
+#      working where they were (VS Code).
 #   6. Waits (bounded) for the compiled .ex4/.ex5 next to the source to be
 #      rewritten, as confirmation that the GUI compile really ran.
 #   7. MetaEditor stays open: the final compile log is in its Toolbox window.
@@ -69,6 +71,35 @@ public class MeGui {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint uintType);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern uint GetLongPathName(string shortPath, StringBuilder longPath, uint buffer);
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool QueryFullProcessImageName(IntPtr h, uint flags, StringBuilder name, ref uint size);
+    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+
+    // Canonical form for comparing a configured path with a process image path:
+    // long names, backslashes, no trailing separator, lower-case.
+    public static string NormalizePath(string p) {
+        if (string.IsNullOrEmpty(p)) return string.Empty;
+        string full;
+        try { full = System.IO.Path.GetFullPath(p); } catch { full = p; }
+        StringBuilder sb = new StringBuilder(1024);
+        if (GetLongPathName(full, sb, (uint)sb.Capacity) > 0) full = sb.ToString();
+        return full.Replace('/', '\\').TrimEnd('\\').ToLowerInvariant();
+    }
+
+    // Image path of a process, or null when it cannot be opened (elevated, other
+    // session, already exited). Used instead of System.Diagnostics.Process.Path,
+    // which is empty for a 64-bit process seen from a 32-bit PowerShell host.
+    public static string ImagePath(uint pid) {
+        IntPtr h = OpenProcess(0x1000, false, pid);  // PROCESS_QUERY_LIMITED_INFORMATION
+        if (h == IntPtr.Zero) return null;
+        try {
+            StringBuilder sb = new StringBuilder(1024);
+            uint size = (uint)sb.Capacity;
+            if (!QueryFullProcessImageName(h, 0, sb, ref size)) return null;
+            return sb.ToString();
+        } finally { CloseHandle(h); }
+    }
 
     // Visible top-level windows owned by one of `pids` whose title contains `part`
     // (ordinal, case-insensitive). MetaEditor's main window is titled
@@ -116,6 +147,7 @@ $outFile = [System.IO.Path]::ChangeExtension($SourceFile, $outExt)
 # metaeditor64.exe (MT5) and whatever the configured executable is called.
 $exeNames = @('metaeditor', 'metaeditor64', [System.IO.Path]::GetFileNameWithoutExtension($MetaEditor)) |
     ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique
+$metaEditorKey = [MeGui]::NormalizePath($MetaEditor)
 $launchPid = 0
 
 function Get-MetaEditorPids {
@@ -125,23 +157,23 @@ function Get-MetaEditorPids {
 }
 
 function Find-TargetWindow {
-    # Preferred order: the process started here, then the configured MetaEditor
-    # installation, then any other MetaEditor showing the file.
+    # The process started here always wins. Otherwise only a MetaEditor of the
+    # configured installation qualifies: another installation may already show a
+    # file with the same name, and F7 there would compile the wrong file. Only a
+    # process whose image path cannot be read (elevated, other session) is
+    # accepted without that check, as a last resort.
     $handles = [MeGui]::FindWindows((Get-MetaEditorPids), $titlePart)
-    if ($handles.Length -eq 0) { return [IntPtr]::Zero }
+    if ($null -eq $handles -or @($handles).Count -eq 0) { return [IntPtr]::Zero }
     $best = [IntPtr]::Zero
     $bestRank = 9
-    foreach ($h in $handles) {
+    foreach ($h in @($handles)) {
         $ownerPid = [MeGui]::WindowPid($h)
-        $rank = 2
-        if ($ownerPid -eq $launchPid) { $rank = 0 }
-        else {
-            # Path is empty/inaccessible for elevated processes; that is fine.
-            $ownerPath = $null
-            try { $ownerPath = (Get-Process -Id $ownerPid -ErrorAction Stop).Path } catch { }
-            if ($ownerPath -and ($ownerPath -ieq $MetaEditor)) { $rank = 1 }
-        }
-        if ($rank -lt $bestRank) { $bestRank = $rank; $best = $h }
+        if ($ownerPid -eq $launchPid) { return $h }
+        $ownerPath = [MeGui]::ImagePath($ownerPid)
+        if ($ownerPath) {
+            if ([MeGui]::NormalizePath($ownerPath) -ne $script:metaEditorKey) { continue }
+            if ($bestRank -gt 1) { $bestRank = 1; $best = $h }
+        } elseif ($bestRank -gt 2) { $bestRank = 2; $best = $h }
     }
     return $best
 }
@@ -187,6 +219,7 @@ $tKey = $sw.ElapsedMilliseconds
 # confirmed", never a failure.
 $focus = 'none'
 $focusWatchUntil = $tKey + 1500
+$userSwitched = $false
 $binMs = -1
 while ($true) {
     $now = $sw.ElapsedMilliseconds
@@ -199,20 +232,25 @@ while ($true) {
         $binMs = $now - $tKey
     }
 
-    if ($focus -eq 'none' -and $fgIsMetaEditor) {
-        # MetaEditor took the foreground with its launch. Hand it back to the
-        # window the user was in. Without a remembered window (e.g. a locked
-        # session) there is nothing to restore.
-        $focus = 'kept'
-        if ($fgBefore -ne [IntPtr]::Zero -and $fgBefore -ne $fg) {
-            [void][MeGui]::SetForegroundWindow($fgBefore)
-            Start-Sleep -Milliseconds 80
-            if ($mePids -contains [MeGui]::WindowPid([MeGui]::GetForegroundWindow())) {
-                # SetForegroundWindow is refused for non-foreground processes on
-                # some systems; AppActivate works from a background process.
-                try { [void](New-Object -ComObject WScript.Shell).AppActivate([int]$fgBeforePid) } catch { }
+    if ($focus -eq 'none' -and $now -le $focusWatchUntil) {
+        if ($fgIsMetaEditor) {
+            # MetaEditor took the foreground with its launch. Hand it back to the
+            # window the user was in, unless there was none (locked session) or the
+            # user already chose another window in the meantime.
+            $focus = 'kept'
+            if ($fgBefore -ne [IntPtr]::Zero -and $fgBefore -ne $fg -and -not $userSwitched) {
+                [void][MeGui]::SetForegroundWindow($fgBefore)
+                Start-Sleep -Milliseconds 80
+                if ((Get-MetaEditorPids) -contains [MeGui]::WindowPid([MeGui]::GetForegroundWindow())) {
+                    # SetForegroundWindow is refused for non-foreground processes on
+                    # some systems; AppActivate works from a background process.
+                    try { [void](New-Object -ComObject WScript.Shell).AppActivate([int]$fgBeforePid) } catch { }
+                }
+                if ((Get-MetaEditorPids) -notcontains [MeGui]::WindowPid([MeGui]::GetForegroundWindow())) { $focus = 'restored' }
             }
-            if ($mePids -notcontains [MeGui]::WindowPid([MeGui]::GetForegroundWindow())) { $focus = 'restored' }
+        } elseif ($fg -ne [IntPtr]::Zero -and $fg -ne $fgBefore) {
+            # A third window is in front: the user moved on, leave the focus alone.
+            $userSwitched = $true
         }
     }
 
